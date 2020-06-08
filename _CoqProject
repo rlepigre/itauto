@@ -1,0 +1,10 @@
+-Q theories/ Cdcl
+-Q src/ Cdcl
+theories/Formula.v
+theories/TautoTac.v
+-I src/
+src/prover.ml
+src/prover.mli
+src/cdcl.ml
+src/g_cdcl.mlg
+src/cdcl_plugin.mlpack

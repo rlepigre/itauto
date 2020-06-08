@@ -1,0 +1,34 @@
+(************************************************************************)
+(*         *   The Coq Proof Assistant / The Coq Development Team       *)
+(*  v      *         Copyright INRIA, CNRS and contributors             *)
+(* <O___,, * (see version control and CREDITS file for authors & dates) *)
+(*   \VV/  **************************************************************)
+(*    //   *    This file is distributed under the terms of the         *)
+(*         *     GNU Lesser General Public License Version 2.1          *)
+(*         *     (see LICENSE file for the text of the license)         *)
+(************************************************************************)
+(*                                                                      *)
+(* Micromega: A reflexive tactic using the Positivstellensatz           *)
+(*                                                                      *)
+(* * Mappings from Coq tactics to Caml function calls                   *)
+(*                                                                      *)
+(*  Frédéric Besson (Irisa/Inria) 2006-2008			        *)
+(*                                                                      *)
+(************************************************************************)
+
+{
+
+open Ltac_plugin 
+(*open Stdarg*)
+       (*open Tacarg *)
+
+
+
+}
+
+DECLARE PLUGIN "cdcl_plugin"
+
+TACTIC EXTEND CDCL
+| [ "cdcl"  ] -> { Cdcl.change_goal     }
+END
+

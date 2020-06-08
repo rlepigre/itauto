@@ -1,0 +1,306 @@
+   0  $accept : %entry% $end
+
+   1  comments :
+   2           | COMMENT comments
+
+   3  file : comments formulae comments EOF
+
+   4  formulae : formula
+   5           | formula formulae
+
+   6  kind : AXIOM
+   7       | CONJECTURE
+
+   8  formula : FOF LPAREN IDENT COMMA kind COMMA bformula RPAREN
+
+   9  op : AND
+  10     | OR
+  11     | IMPL
+  12     | IFF
+
+  13  sformula : IDENT
+  14           | LPAREN bformula RPAREN
+
+  15  bformula : sformula
+  16           | sformula op sformula
+  17           | NOT sformula
+
+  18  %entry% : '\001' file
+
+state 0
+	$accept : . %entry% $end  (0)
+
+	'\001'  shift 1
+	.  error
+
+	%entry%  goto 2
+
+
+state 1
+	%entry% : '\001' . file  (18)
+	comments : .  (1)
+
+	COMMENT  shift 3
+	FOF  reduce 1
+
+	file  goto 4
+	comments  goto 5
+
+
+state 2
+	$accept : %entry% . $end  (0)
+
+	$end  accept
+
+
+state 3
+	comments : COMMENT . comments  (2)
+	comments : .  (1)
+
+	COMMENT  shift 3
+	FOF  reduce 1
+	EOF  reduce 1
+
+	comments  goto 6
+
+
+state 4
+	%entry% : '\001' file .  (18)
+
+	.  reduce 18
+
+
+state 5
+	file : comments . formulae comments EOF  (3)
+
+	FOF  shift 7
+	.  error
+
+	formulae  goto 8
+	formula  goto 9
+
+
+state 6
+	comments : COMMENT comments .  (2)
+
+	.  reduce 2
+
+
+state 7
+	formula : FOF . LPAREN IDENT COMMA kind COMMA bformula RPAREN  (8)
+
+	LPAREN  shift 10
+	.  error
+
+
+state 8
+	file : comments formulae . comments EOF  (3)
+	comments : .  (1)
+
+	COMMENT  shift 3
+	EOF  reduce 1
+
+	comments  goto 11
+
+
+state 9
+	formulae : formula .  (4)
+	formulae : formula . formulae  (5)
+
+	FOF  shift 7
+	EOF  reduce 4
+	COMMENT  reduce 4
+
+	formulae  goto 12
+	formula  goto 9
+
+
+state 10
+	formula : FOF LPAREN . IDENT COMMA kind COMMA bformula RPAREN  (8)
+
+	IDENT  shift 13
+	.  error
+
+
+state 11
+	file : comments formulae comments . EOF  (3)
+
+	EOF  shift 14
+	.  error
+
+
+state 12
+	formulae : formula formulae .  (5)
+
+	.  reduce 5
+
+
+state 13
+	formula : FOF LPAREN IDENT . COMMA kind COMMA bformula RPAREN  (8)
+
+	COMMA  shift 15
+	.  error
+
+
+state 14
+	file : comments formulae comments EOF .  (3)
+
+	.  reduce 3
+
+
+state 15
+	formula : FOF LPAREN IDENT COMMA . kind COMMA bformula RPAREN  (8)
+
+	AXIOM  shift 16
+	CONJECTURE  shift 17
+	.  error
+
+	kind  goto 18
+
+
+state 16
+	kind : AXIOM .  (6)
+
+	.  reduce 6
+
+
+state 17
+	kind : CONJECTURE .  (7)
+
+	.  reduce 7
+
+
+state 18
+	formula : FOF LPAREN IDENT COMMA kind . COMMA bformula RPAREN  (8)
+
+	COMMA  shift 19
+	.  error
+
+
+state 19
+	formula : FOF LPAREN IDENT COMMA kind COMMA . bformula RPAREN  (8)
+
+	LPAREN  shift 20
+	NOT  shift 21
+	IDENT  shift 22
+	.  error
+
+	bformula  goto 23
+	sformula  goto 24
+
+
+state 20
+	sformula : LPAREN . bformula RPAREN  (14)
+
+	LPAREN  shift 20
+	NOT  shift 21
+	IDENT  shift 22
+	.  error
+
+	bformula  goto 25
+	sformula  goto 24
+
+
+state 21
+	bformula : NOT . sformula  (17)
+
+	LPAREN  shift 20
+	IDENT  shift 22
+	.  error
+
+	sformula  goto 26
+
+
+state 22
+	sformula : IDENT .  (13)
+
+	.  reduce 13
+
+
+state 23
+	formula : FOF LPAREN IDENT COMMA kind COMMA bformula . RPAREN  (8)
+
+	RPAREN  shift 27
+	.  error
+
+
+state 24
+	bformula : sformula .  (15)
+	bformula : sformula . op sformula  (16)
+
+	OR  shift 28
+	AND  shift 29
+	IMPL  shift 30
+	IFF  shift 31
+	RPAREN  reduce 15
+
+	op  goto 32
+
+
+state 25
+	sformula : LPAREN bformula . RPAREN  (14)
+
+	RPAREN  shift 33
+	.  error
+
+
+state 26
+	bformula : NOT sformula .  (17)
+
+	.  reduce 17
+
+
+state 27
+	formula : FOF LPAREN IDENT COMMA kind COMMA bformula RPAREN .  (8)
+
+	.  reduce 8
+
+
+state 28
+	op : OR .  (10)
+
+	.  reduce 10
+
+
+state 29
+	op : AND .  (9)
+
+	.  reduce 9
+
+
+state 30
+	op : IMPL .  (11)
+
+	.  reduce 11
+
+
+state 31
+	op : IFF .  (12)
+
+	.  reduce 12
+
+
+state 32
+	bformula : sformula op . sformula  (16)
+
+	LPAREN  shift 20
+	IDENT  shift 22
+	.  error
+
+	sformula  goto 34
+
+
+state 33
+	sformula : LPAREN bformula RPAREN .  (14)
+
+	.  reduce 14
+
+
+state 34
+	bformula : sformula op sformula .  (16)
+
+	.  reduce 16
+
+
+18 terminals, 10 nonterminals
+19 grammar rules, 35 states
