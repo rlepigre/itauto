@@ -1,3 +1,4 @@
+
 Lemma double_neg : forall (A: Prop), (A \/ ~ A) -> ~~ A -> A.
 Proof.
   tauto.
@@ -63,6 +64,18 @@ Proof.
   tauto.
 Qed.
 
+Lemma unfold_arrow_false : forall (A B: Prop), ((~A \/ B) -> False) ->  (A -> B) -> False.
+Proof.
+  tauto.
+Qed.
+
+Lemma unfold_or_false : forall (A B: Prop), ((A \/ B) -> False) ->
+                                            ~A /\ ~B.
+Proof.
+  tauto.
+Qed.
+
+
 Ltac unfold_cnf H :=
   match type of H with
   | ?A \/ ?B => specialize (unfold_cnf_or A B) ; revert H;
@@ -73,7 +86,26 @@ Ltac unfold_cnf H :=
                 let P2 := fresh in
                 let P3 := fresh in
                 intros P1 P2 P3 ; destruct P3
+  | (?A \/ ?B) -> False =>
+    specialize (unfold_or_false A B) ; revert H;
+                generalize (A \/ B) ;
+                let P1 := fresh in
+                let P2 := fresh in
+                let P3 := fresh in
+                intros P1 P2 P3 ; destruct P3
+
   end.
+
+Ltac unfold_cnf_false H :=
+  match goal with
+  | |- False =>
+    match type of H with
+    | ?A -> ?B =>
+      revert H;
+      apply unfold_arrow_false
+    end
+  end.
+
 
 Require Import Cdcl.Formula.
 
@@ -172,3 +204,12 @@ Notation "A _/\_ B" := (HCons.mk _ _ (OP AND A B)) (at level 80).
 Notation "A _\/_ B" := (HCons.mk _ _ (OP OR A B)) (at level 80).
 Notation "A  -->  B" := (HCons.mk _ _ (OP IMPL A B)) (at level 80).
 Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
+
+Declare ML Module "cdcl_plugin".
+Require Import Cdcl.Formula.
+
+Ltac tauto :=
+  intros; unfold not in *; unfold iff in *;
+  cdcl;
+  eapply hcons_prover_int_correct;
+  compute; reflexivity.

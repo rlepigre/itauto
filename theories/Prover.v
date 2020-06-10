@@ -8,4 +8,4 @@ Extract Inductive option => option [ Some None ].
 Extract Inductive prod => "( * )" [ "(,)" ].
 Extract Inductive list => list [ "[]" "(::)" ].
 
-Extraction "../src/prover.ml" hcons_prover.
+Extraction "../src/prover.ml" hcons_prover show_state.

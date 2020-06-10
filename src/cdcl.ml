@@ -1,5 +1,7 @@
 open Names
 open Constr
+module P = Prover
+open Ppprover
 
 let constr_of_ref str =
   EConstr.of_constr (UnivGen.constr_of_monomorphic_global (Coqlib.lib_ref str))
@@ -35,13 +37,11 @@ let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
   Sorts.is_prop sort
 
-type op = AND | OR | IMPL
-
 module Env = struct
   type gl = {env : Environ.env; sigma : Evd.evar_map}
 
   module Map = Map.Make (struct
-    type t = op * int * int
+    type t = P.op * Uint63.t * Uint63.t
 
     let compare : t -> t -> int = Pervasives.compare
   end)
@@ -110,37 +110,13 @@ module Env = struct
     map_of_list env.vars
 end
 
-let constr_of_bool = function
-  | true -> Lazy.force coq_true
-  | false -> Lazy.force coq_false
+let hcons i b f = P.HCons.{id = Uint63.of_int i; is_dec = b; elt = f}
 
-let hc typ i b v =
-  EConstr.mkApp
-    ( Lazy.force coq_hc
-    , [|typ; EConstr.mkInt (Uint63.of_int i); constr_of_bool b; v|] )
-
-let constr_of_op = function
-  | AND -> Lazy.force coq_AND
-  | OR -> Lazy.force coq_OR
-  | IMPL -> Lazy.force coq_IMPL
-
-type hc_formula = {hc : int; is_dec : bool; form : EConstr.t}
-
-let mkop typ o f1 f2 =
-  EConstr.mkApp (Lazy.force coq_OP, [|typ; constr_of_op o; f1; f2|])
-
-let reify_formula typ env f =
+let reify_formula env (f : EConstr.t) =
   let evd = env.Env.gl.Env.sigma in
-  let ftyp = EConstr.mkApp (Lazy.force coq_Formula, [|typ|]) in
-  let tt = hc ftyp 1 true (EConstr.mkApp (Lazy.force coq_TT, [|typ|])) in
-  let ff = hc ftyp 0 true (EConstr.mkApp (Lazy.force coq_FF, [|typ|])) in
-  let at i f =
-    hc ftyp i false
-      (EConstr.mkApp
-         (Lazy.force coq_AT, [|typ; EConstr.mkInt (Uint63.of_int i)|]))
-  in
-  let mk_op = Lazy.force coq_OP in
-  let mkop o f1 f2 = EConstr.mkApp (mk_op, [|typ; constr_of_op o; f1; f2|]) in
+  let tt = hcons 1 true P.TT in
+  let ff = hcons 0 true P.FF in
+  let mkop o f1 f2 = P.OP (o, f1, f2) in
   let eq_ind r i = GlobRef.equal r (GlobRef.IndRef i) in
   let is_true = eq_ind (Lazy.force coq_True) in
   let is_false = eq_ind (Lazy.force coq_False) in
@@ -148,40 +124,34 @@ let reify_formula typ env f =
   let is_or = eq_ind (Lazy.force coq_or) in
   let var env f =
     let env', i = Env.hcons_atom env f in
-    ({hc = i; is_dec = false; form = at i f}, env')
+    (hcons i false (P.AT (Uint63.of_int i)), env')
   in
   let get_binop t =
     match EConstr.kind evd t with
     | Ind (i, _) ->
-      if is_and i then AND else if is_or i then OR else raise Not_found
+      if is_and i then P.AND else if is_or i then P.OR else raise Not_found
     | _ -> raise Not_found
   in
   let rec reify_formula env f =
     match EConstr.kind evd f with
     | Ind (i, _) ->
-      if is_true i then ({hc = 1; is_dec = true; form = tt}, env)
-      else if is_false i then ({hc = 0; is_dec = true; form = ff}, env)
+      if is_true i then (tt, env)
+      else if is_false i then (ff, env)
       else var env f
     | App (h, [|f1; f2|]) -> (
       try
         let op = get_binop h in
-        let {hc = i1; is_dec = b1; form = f1}, env = reify_formula env f1 in
-        let {hc = i2; is_dec = b2; form = f2}, env = reify_formula env f2 in
-        let env, i = Env.hcons_op env op i1 i2 in
-        ( { hc = i
-          ; is_dec = b1 && b2
-          ; form = hc ftyp i (b1 && b2) (mkop op f1 f2) }
-        , env )
+        let f1, env = reify_formula env f1 in
+        let f2, env = reify_formula env f2 in
+        let env, i = Env.hcons_op env op f1.P.HCons.id f2.P.HCons.id in
+        (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec) (mkop op f1 f2), env)
       with Not_found -> var env f )
     | Prod (t, f1, f2)
       when t.Context.binder_name = Anonymous || EConstr.Vars.noccurn evd 1 f2 ->
-      let {hc = i1; is_dec = b1; form = f1}, env = reify_formula env f1 in
-      let {hc = i2; is_dec = b2; form = f2}, env = reify_formula env f2 in
-      let env, i = Env.hcons_op env IMPL i1 i2 in
-      ( { hc = i
-        ; is_dec = b1 && b2
-        ; form = hc ftyp i (b1 && b2) (mkop IMPL f1 f2) }
-      , env )
+      let f1, env = reify_formula env f1 in
+      let f2, env = reify_formula env f2 in
+      let env, i = Env.hcons_op env P.IMPL f1.P.HCons.id f2.P.HCons.id in
+      (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec) (mkop P.IMPL f1 f2), env)
     | _ -> var env f
   in
   reify_formula env f
@@ -192,31 +162,134 @@ let rec reify_hyps env (hyps : (Names.Id.t * EConstr.types) list) =
   | (id, t) :: l ->
     let lhyps, env = reify_hyps env l in
     if is_prop env.Env.gl.Env.env env.Env.gl.Env.sigma t then
-      let hf, env = reify_formula (Lazy.force coq_int) env t in
+      let hf, env = reify_formula env t in
       ((id, hf) :: lhyps, env)
     else (lhyps, env)
 
 let reify_goal env hyps concl =
   let hyps, env = reify_hyps env hyps in
-  let hf, env = reify_formula (Lazy.force coq_int) env concl in
+  let hf, env = reify_formula env concl in
   (hyps, hf, env)
 
 let make_formula env hyps hconcl =
-  let typ = Lazy.force coq_int in
-  let ftyp = EConstr.mkApp (Lazy.force coq_Formula, [|typ|]) in
   let rec make env hyps hconcl =
     match hyps with
     | [] -> (hconcl, env)
     | (_, hf1) :: hyps ->
       let hf2, env = make env hyps hconcl in
-      let env, i = Env.hcons_op env IMPL hf1.hc hf2.hc in
-      let is_dec = hf1.is_dec && hf2.is_dec in
-      ( { hc = i
-        ; is_dec
-        ; form = hc ftyp i is_dec (mkop typ IMPL hf1.form hf2.form) }
-      , env )
+      let env, i = Env.hcons_op env P.IMPL hf1.P.HCons.id hf2.P.HCons.id in
+      let is_dec = hf1.P.HCons.is_dec && hf2.P.HCons.is_dec in
+      (hcons i is_dec (P.OP (P.IMPL, hf1, hf2)), env)
   in
   make env hyps hconcl
+
+let constr_of_bool = function
+  | true -> Lazy.force coq_true
+  | false -> Lazy.force coq_false
+
+let hc typ i b v =
+  EConstr.mkApp
+    (Lazy.force coq_hc, [|typ; EConstr.mkInt i; constr_of_bool b; v|])
+
+let constr_of_op = function
+  | P.AND -> Lazy.force coq_AND
+  | P.OR -> Lazy.force coq_OR
+  | P.IMPL -> Lazy.force coq_IMPL
+
+let mkop typ o f1 f2 =
+  EConstr.mkApp (Lazy.force coq_OP, [|typ; constr_of_op o; f1; f2|])
+
+let constr_of_hcons typ constr_of_elt f =
+  EConstr.mkApp
+    ( Lazy.force coq_hc
+    , [| typ
+       ; EConstr.mkInt f.P.HCons.id
+       ; constr_of_bool f.P.HCons.is_dec
+       ; constr_of_elt f.P.HCons.elt |] )
+
+let constr_of_formula typ f =
+  let tt = EConstr.mkApp (Lazy.force coq_TT, [|typ|]) in
+  let ff = EConstr.mkApp (Lazy.force coq_FF, [|typ|]) in
+  let ftyp = EConstr.mkApp (Lazy.force coq_Formula, [|typ|]) in
+  let at i = EConstr.mkApp (Lazy.force coq_AT, [|typ; EConstr.mkInt i|]) in
+  let mk_op = Lazy.force coq_OP in
+  let mkop o f1 f2 = EConstr.mkApp (mk_op, [|typ; constr_of_op o; f1; f2|]) in
+  P.(
+    let rec constr_of_op_formula f =
+      match f with
+      | TT -> tt
+      | FF -> ff
+      | AT i -> at i
+      | OP (o, f1, f2) ->
+        mkop o
+          (constr_of_hcons ftyp constr_of_op_formula f1)
+          (constr_of_hcons ftyp constr_of_op_formula f2)
+    in
+    constr_of_hcons ftyp constr_of_op_formula f)
+
+let nat_of_int i =
+  if i < 0 then P.O
+  else
+    let rec nat_of_int i = if i = 0 then P.O else P.S (nat_of_int (i - 1)) in
+    nat_of_int i
+
+let length_of_literal = function P.POS p -> 2 | P.NEG p -> 3
+
+let rec length_of_clause = function
+  | P.EMPTY -> 1
+  | P.ARROW (r, cl) -> 6 + length_of_clause cl
+  | P.DIS (p, cl) -> length_of_literal p + 4 + length_of_clause cl
+
+let length_of_list len l = List.fold_left (fun n p -> len p + n + 1) 0 l
+
+let output_concl o = function
+  | None -> output_string o "\\bot"
+  | Some f -> output_hform o f
+
+let output_sequent o ((u, l), c) concl =
+  List.iter (fun l -> Printf.fprintf o "%a;" output_lit l) u;
+  List.iter (fun l -> Printf.fprintf o "%a;" output_lit l) l;
+  List.iter (fun cl -> Printf.fprintf o "%a;" output_clause cl) c;
+  output_string o "\\vdash";
+  output_concl o concl
+
+let length_of_sequent ((u, l), c) concl =
+  length_of_list length_of_literal u
+  + length_of_list length_of_literal l
+  + length_of_list length_of_clause c
+  + 2
+
+let output_sequent m o a =
+  let s = P.show_state m a.P.ante in
+  output_sequent o s a.P.csq
+
+let rec output_ptree m o t =
+  match t with
+  | P.Leaf0 b ->
+    if b then Printf.fprintf o "\\prftree{}{%s}" (if b then "OK" else "KO")
+  | P.Deriv (a, l) ->
+    if l = [] then output_sequent m o a
+    else
+      Printf.fprintf o "\\prftree %a {%a}" (output_ptree_list m) l
+        (output_sequent m) a
+
+and output_ptree_list m o l =
+  match l with
+  | [] -> ()
+  | e :: l ->
+    Printf.fprintf o "{%a} %a" (output_ptree m) e (output_ptree_list m) l
+
+let run_prover f =
+  let m = P.hcons_form f in
+  match P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 10) f with
+  | P.HasProof _ -> true
+  | P.HasModel r ->
+    (*    ignore (output_ptree m stdout r);*)
+    false
+  | P.Timeout r ->
+    (*ignore (output_ptree m stdout r);*)
+    false
+  | P.Done _ -> false
 
 let change_goal =
   Proofview.Goal.enter (fun gl ->
@@ -228,20 +301,14 @@ let change_goal =
       let typ = Lazy.force coq_int in
       let hyps, concl, env = reify_goal (Env.empty gl0) hyps concl in
       let form, env = make_formula env (List.rev hyps) concl in
-      (* Feedback.msg_debug
-         Pp.(
-           str "formula: "
-           ++ Printer.pr_econstr_env (Tacmach.New.pf_env gl) sigma form.form); *)
+      ignore (run_prover form);
+      let cform = constr_of_formula typ form in
       let m = Env.map_of_env env in
-      Feedback.msg_debug
-        Pp.(
-          str "map: " ++ Printer.pr_econstr_env (Tacmach.New.pf_env gl) sigma m);
       Tacticals.New.tclTHEN
         (Tactics.generalize
            (List.rev_map (fun x -> EConstr.mkVar (fst x)) hyps))
         (Tactics.change_concl
            (EConstr.mkApp
               ( Lazy.force coq_eval_hformula
-              , [| typ
-                 ; EConstr.mkApp (Lazy.force coq_eval_prop, [|m|])
-                 ; form.form |] ))))
+              , [|typ; EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|]
+              ))))

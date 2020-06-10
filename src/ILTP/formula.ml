@@ -3,14 +3,13 @@ type op = And | Or | Impl | Iff
 type bformula = False | Var of string | Op of op * bformula * bformula
 type formula = {name : string; kind : kind; bform : bformula}
 
-let string_of_kind = function Axiom -> "Axiom" | Conjecture -> "Lemma"
+let string_of_kind = function Axiom -> "Variable" | Conjecture -> "Lemma"
 
-let is_theorem =
+let is_non_theorem =
   let split = Str.regexp " \\|\n" in
   fun s ->
     let l = Str.split split s in
-    List.iter (fun s -> Printf.printf "'%s'\n" s) l;
-    List.mem "Status" l && List.mem "Theorem" l
+    List.mem "Non-Theorem" l
 
 let string_of_op = function
   | And -> "/\\"
@@ -38,13 +37,22 @@ let rec vars_of_bformula = function
 
 let output_vars o s =
   if StrSet.is_empty s then ()
-  else begin
-    output_string o "forall ";
-    StrSet.iter (fun s -> Printf.fprintf o "(%s: Prop)" s) s;
-    output_string o ","
-  end
+  else StrSet.iter (fun s -> Printf.fprintf o "Variable %s: Prop.\n" s) s
 
 let output_formula o f =
-  let v = vars_of_bformula f.bform in
-  Printf.fprintf o "%s %s: %a %a." (string_of_kind f.kind) f.name output_vars v
-    output_bformula f.bform
+  Printf.fprintf o "%s %s: %a." (string_of_kind f.kind) f.name output_bformula
+    f.bform
+
+let output_file o (b, l) =
+  let vars =
+    List.fold_left
+      (fun acc f -> StrSet.union (vars_of_bformula f.bform) acc)
+      StrSet.empty l
+  in
+  Printf.fprintf o "Section S.\n";
+  output_vars o vars;
+  Printf.fprintf o "\n";
+  List.iter (fun f -> Printf.fprintf o "%a\n" output_formula f) l;
+  if b then output_string o "Proof. tauto. Qed.\n"
+  else output_string o "Proof. Fail intuition fail. Abort.\n";
+  Printf.fprintf o "End S.\n"

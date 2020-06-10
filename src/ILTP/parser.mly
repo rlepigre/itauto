@@ -18,10 +18,10 @@
 
 comments :
   |  { false }
-  | COMMENT comments { Formula.is_theorem $1 || $2 }
+  | COMMENT comments { Formula.is_non_theorem $1 || $2 }
   ;
 
-file : comments formulae comments EOF { $1,$2 }
+file : comments formulae comments EOF { not $1,$2 }
 ;
 
 formulae :

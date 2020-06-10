@@ -893,32 +893,34 @@ Section S.
     | NEG l => neg_bool (IntMap.find l.(id) lit)
     end.
 
-  Fixpoint shorten_clause (lit : IntMap.t bool) (c: clause) :=
-    match c with
-    | ARROW p r =>
-      match IntMap.find p.(id) lit with
+  Section SHORTEN.
+    Variable Lit : IntMap.t bool.
+
+    Variable REC : bool -> clause_kind.
+
+    Definition shorten (cont: bool) (p: literal) (mk : clause -> clause) (c : clause):=
+      match find_lit p Lit with
       | None => (* literal is not set *)
-        match r with
-        | EMPTY => UNIT (NEG p)
-        | _     => TAIL (NEG p) c
-        end
-      | Some true => shorten_clause lit r
-      | Some false => SUB
-      end
-    | DIS p r =>
-      match find_lit p lit with
-      | None => (* literal is not set *)
-        match r with
-        | EMPTY => UNIT p
-        | _     => TAIL p c
-        end
+        if cont (* This is the first not set. Looking for 2d watch *)
+        then match REC false with
+             | NULL  => UNIT p
+             | UNIT l =>  TAIL p (mk (DIS l EMPTY))
+             | TAIL _ r => TAIL  p (mk r)
+             | SUB      => SUB
+             end
+        else TAIL p c
       | Some true  => SUB
-      | Some false => shorten_clause lit r
-      end
+      | Some false => REC cont
+      end.
+
+  End SHORTEN.
+
+  Fixpoint shorten_clause  (lit : IntMap.t bool)  (c: clause) (cont: bool) :=
+    match c with
+    | ARROW p r => shorten lit (shorten_clause lit r) cont (NEG p) (ARROW p) c
+    | DIS p r =>   shorten lit (shorten_clause lit r) cont p      (DIS p) c
     | EMPTY => NULL
     end.
-
-
 
 
   Definition remove_clauses (l:literal) (st: state) : state :=
@@ -976,12 +978,10 @@ Section S.
     clauses := clauses st
     |}.
 
-
-
   Fixpoint shorten_clause_list (l:list clause) (st:state) : option state :=
     match l with
     | nil => Some st
-    | e::l => match shorten_clause (units st) e with
+    | e::l => match shorten_clause (units st) e true with
               | NULL => None
               | UNIT x => shorten_clause_list l (insert_unit x st)
               | TAIL x c => shorten_clause_list l (insert_lit_clause x c st)
@@ -1088,23 +1088,35 @@ Section S.
     | e::us => Some(e , set_unit_stack us st)
     end.
 
-  Definition insert_clause_kind (st: state) (cl:clause_kind) : state :=
+  Definition insert_clause_kind (st: state) (cl:clause_kind) : option state :=
     match cl with
-    | NULL => st (* should not happen *)
-    | UNIT u => add_unit_in_stack u st
-    | TAIL x cl => insert_lit_clause x cl st
-    | SUB       => st (* Should not happen *)
+    | NULL => None
+    | UNIT u => Some (add_unit_in_stack u st)
+    | TAIL x cl => Some (insert_lit_clause x cl st)
+    | SUB       => Some st (* Should not happen *)
     end.
 
-  Definition insert_new_clause (st: state) (cl:clause) : state :=
-    insert_clause_kind st (shorten_clause  (units st) cl).
+  Definition insert_new_clause (st: state) (cl:clause) : option state :=
+    insert_clause_kind st (shorten_clause  (units st) cl true).
 
-  Definition unfold_literal (is_classic: bool) (l:literal) (st: state) : state :=
-    List.fold_left insert_new_clause (clause_of_literal is_classic l) st.
+  Fixpoint insert_new_clauses (st: state) (l : list clause) : option state :=
+    match l with
+    | nil => Some st
+    | e::l => match insert_new_clause st e with
+              | None => None
+              | Some st' => insert_new_clauses st' l
+              end
+    end.
 
 
-  Definition set_literal (is_classic: bool) (l:literal) (st : state) : state :=
-    insert_literal l (unfold_literal is_classic l st).
+  Definition unfold_literal (is_classic: bool) (l:literal) (st: state) : option state :=
+    insert_new_clauses st (clause_of_literal is_classic l).
+
+  Definition set_literal (is_classic: bool) (l:literal) (st : state) : option state :=
+    match unfold_literal is_classic l st with
+    | None => None
+    | Some st => Some (insert_literal l st)
+    end.
 
   Record sequent :=
     mksq
@@ -1164,14 +1176,17 @@ Section S.
         if success concl (units st) l
         then Success
         else
-          let st := set_literal (is_classic concl) l st in
-          let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
-          let lc := match l with
-                    | POS _ => ln
-                    | NEG _ => lp end in
-          match shorten_clause_list lc (remove_clauses l st) with
+          match set_literal (is_classic concl) l st with
           | None => Success
-          | Some st => unit_propagation n st concl
+          | Some st =>
+            let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
+            let lc := match l with
+                      | POS _ => ln
+                      | NEG _ => lp end in
+            match shorten_clause_list lc (remove_clauses l st) with
+            | None => Success
+            | Some st => unit_propagation n st concl
+            end
           end
       end
     end.
@@ -1188,14 +1203,17 @@ Section S.
         if success concl (units st) l
         then Success
         else
-          let st := set_literal (is_classic concl) l st in
-          let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
-          let lc := match l with
-                    | POS _ => ln
-                    | NEG _ => lp end in
-          match shorten_clause_list lc (remove_clauses l st) with
+          match set_literal (is_classic concl) l st with
           | None => Success
-          | Some st => unit_propagation n st concl
+          | Some st =>
+            let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
+            let lc := match l with
+                      | POS _ => ln
+                      | NEG _ => lp end in
+            match shorten_clause_list lc (remove_clauses l st) with
+            | None => Success
+            | Some st => unit_propagation n st concl
+            end
           end
       end
     end.
@@ -1544,65 +1562,114 @@ Section S.
     | SUB       => True
     end.
 
+  Lemma wf_shorten_clause_aux :
+    forall m cl u p
+           (mkcl : clause -> clause)
+           (HAS : forall cl, has_clause m cl -> has_clause m (mkcl cl))
+           (IHcl : forall cont : bool,
+               has_clause m cl -> has_clause_kind m (shorten_clause u cl cont)),
+    forall cont : bool,
+      has_literal m p /\ has_clause m cl ->
+      has_clause_kind m
+                      (shorten u (shorten_clause u cl) cont p mkcl (mkcl cl)).
+  Proof.
+    intros.
+    destruct H.
+    unfold shorten.
+    destruct (find_lit p u).
+    - destruct b ; simpl ; auto.
+    - destruct cont.
+      apply IHcl with (cont:= false) in H0.
+      destruct (shorten_clause u cl false).
+      +  simpl ; auto.
+      + simpl. split ; auto.
+        apply HAS. simpl. simpl in H0. tauto.
+      + simpl in *. split ; auto.
+        apply HAS. tauto.
+      +  simpl ; auto.
+      +   simpl. split ; auto.
+  Qed.
+
   Lemma wf_shorten_clause :
-    forall m u cl
+    forall m u cl cont
            (WFC : has_clause m cl),
-      has_clause_kind m (shorten_clause u cl).
+      has_clause_kind m (shorten_clause u cl cont).
   Proof.
     induction cl ; simpl.
     - auto.
     - intros.
-      destruct (IntMap.find (id h) u) eqn:FD.
-      +
-      destruct WFC. destruct h as (i1,b1,h1).
-      simpl in FD.
-      destruct b.
-      apply IHcl; auto.
-      simpl. auto.
-      + destruct cl; simpl in * ; tauto.
+      apply wf_shorten_clause_aux.
+      + simpl. tauto.
+      + auto.
+      + simpl. tauto.
     - intros.
-      destruct (find_lit h u) eqn:FD.
-      +
-        destruct WFC.
-        destruct b; auto.
-        simpl. auto.
-      + destruct cl ; simpl in * ; tauto.
+      apply wf_shorten_clause_aux.
+      + simpl. tauto.
+      + auto.
+      + simpl. tauto.
   Qed.
 
+  Lemma shorten_clause_correct_aux :
+    forall m u mkcl h
+           (MKMONO : forall cl1 cl2,
+               (eval_clause cl1 -> eval_clause cl2) ->
+               (eval_clause (mkcl cl1) -> eval_clause (mkcl cl2)))
+           (MKLIT : eval_clause (mkcl EMPTY) -> eval_literal h)
+
+           (cl   : clause)
+           (MKEV1 : eval_clause (mkcl cl) ->
+                    eval_literal (neg_literal h) ->
+                    eval_clause cl)
+           (EV : eval_units m u)
+           (IHcl : forall cont, has_clause m cl ->
+                                eval_clause cl -> eval_clause_kind (shorten_clause u cl cont))
+           (WF : has_literal m h /\ has_clause m cl)
+           (EVCL : eval_clause (mkcl cl))
+           (cont : bool),
+      eval_clause_kind (shorten u (shorten_clause u cl) cont h mkcl (mkcl cl)).
+  Proof.
+    unfold shorten; intros.
+    destruct WF as (WF1 & WF2).
+    - destruct (find_lit h u) eqn:FD.
+      + destruct b ; simpl ; auto.
+        apply IHcl; auto.
+        apply eval_units_find_lit with (m:=m) in FD; auto.
+      + destruct cont.
+        specialize (IHcl false WF2).
+        destruct (shorten_clause u cl false).
+        * simpl in *.
+          apply MKLIT.
+          revert EVCL.
+          apply MKMONO. simpl ; auto.
+        * simpl in *.
+          revert EVCL.
+          apply MKMONO. simpl ; auto.
+        * simpl in *.
+          revert EVCL.
+          apply MKMONO. simpl ; auto.
+        * simpl. auto.
+        * simpl; auto.
+  Qed.
 
   Lemma shorten_clause_correct :
     forall m u
            (EV : eval_units m u)
-           cl
+           cl cont
            (WFC : has_clause m cl)
            (EC : eval_clause cl),
-      eval_clause_kind (shorten_clause u cl).
+      eval_clause_kind (shorten_clause u cl cont).
   Proof.
     induction cl ; simpl.
     - auto.
-    - intros.
-      destruct (IntMap.find (id h) u) eqn:FD.
-      +
-      unfold eval_units in EV.
-      destruct WFC. destruct h as (i1,b1,h1).
-      apply EV with (f:= h1) (d:= b1) in FD; auto.
-      simpl in FD.
-      destruct b.
-      simpl in *.
-      apply IHcl; auto.
-      simpl ; auto.
-      + destruct cl; simpl in * ; tauto.
-    - intros.
-      destruct (find_lit h u) eqn:FD.
-      +
-        destruct WFC.
-        apply eval_units_find_lit with (m:=m) in FD; auto.
-        destruct b; simpl ; auto.
-        apply eval_neg_literal in FD.
-        tauto.
-      + destruct cl ; simpl in * ; tauto.
+    - intros. apply shorten_clause_correct_aux with (m:=m);  auto.
+      + simpl. tauto.
+    - intros. apply shorten_clause_correct_aux with (m:=m);  auto.
+      + simpl. tauto.
+      + simpl. tauto.
+      + simpl. intros.
+        destruct H ; auto.
+        destruct h ; simpl in *. tauto. tauto.
   Qed.
-
 
 
   Lemma wf_find_clauses :
@@ -1698,7 +1765,7 @@ Section S.
     - auto.
     - intros.
       inv WF.
-      specialize (wf_shorten_clause m (units st) _ H1).
+      specialize (wf_shorten_clause m (units st) _ true H1).
       destruct (shorten_clause (units st) a); auto.
       + intros. apply IHln; auto.
         apply wf_insert_unit  ; auto.
@@ -1731,8 +1798,8 @@ Section S.
         destruct EV ; auto.
       }
       inv WF.
-      specialize (shorten_clause_correct _ _ EVU _ H3 H1).
-      assert (WFA : has_clause_kind m (shorten_clause (units st) a)).
+      specialize (shorten_clause_correct _ _ EVU  _ true H3 H1).
+      assert (WFA : has_clause_kind m (shorten_clause (units st) a true)).
       { apply wf_shorten_clause ; auto. }
       destruct (shorten_clause (units st) a); auto.
       + intros.
@@ -1904,48 +1971,67 @@ Section S.
       }
   Qed.
 
+  Definition wf_state_option (m: hmap) (st: option state) :=
+    match st with
+    | None => True
+    | Some st => wf_state m st
+    end.
 
   Lemma wf_insert_clause_kind :
     forall m st cl
            (WL : has_clause_kind m cl)
            (WF : wf_state m st),
-      wf_state m (insert_clause_kind st cl).
+      wf_state_option m (insert_clause_kind st cl).
   Proof.
     unfold insert_clause_kind.
     destruct cl ; simpl ; auto.
-    intros.
     apply wf_add_unit_in_stack ; auto.
     intros.
     apply wf_insert_lit_clause ; auto.
     tauto. tauto.
   Qed.
 
+  Definition eval_state_option (m: hmap) (st: option state) :=
+    match st with
+    | None => False
+    | Some st => eval_state m st
+    end.
+
 
   Lemma eval_state_insert_clause_kind : forall m st cl,
       eval_clause_kind cl ->
       eval_state m st  ->
-      eval_state m (insert_clause_kind st cl).
+      eval_state_option m (insert_clause_kind st cl).
   Proof.
     destruct cl ; simpl ; auto.
     - intros. apply eval_state_add_unit_in_stack ;auto.
     - intros. apply eval_state_insert_lit_clause ;auto.
   Qed.
 
+  Lemma eval_insert_new_clause : forall m st a,
+      eval_state m st ->
+      eval_clause a   ->
+      has_clause m a  ->
+      eval_state_option m (insert_new_clause st a).
+  Proof.
+    unfold insert_new_clause.
+    intros.
+    apply eval_state_insert_clause_kind; auto.
+    apply shorten_clause_correct with (m:=m); auto.
+    destruct H ; auto.
+  Qed.
+
   Lemma eval_state_insert_clause_kinds : forall m cl st,
       Forall (has_clause m) cl ->
       Forall eval_clause cl ->
       eval_state m st ->
-      eval_state m (fold_left insert_new_clause cl st).
+      eval_state_option m (insert_new_clauses st cl).
   Proof.
     induction cl ; simpl ; auto.
     intros.
     inv H0. inv H.
-    eapply IHcl ; auto.
-    { unfold insert_new_clause.
-      apply eval_state_insert_clause_kind ; auto.
-      apply shorten_clause_correct with (m:=m); auto.
-      destruct H1 ; auto.
-    }
+    specialize (eval_insert_new_clause m st a H1 H4 H3).
+    destruct (insert_new_clause st a)  ; simpl; auto.
   Qed.
 
   Lemma wf_clause_of_literal :
@@ -1972,7 +2058,7 @@ Section S.
            (WF : wf_state m st)
            (HF : has_literal m l)
            (EL : eval_literal l)
-           (HYPS : eval_state m (unfold_literal (is_classic concl) l st) -> eval_ohformula concl)
+           (HYPS : eval_state_option m (unfold_literal (is_classic concl) l st) -> eval_ohformula concl)
            (ES : eval_state m st), eval_ohformula concl.
   Proof.
     unfold unfold_literal.
@@ -1984,13 +2070,23 @@ Section S.
     apply wf_clause_of_literal; auto.
   Qed.
 
-
+  Lemma wf_insert_new_clause :
+    forall m st cl
+           (WFC : has_clause m cl)
+           (WF: wf_state m st),
+      wf_state_option m (insert_new_clause st cl).
+  Proof.
+    unfold insert_new_clause.
+    intros.
+    apply wf_insert_clause_kind; auto.
+    apply wf_shorten_clause; auto.
+  Qed.
 
   Lemma wf_unfold_literal :
     forall m b l st
            (HL : has_literal m l)
            (WF: wf_state m st),
-      wf_state m (unfold_literal b l st).
+      wf_state_option m (unfold_literal b l st).
   Proof.
     unfold unfold_literal.
     intros.
@@ -1998,9 +2094,8 @@ Section S.
     revert  st WF.
     induction HL ; simpl ; auto.
     intros.
-    apply IHHL ; auto.
-    apply wf_insert_clause_kind ; auto.
-    apply wf_shorten_clause; auto.
+    specialize (wf_insert_new_clause m st x H WF).
+    destruct (insert_new_clause st x); auto.
   Qed.
 
   Lemma set_literal_correct :
@@ -2008,15 +2103,17 @@ Section S.
            (WF : wf_state m st)
            (HF : has_literal m l)
            (EL : eval_literal l)
-           (HYPS : eval_state m (set_literal (is_classic concl) l st) -> eval_ohformula concl)
+           (HYPS : eval_state_option m (set_literal (is_classic concl) l st) -> eval_ohformula concl)
            (ES : eval_state m st), eval_ohformula concl.
   Proof.
     unfold set_literal.
-    intros. revert ES.
+    intros.
     eapply unfold_literal_correct; eauto.
+    specialize (wf_unfold_literal m (is_classic concl) l st HF WF).
+    destruct (unfold_literal (is_classic concl) l st);
+    simpl in *; auto.
     intros. apply HYPS.
     apply insert_literal_correct; auto.
-    apply wf_unfold_literal ; auto.
   Qed.
 
 
@@ -2024,12 +2121,15 @@ Section S.
     forall m b l st
            (WF : wf_state m st)
            (HF : has_literal m l),
-      wf_state m (set_literal b l st).
+      wf_state_option m (set_literal b l st).
   Proof.
     unfold set_literal.
     intros.
-    apply wf_insert_literal; auto.
-    apply wf_unfold_literal ; auto.
+    specialize (wf_unfold_literal m b l st HF WF).
+    destruct (unfold_literal b l st); auto.
+    simpl ; auto.
+    intros.
+    apply wf_insert_literal ; auto.
   Qed.
 
 Lemma wf_unit_propagation :
@@ -2054,10 +2154,12 @@ Lemma wf_unit_propagation :
       +
         auto.
       +
-        set (st'' := set_literal (is_classic g) l st') in *.
+        destruct (set_literal (is_classic g) l st') as [st''|] eqn:SLIT .
         assert (WFST'' : wf_state m st'').
-        { apply wf_set_literal ; auto. }
-        clearbody st''.
+        {
+          change (wf_state_option m (Some st'')).
+          rewrite <- SLIT.
+          apply wf_set_literal ; auto. }
         destruct (find_clauses (id_of_literal l) (clauses st'')) as (ln,lp) eqn:FD.
         assert (WFR : wf_state m (remove_clauses l st'')).
         {
@@ -2078,6 +2180,7 @@ Lemma wf_unit_propagation :
         destruct (shorten_clause_list L (remove_clauses l st''))eqn:RES ; try tauto.
         intros WS.
         apply IHn; auto.
+        auto.
       +  auto.
   Qed.
 
@@ -2113,9 +2216,10 @@ Lemma wf_unit_propagation :
         apply set_literal_correct with (l:=l) ; auto.
         intro EST''.
         set (st'' := set_literal (is_classic g) l st') in *.
-        assert (WFST'' : wf_state m st'').
+        assert (WFST'' : wf_state_option m st'').
         { apply wf_set_literal ; auto. }
         clearbody st''.
+        destruct st''  as [st''|] ; simpl in EST'' ; [|tauto].
         destruct (find_clauses (id_of_literal l) (clauses st'')) as (ln,lp) eqn:FD.
         assert (ESR : eval_state m (remove_clauses l st'')).
         { apply eval_state_remove_clauses ; auto. }
@@ -2502,27 +2606,47 @@ Lemma wf_unit_propagation :
     if isbot then Some (split_of_cclause cl)
     else split_of_iclause cl.
 
-  Definition find_split_acc (is_bot: bool) (k:int) (e: list clause * list clause) (acc: option clause)
+  Definition is_sub (cl : clause_kind) :=
+    match cl with
+    | SUB => true
+    | _   => false
+    end.
+
+  Definition clause_of_clause_kind (cl : clause_kind) :=
+    match cl with
+    | NULL => Some EMPTY
+    | UNIT l => Some (DIS l EMPTY)
+    | TAIL _ cl => Some cl
+    | SUB       => None
+    end.
+
+
+  Fixpoint find_clause_kind (lit : IntMap.t bool) (l : list clause) :=
+    match l with
+    | nil => None
+    | e::l => match clause_of_clause_kind (shorten_clause lit e true) with
+              | None => find_clause_kind lit l
+              | Some cl => Some cl
+              end
+    end.
+
+  Definition find_split_acc (lit : IntMap.t bool) (is_bot: bool) (k:int) (e: list clause * list clause) (acc: option clause)
     :=
             match acc with
                    | None => match snd e with
                              | nil => if is_bot
-                                      then
-                                        match fst e with
-                                        | nil => None
-                                        | e::_ => Some e
-                                        end
+                                      then find_clause_kind lit (fst e)
                                       else None
-                             | e::_ => Some e
+                             | l => find_clause_kind lit l
                              end
                    | Some r =>  Some r
             end.
 
-  Definition find_split_clause (is_bot: bool) (cl:map_clauses) : option clause :=
-    IntMap.fold (find_split_acc is_bot) cl None.
+  Definition find_split_clause (lit : IntMap.t bool) (is_bot: bool) (cl:map_clauses) : option clause :=
+    IntMap.fold (find_split_acc lit is_bot) cl None.
 
-  Definition find_split (is_bot: bool) (cl: map_clauses) : option (list literal) :=
-    match find_split_clause is_bot cl with
+  Definition find_split (lit : IntMap.t bool) (is_bot: bool) (cl: map_clauses) : option (list literal) :=
+    match find_split_clause lit is_bot cl with
     | None => None
     | Some cl => split_of_clause is_bot cl
     end.
@@ -2646,7 +2770,7 @@ Lemma wf_unit_propagation :
     | Progress st' => match n with
                   | O => Timeout (Deriv (mksq st g) nil)
                   | S n =>
-                    match find_split (is_classic g) (clauses st') with
+                    match find_split (units st') (is_classic g) (clauses st') with
                     | None => cons_proof st' g (prover_arrows (prover n) g st' (find_arrows st' (arrows st')))
                     | Some cl => cons_proof st' g (forall_dis (prover n) g st' cl)
                     end
@@ -2661,7 +2785,7 @@ Lemma wf_unit_propagation :
       | Progress st' => match n with
                         | O => Timeout (Deriv (mksq st g) nil)
                         | S n =>
-                          match find_split (is_classic g) (clauses st') with
+                          match find_split (units st') (is_classic g) (clauses st') with
                           | None => cons_proof st' g (prover_arrows (prover n) g st' (find_arrows st' (arrows st')))
                           | Some cl => cons_proof st' g (forall_dis (prover n) g st' cl)
                           end
@@ -2688,18 +2812,92 @@ Lemma wf_unit_propagation :
     - tauto.
   Qed.
 
+  Lemma eval_clause_of_clause_kind :
+    forall cl cl',
+      eval_clause_kind cl ->
+      clause_of_clause_kind cl = Some cl' ->
+      eval_clause cl'.
+  Proof.
+    destruct cl; simpl.
+    - tauto.
+    - intros. inv H0.
+      simpl. tauto.
+    - intros. inv H0 ; auto.
+    - discriminate.
+  Qed.
+
+  Lemma wf_clause_of_clause_kind :
+    forall m cl cl',
+      has_clause_kind m cl ->
+      clause_of_clause_kind cl = Some cl' ->
+      has_clause m cl'.
+  Proof.
+    destruct cl; simpl.
+    - intros. inv H0.
+      simpl ; auto.
+    - intros. inv H0.
+      simpl. tauto.
+    - intros. inv H0 ; auto.
+      tauto.
+    - discriminate.
+  Qed.
+
+
+  Lemma find_clause_kind_correct :
+    forall m u ln cl
+           (FD : find_clause_kind u ln = Some cl)
+           (EU : eval_units m u)
+           (WL : Forall (has_clause m) ln)
+           (EV : Forall eval_clause  ln),
+      eval_clause cl.
+  Proof.
+    induction ln ; simpl.
+    - discriminate.
+    - intros.
+      inv WL ; inv EV.
+      destruct (clause_of_clause_kind (shorten_clause u a true)) eqn: FD';
+        try discriminate.
+      +
+        inv FD.
+        eapply eval_clause_of_clause_kind ; eauto.
+        apply shorten_clause_correct with (m:=m); auto.
+      +  eauto.
+  Qed.
+
+  Lemma wf_find_clause_kind :
+    forall m u ln cl
+           (FD : find_clause_kind u ln = Some cl)
+           (WL : Forall (has_clause m) ln),
+           has_clause m cl.
+  Proof.
+    induction ln ; simpl.
+    - discriminate.
+    - intros.
+      inv WL.
+      destruct (clause_of_clause_kind (shorten_clause u a true)) eqn: FD';
+        try discriminate.
+      +
+        inv FD.
+        eapply wf_clause_of_clause_kind ; eauto.
+        apply wf_shorten_clause with (m:=m); auto.
+      +  eauto.
+  Qed.
+
+
+
   Lemma find_split_correct :
-    forall m cls b cl
-           (FD : find_split_clause b cls = Some cl)
+    forall m u cls b cl
+           (FD : find_split_clause u b cls = Some cl)
+           (EU : eval_units m u)
            (WF : has_clauses m cls)
            (EV : eval_clauses m cls),
       has_clause m cl /\ eval_clause cl .
   Proof.
-    intros m cls b.
+    intros m u cls b.
     unfold  find_split_clause.
     rewrite IntMap.fold_1.
     set (F := (fun (a : option clause) (p : IntMap.key * (list clause * list clause)) =>
-     find_split_acc b (fst p) (snd p) a)).
+     find_split_acc u b (fst p) (snd p) a)).
     generalize (@IntMap.elements_2 _ cls).
     assert (ACC : match None with
                   | Some cl' => has_clause m cl' /\ eval_clause cl'
@@ -2717,7 +2915,6 @@ Lemma wf_unit_propagation :
       unfold F.
       unfold find_split_acc.
       destruct a as (i,(ln,lp)).
-      simpl in *.
       assert (FIND : IntMap.MapsTo i (ln,lp) cls).
       {
         apply H.
@@ -2732,16 +2929,24 @@ Lemma wf_unit_propagation :
       destruct FIND' as (WFLN & WFLP).
       destruct o.
       +  auto.
-      + destruct lp.
+      + unfold snd,fst.
+        destruct lp.
         destruct b.
-        destruct ln. auto.
-        inv EVLN ; inv WFLN; auto.
+        destruct (find_clause_kind u ln) eqn:FD' ; auto.
+        split.
+        eapply wf_find_clause_kind ; eauto.
+        eapply find_clause_kind_correct ; eauto.
         auto.
-        inv EVLP; inv WFLP; auto.
+        destruct (find_clause_kind u (c::lp)) eqn:FD' ; auto.
+        inv EVLP ; inv WFLP; auto.
+        split.
+        eapply wf_find_clause_kind ; eauto.
+        eapply find_clause_kind_correct ; eauto.
       +  intros.
          apply H.
          apply InA_cons_tl; auto.
       +   auto.
+      + auto.
       + auto.
   Qed.
 
@@ -2832,21 +3037,20 @@ Lemma wf_unit_propagation :
       + auto.
       + intros WFS0 ES.
         apply ES. clear ES ; intro ES.
-        destruct (find_split (is_classic g) (clauses st0)) eqn:FD ; try congruence.
+        destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:FD ; try congruence.
         *
         unfold find_split in FD.
-        destruct (find_split_clause (is_classic g) (clauses st0)) eqn:FD1;try congruence.
-        apply find_split_correct with (m:=m) in FD1;
-          [| destruct WFS0 ; auto| destruct ES ; auto].
-        destruct FD1 as (WFC & EC).
-        revert EC.
-        apply split_of_clause_correct with (l:=l); auto.
-        assert (WFL := wf_split_of_clause _ _ _ _ WFC FD).
-        {
-          apply cons_proof_inv in SUC.
-          destruct SUC as (prf'' & SUC).
-          revert prf'' st0 ES WFS0 SUC.
-        clear FD.
+        destruct (find_split_clause (units st0) (is_classic g) (clauses st0)) eqn:FD1;try congruence.
+        apply find_split_correct with (m:=m) in FD1.
+        { destruct FD1 as (WFC & EC).
+          revert EC.
+          apply split_of_clause_correct with (l:=l); auto.
+          assert (WFL := wf_split_of_clause _ _ _ _ WFC FD).
+          {
+            apply cons_proof_inv in SUC.
+            destruct SUC as (prf'' & SUC).
+            revert prf'' st0 ES WFS0 SUC.
+            clear FD.
           induction l; simpl.
           - tauto.
           - intros.
@@ -2865,7 +3069,11 @@ Lemma wf_unit_propagation :
             +
               eapply IHl ; eauto.
               inv WFL ; auto.
+          }
         }
+        destruct ES ; auto.
+        destruct WFS0 ; auto.
+        destruct ES ; auto.
         *
         assert (Forall (has_literal m) (find_arrows st0 (arrows st0))).
         {
@@ -3081,10 +3289,8 @@ Register IntMap.empty as cdcl.IntMap.empty.
 Register IntMap.add   as cdcl.IntMap.add.
 
 
-Declare ML Module "cdcl_plugin".
-
 Lemma hcons_prover_int_correct : forall f p eval_atom,
-    hcons_prover Int63.eqb (fun _ => false) 200%nat f  = HasProof _ p -> eval_hformula eval_atom f.
+    hcons_prover Int63.eqb (fun _ => false) 20%nat f  = HasProof _ p -> eval_hformula eval_atom f.
 Proof.
   intros f prf eval_atom.
   apply hcons_prover_correct; eauto.
@@ -3092,8 +3298,14 @@ Proof.
   -  congruence.
 Qed.
 
-Ltac tauto :=
-  intros;
-  cdcl;
-  eapply hcons_prover_int_correct;
-  compute; reflexivity.
+Definition show_units (h:hmap) (u : IntMap.t bool) : list (@literal int) :=
+  IntMap.fold (fun i v (acc:list literal) => match IntMap.find i h with
+                              | None => acc
+                              | Some (b,f) => (literal_of_bool v (HCons.mk i b f)) :: acc
+                              end) u nil.
+
+Definition show_clauses (cl : @map_clauses int) :=
+  IntMap.fold (fun i '(l1,l2) acc => (l1++l2)++acc) cl nil.
+
+Definition show_state (h:hmap) (st: @state int) :=
+  (show_units h (units st), unit_stack st , show_clauses (clauses st)).
