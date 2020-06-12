@@ -3,9 +3,10 @@ Require Import Int63.
 Extract Constant int => "Uint63.t".
 Extract Constant Int63.ltb => "Uint63.lt".
 Extract Constant Int63.eqb => "Uint63.equal".
+Extract Constant Int63.add => "Uint63.add".
 Extract Inductive bool => bool [ true false ].
 Extract Inductive option => option [ Some None ].
 Extract Inductive prod => "( * )" [ "(,)" ].
 Extract Inductive list => list [ "[]" "(::)" ].
 
-Extraction "../src/prover.ml" hcons_prover show_state.
+Extraction "../src/prover.ml" hcons_prover.

@@ -109,7 +109,7 @@ Ltac unfold_cnf_false H :=
 
 Require Import Cdcl.Formula.
 
-
+(*
 Ltac step :=
   match goal with
   | |- match  ?X with true => _ | false => _ end = _  =>
@@ -139,7 +139,7 @@ Ltac step :=
     let form := fresh in
     set (form := form_of_literal A) ; compute in form ; unfold form  ;clear form
   end.
-
+*)
 Ltac run_prover :=
   match goal with
     | |- context [prover ?A ?B ?C] =>
@@ -168,7 +168,7 @@ Definition show_units (h:hmap) (u : IntMap.t bool) : list (@literal int) :=
                               | Some (b,f) => (literal_of_bool v (HCons.mk i b f)) :: acc
                               end) u nil.
 
-Definition show_clauses (cl : @map_clauses int) :=
+(*Definition show_clauses (cl : @map_clauses int) :=
   IntMap.fold (fun i '(l1,l2) acc => (l1++l2)++acc) cl nil.
 
 Definition show_state (h:hmap) (st: @state int) :=
@@ -195,7 +195,7 @@ Ltac getM :=
     let m := fresh "M" in
     set (m:=M)
   end.
-
+*)
 
 
 Notation "'TTT'" := (HCons.mk _ _ TT).
@@ -208,8 +208,10 @@ Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
 Declare ML Module "cdcl_plugin".
 Require Import Cdcl.Formula.
 
-Ltac tauto :=
+Ltac tauton n :=
   intros; unfold not in *; unfold iff in *;
   cdcl;
-  eapply hcons_prover_int_correct;
-  compute; reflexivity.
+  apply (hcons_prover_int_correct n);
+  vm_compute; reflexivity.
+
+Ltac tauto := tauton 10%nat.

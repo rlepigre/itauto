@@ -1,7 +1,6 @@
 open Names
 open Constr
-module P = Prover
-open Ppprover
+module P = ProverPatch
 
 let constr_of_ref str =
   EConstr.of_constr (UnivGen.constr_of_monomorphic_global (Coqlib.lib_ref str))
@@ -233,63 +232,9 @@ let nat_of_int i =
     let rec nat_of_int i = if i = 0 then P.O else P.S (nat_of_int (i - 1)) in
     nat_of_int i
 
-let length_of_literal = function P.POS p -> 2 | P.NEG p -> 3
-
-let rec length_of_clause = function
-  | P.EMPTY -> 1
-  | P.ARROW (r, cl) -> 6 + length_of_clause cl
-  | P.DIS (p, cl) -> length_of_literal p + 4 + length_of_clause cl
-
-let length_of_list len l = List.fold_left (fun n p -> len p + n + 1) 0 l
-
-let output_concl o = function
-  | None -> output_string o "\\bot"
-  | Some f -> output_hform o f
-
-let output_sequent o ((u, l), c) concl =
-  List.iter (fun l -> Printf.fprintf o "%a;" output_lit l) u;
-  List.iter (fun l -> Printf.fprintf o "%a;" output_lit l) l;
-  List.iter (fun cl -> Printf.fprintf o "%a;" output_clause cl) c;
-  output_string o "\\vdash";
-  output_concl o concl
-
-let length_of_sequent ((u, l), c) concl =
-  length_of_list length_of_literal u
-  + length_of_list length_of_literal l
-  + length_of_list length_of_clause c
-  + 2
-
-let output_sequent m o a =
-  let s = P.show_state m a.P.ante in
-  output_sequent o s a.P.csq
-
-let rec output_ptree m o t =
-  match t with
-  | P.Leaf0 b ->
-    if b then Printf.fprintf o "\\prftree{}{%s}" (if b then "OK" else "KO")
-  | P.Deriv (a, l) ->
-    if l = [] then output_sequent m o a
-    else
-      Printf.fprintf o "\\prftree %a {%a}" (output_ptree_list m) l
-        (output_sequent m) a
-
-and output_ptree_list m o l =
-  match l with
-  | [] -> ()
-  | e :: l ->
-    Printf.fprintf o "{%a} %a" (output_ptree m) e (output_ptree_list m) l
-
 let run_prover f =
   let m = P.hcons_form f in
-  match P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 10) f with
-  | P.HasProof _ -> true
-  | P.HasModel r ->
-    (*    ignore (output_ptree m stdout r);*)
-    false
-  | P.Timeout r ->
-    (*ignore (output_ptree m stdout r);*)
-    false
-  | P.Done _ -> false
+  P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 10) f
 
 let change_goal =
   Proofview.Goal.enter (fun gl ->

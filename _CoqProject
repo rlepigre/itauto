@@ -3,8 +3,7 @@
 theories/Formula.v
 theories/TautoTac.v
 -I src/
-src/prover.ml
-src/ppprover.ml
+src/proverPatch.ml
 src/cdcl.ml
 src/g_cdcl.mlg
 src/cdcl_plugin.mlpack
