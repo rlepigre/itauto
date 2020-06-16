@@ -234,7 +234,9 @@ let nat_of_int i =
 
 let run_prover f =
   let m = P.hcons_form f in
-  P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 10) f
+  ignore (P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 200) f);
+  Printf.printf "\nrun prover done\n";
+  flush stdout
 
 let change_goal =
   Proofview.Goal.enter (fun gl ->

@@ -162,41 +162,6 @@ Ltac select_unit :=
 Require Import List.
 Require Import Int63.
 
-Definition show_units (h:hmap) (u : IntMap.t bool) : list (@literal int) :=
-  IntMap.fold (fun i v (acc:list literal) => match IntMap.find i h with
-                              | None => acc
-                              | Some (b,f) => (literal_of_bool v (HCons.mk i b f)) :: acc
-                              end) u nil.
-
-(*Definition show_clauses (cl : @map_clauses int) :=
-  IntMap.fold (fun i '(l1,l2) acc => (l1++l2)++acc) cl nil.
-
-Definition show_state (h:hmap) (st: @state int) :=
-  (show_units h (units st), unit_stack st , show_clauses (clauses st)).
-
-Ltac show_state :=
-  match goal with
-  | M : hmap |- context[prover _ _ ?S] =>
-    let f := fresh in
-    set (f := show_state M S) ; compute in f
-  | M : hmap |- context[unit_propagation _  ?S _] =>
-    let f := fresh in
-    set (f := show_state M S) ; compute in f
-  | M : hmap |- context[mkstate ?A ?B ?C ?D ?E] =>
-    let f := fresh in
-    set (f := show_state M (mkstate A B C D E)) ; compute in f
-
-
-  end.
-
-Ltac getM :=
-  match goal with
-  | |-context[wfb ?M] =>
-    let m := fresh "M" in
-    set (m:=M)
-  end.
-*)
-
 
 Notation "'TTT'" := (HCons.mk _ _ TT).
 Notation "'FFF'" := (HCons.mk _ _ FF).
@@ -212,6 +177,6 @@ Ltac tauton n :=
   intros; unfold not in *; unfold iff in *;
   cdcl;
   apply (hcons_prover_int_correct n);
-  vm_compute; reflexivity.
+  compute; reflexivity.
 
 Ltac tauto := tauton 10%nat.

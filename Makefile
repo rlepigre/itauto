@@ -1,6 +1,6 @@
 COQLIB = /home/fbesson/.opam/coq-fajb/lib/coq/kernel
 
-all : CoqMakefile
+all : CoqMakefile _CoqProject
 	make -f CoqMakefile
 
 src/prover.ml : theories/Formula.vo theories/Formula.v
