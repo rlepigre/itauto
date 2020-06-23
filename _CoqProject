@@ -1,7 +1,9 @@
 -Q theories/ Cdcl
 -Q src/ Cdcl
 theories/ZifyInt.v
+theories/KeyInt.v
 theories/PatriciaInt.v
+theories/PatriciaR.v
 theories/Formula.v
 theories/TautoTac.v
 theories/Coqlib.v

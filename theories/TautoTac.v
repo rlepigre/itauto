@@ -177,6 +177,6 @@ Ltac tauton n :=
   intros; unfold not in *; unfold iff in *;
   cdcl;
   apply (hcons_prover_int_correct n);
-  compute; reflexivity.
+  vm_compute; reflexivity.
 
 Ltac tauto := tauton 10%nat.

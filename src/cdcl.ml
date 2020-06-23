@@ -39,7 +39,7 @@ let is_prop env sigma term =
 module Env = struct
   type gl = {env : Environ.env; sigma : Evd.evar_map}
 
-  module Map = Map.Make (struct
+  module OMap = Map.Make (struct
     type t = P.op * Uint63.t * Uint63.t
 
     let compare : t -> t -> int = Pervasives.compare
@@ -48,14 +48,14 @@ module Env = struct
   type t =
     { fresh : int
     ; vars : (EConstr.t * int) list (* hcons value for atoms *)
-    ; hmap : int Map.t
+    ; hmap : int OMap.t
     ; gl : gl }
 
   let empty gl =
     { fresh = 2
     ; (* 0,1 are reserved for false and true *)
       vars = []
-    ; hmap = Map.empty
+    ; hmap = OMap.empty
     ; gl }
 
   (** [eq_constr gl x y] returns an updated [gl] if x and y can be unified *)
@@ -88,10 +88,10 @@ module Env = struct
       ({env with vars = (v, f) :: env.vars; fresh = f + 1}, f)
 
   let hcons_op env op f1 f2 =
-    try (env, Map.find (op, f1, f2) env.hmap)
+    try (env, OMap.find (op, f1, f2) env.hmap)
     with Not_found ->
       ( { env with
-          hmap = Map.add (op, f1, f2) env.fresh env.hmap
+          hmap = OMap.add (op, f1, f2) env.fresh env.hmap
         ; fresh = env.fresh + 1 }
       , env.fresh )
 
@@ -232,12 +232,15 @@ let nat_of_int i =
     let rec nat_of_int i = if i = 0 then P.O else P.S (nat_of_int (i - 1)) in
     nat_of_int i
 
-let run_prover f =
-  let m = P.hcons_form f in
+(*let lia_prover env clause =*)
+
+let run_prover f = ()
+
+(*  let m = P.hcons_form f in
   ignore (P.prover_formula Uint63.equal (fun _ -> false) m (nat_of_int 200) f);
   Printf.printf "\nrun prover done\n";
   flush stdout
-
+ *)
 let change_goal =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
