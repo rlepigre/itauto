@@ -173,10 +173,13 @@ Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
 Declare ML Module "cdcl_plugin".
 Require Import Cdcl.Formula.
 
-Ltac tauton n :=
+Ltac tauton tac n :=
   intros; unfold not in *; unfold iff in *;
-  cdcl;
+  (cdcl_conflicts tac);
+  cdcl_change;
   apply (hcons_prover_int_correct n);
   vm_compute; reflexivity.
 
-Ltac tauto := tauton 10%nat.
+Require Import Lia.
+
+Ltac tauto := tauton lia 100%nat.

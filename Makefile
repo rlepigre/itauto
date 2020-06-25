@@ -20,6 +20,9 @@ prover :  src/proverPatch.ml
 install :
 	make -f CoqMakefile install
 
+uninstall:
+	make -f CoqMakefile uninstall
+
 clean :
 	make -f CoqMakefile clean
 

@@ -24,8 +24,6 @@ Ltac split_and_first :=
 Ltac Zify.zify_post_hook ::= Z.to_euclidean_division_equations.
 
 
-
-
 Lemma compare_refl : forall i, (i ?= i)%int63 = Eq.
 Proof.
   intros.
@@ -5079,15 +5077,16 @@ Qed.
       destruct f ; simpl in H0 ; try congruence.
   Qed.
 
-  Definition prover_formula thy (m: hmap) (n:nat) (f: HFormula)  :=
+  Definition prover_formula thy (up: bool) (m: hmap) (n:nat) (f: HFormula)  :=
     if wfb m && chkHc m f.(elt) f.(id) f.(is_dec)
-    then
-      match
-        prover_intro (prover thy false n) (insert_unit (POS hTT) (empty_state m)) (Some f)
-      with HasProof _ => true
-      |   _  => false
-      end
-    else false.
+    then prover_intro (prover thy up n) (insert_unit (POS hTT) (empty_state m)) (Some f)
+    else HasModel (m,nil).
+
+  Definition prover_bformula thy (m: hmap) (n:nat) (f: HFormula)  :=
+    match prover_formula thy false m n f with
+    | HasProof _ => true
+    |  _    => false
+    end.
 
   Lemma wf_empty : forall m,
       wf m ->
@@ -5127,8 +5126,8 @@ Qed.
       congruence.
   Qed.
 
-  Lemma prover_formula_correct : forall thy m n f ,
-      prover_formula thy m n f = true ->
+  Lemma prover_formula_correct : forall thy up m m' prf n f ,
+      prover_formula thy up m n f = HasProof (m',prf) ->
       eval_hformula f.
   Proof.
     unfold prover_formula.
@@ -5152,7 +5151,7 @@ Qed.
     intros (WF & HM & EV).
     simpl in EV.
     set (s1 := (insert_unit (POS hTT) s0)) in * ; clearbody s1.
-    destruct (prover_intro (prover thy false n) s1 (Some f))
+    destruct (prover_intro (prover thy up n) s1 (Some f))
              eqn:PI ; try congruence.
     destruct p.
     apply prover_intro_correct  in PI; auto.
@@ -5185,7 +5184,7 @@ Qed.
 
   Definition hcons_prover (thy:Thy) (n:nat) (f:HFormula) :=
     let m := hcons_form f in
-    prover_formula thy m n f.
+    prover_bformula thy m n f.
 
   Lemma hcons_prover_correct : forall thy n f ,
       hcons_prover thy n f = true ->
@@ -5193,7 +5192,10 @@ Qed.
   Proof.
     unfold hcons_prover.
     intros.
-    apply prover_formula_correct in H.
+    unfold prover_bformula in H.
+    destruct (prover_formula thy false (hcons_form f) n f) eqn:EQ; try congruence.
+    destruct p.
+    apply prover_formula_correct in EQ.
     auto.
   Qed.
 
@@ -5201,17 +5203,49 @@ Qed.
   End S.
 End S.
 
-Definition eval_prop (m: IntMap.ptrie Prop) (i:int)  :=
-  match IntMap.get' i m with
-  | None => False
-  | Some p => p
-  end.
 
 Definition empty (A:Type) : @IntMap.ptrie int A := IntMap.empty A.
 Definition set (A:Type) (i:int) (v:A) (m : IntMap.ptrie A) :=
   IntMap.set' i v m.
 
+Definition dProp := {p : Prop & option (p \/ ~ p)}.
 
+Definition eval_prop (m: IntMap.ptrie dProp) (i:int)  :=
+  match IntMap.get' i m with
+  | None => False
+  | Some (existT _ p _)  => p
+  end.
+
+Definition eval_is_dec (m: IntMap.ptrie dProp) (i:int)  :=
+  match IntMap.get' i m with
+  | None => false
+  | Some (existT _ _ o)  => match o with
+                            | None => false
+                            | Some _ => true
+                            end
+  end.
+
+Lemma is_dec_correct : forall m i, eval_is_dec m i = true -> eval_prop m i \/ ~ eval_prop m i.
+Proof.
+  unfold eval_is_dec, eval_prop.
+  intros. destruct (IntMap.get' i m);[| tauto].
+  destruct d as (p,o).
+  destruct o; auto.
+  congruence.
+Qed.
+
+Class DecP1 {A : Type} (P : A -> Prop) :=
+  decP1 : forall x, P x \/ ~ P x.
+
+
+Class DecP2 {A B: Type} (P : A -> B -> Prop) :=
+  decP2 : forall x y, P x y \/ ~ P x y.
+
+Definition mkAtom (p: Prop): dProp :=
+  existT _ p None.
+
+Definition mkDecAtom (p: Prop) (dec: p \/ ~ p) : dProp :=
+  existT _ p (Some dec).
 
 Register HCons.mk as cdcl.HCons.mk.
 Register Formula as cdcl.Formula.type.
@@ -5225,6 +5259,15 @@ Register IMPL as cdcl.op.IMPL.
 Register eval_hformula as cdcl.eval_hformula.
 Register eval_formula as cdcl.eval_formula.
 Register eval_prop as cdcl.eval_prop.
+Register eval_is_dec as cdcl.eval_is_dec.
+Register dProp as cdcl.dProp.
+Register DecP1 as cdcl.DecP1.
+Register DecP2 as cdcl.DecP2.
+Register decP1 as cdcl.decP1.
+Register decP2 as cdcl.decP2.
+Register mkAtom as cdcl.mkAtom.
+Register mkDecAtom as cdcl.mkDecAtom.
+
 
 Register empty as cdcl.IntMap.empty.
 Register set   as cdcl.IntMap.add.
@@ -5238,13 +5281,13 @@ Definition empty_thy {A:Type} (is_dec: A -> bool) (eA: A -> Prop) : Thy is_dec e
 Qed.
 
 
-Lemma hcons_prover_int_correct : forall n f eval_atom,
-    hcons_prover  Int63.eqb (fun _ => false) eval_atom (empty_thy (fun _ => false) eval_atom) n f  = true -> eval_hformula eval_atom f.
+Lemma hcons_prover_int_correct : forall n f am,
+    hcons_prover  Int63.eqb (eval_is_dec am) (eval_prop am) (empty_thy (eval_is_dec am) (eval_prop am)) n f  = true -> eval_hformula (eval_prop am) f.
 Proof.
-  intros f prf eval_atom.
+  intros n f am.
   eapply hcons_prover_correct; eauto.
   -  intros. apply Int63.eqb_correct ;auto.
-  -  congruence.
+  -  apply is_dec_correct.
 Qed.
 
 (* Definition show_units (h:hmap) (u : IntMap.ptrie bool) : list (@literal int) :=

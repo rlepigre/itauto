@@ -20,7 +20,7 @@
 
 open Ltac_plugin 
 (*open Stdarg*)
-       (*open Tacarg *)
+open Tacarg 
 
 
 
@@ -29,6 +29,8 @@ open Ltac_plugin
 DECLARE PLUGIN "cdcl_plugin"
 
 TACTIC EXTEND CDCL
-| [ "cdcl"  ] -> { Cdcl.change_goal     }
+| [ "cdcl_change"  ] -> { Cdcl.change_goal     }
+| [ "cdcl_conflicts" tactic(t)] -> { Cdcl.assert_conflicts_clauses (Tacinterp.tactic_of_value ist t)}
+| [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }
 END
 
