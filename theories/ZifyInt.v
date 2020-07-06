@@ -8,15 +8,15 @@ Proof. apply to_Z_bounded. Qed.
 
 Instance Inj_int_Z : InjTyp int Z :=
   mkinj _ _ to_Z (fun x => 0 <= x < 9223372036854775808)%Z to_Z_bounded.
-Add  InjTyp Inj_int_Z.
+Add Zify  InjTyp Inj_int_Z.
 
 Program Instance Op_max_int : CstOp max_int :=
   { TCst := 9223372036854775807 ; TCstInj := _}.
-Add CstOp Op_max_int.
+Add Zify CstOp Op_max_int.
 
 Program Instance Op_one : CstOp 1%int63 :=
   { TCst := 1%Z ; TCstInj := _}.
-Add CstOp Op_one.
+Add Zify CstOp Op_one.
 
 
 Program Instance Op_ltb : BinOp ltb :=
@@ -28,7 +28,7 @@ Proof.
     destruct ((φ (n)%int63 <? φ (m)%int63)%Z);
     destruct (n < m)%int63; intuition.
   Qed.
-Add BinOp Op_ltb.
+Add Zify BinOp Op_ltb.
 
 Program Instance Op_leb : BinOp leb :=
   {| TBOp := Z.leb; TBOpInj := _ |}.
@@ -39,7 +39,7 @@ Proof.
     destruct ((φ (n)%int63 <=? φ (m)%int63)%Z);
     destruct (n <= m)%int63; intuition.
   Qed.
-Add BinOp Op_leb.
+Add Zify BinOp Op_leb.
 
 
 Program Instance Op_eqb : BinOp eqb :=
@@ -54,7 +54,7 @@ Proof.
     apply to_Z_inj in H.
     intuition congruence.
   Qed.
-Add BinOp Op_eqb.
+Add Zify BinOp Op_eqb.
 
 Program Instance Op_eq : BinRel (@eq int) :=
   {| TR := @eq Z; TRInj := _ |}.
@@ -64,16 +64,20 @@ Proof.
     congruence.
     apply to_Z_inj.
   Qed.
-Add BinRel Op_eq.
+Add Zify BinRel Op_eq.
 
 Program Instance Op_add : BinOp add :=
   {| TBOp := fun x y => (x + y) mod 9223372036854775808%Z; TBOpInj := add_spec |}%Z.
-Add BinOp Op_add.
+Add Zify BinOp Op_add.
+
+Program Instance Op_sub : BinOp sub :=
+  {| TBOp := fun x y => (x - y) mod 9223372036854775808%Z; TBOpInj := sub_spec |}%Z.
+Add Zify BinOp Op_sub.
 
 Program Instance Op_of_Z : UnOp of_Z :=
   {| TUOp := fun x => x mod 9223372036854775808%Z; TUOpInj := of_Z_spec |}%Z.
-Add UnOp Op_of_Z.
+Add Zify UnOp Op_of_Z.
 
 Program Instance Op_to_Z : UnOp to_Z :=
   {| TUOp := fun x => x ; TUOpInj := _ |}%Z.
-Add UnOp Op_to_Z.
+Add Zify UnOp Op_to_Z.
