@@ -401,6 +401,17 @@ let constr_of_literal_list ep mkFF mkOr mkImpl l =
 let fresh_id id gl =
   Tactics.fresh_id_in_env Id.Set.empty id (Proofview.Goal.env gl)
 
+(* let clear_all_no_check =
+  Proofview.Goal.enter (fun gl ->
+      let concl = Tacmach.New.pf_concl gl in
+      let env =
+        Environ.reset_with_named_context Environ.empty_named_context_val
+          (Tacmach.New.pf_env gl)
+      in
+      Refine.refine ~typecheck:false (fun sigma ->
+          Evarutil.new_evar env sigma ~principal:true concl))
+ *)
+
 let assert_conflicts ep l tac gl =
   let mkFF = constr_of_gref (Lazy.force coq_False) in
   let mkOr x y = EConstr.mkApp (constr_of_gref (Lazy.force coq_or), [|x; y|]) in
@@ -412,7 +423,8 @@ let assert_conflicts ep l tac gl =
     | c :: l ->
       let id = fresh_id (Names.Id.of_string ("__arith" ^ string_of_int n)) gl in
       Tacticals.New.tclTHEN
-        (Tactics.assert_by (Names.Name id) (mk_goal c) tac)
+        (Tactics.assert_by (Names.Name id) (mk_goal c)
+           (Tacticals.New.tclTHEN (Tactics.keep []) tac))
         (assert_conflicts (n + 1) l)
   in
   assert_conflicts 0 l

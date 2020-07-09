@@ -1,5 +1,5 @@
 Require Import Cdcl.PatriciaR Cdcl.KeyInt.
-Require Import Bool ZifyBool Cdcl.ZifyInt ZArith Int63 Lia List.
+Require Import Bool ZifyBool  ZArith Int63 Lia List.
 Import ZifyClasses.
 
 Ltac inv H := inversion H ; try subst ; clear H.
@@ -5289,16 +5289,3 @@ Proof.
   -  intros. apply Int63.eqb_correct ;auto.
   -  apply is_dec_correct.
 Qed.
-
-(* Definition show_units (h:hmap) (u : IntMap.ptrie bool) : list (@literal int) :=
-  IntMap.fold (fun i v (acc:list literal) => match IntMap.get' i h with
-                              | None => acc
-                              | Some (b,f) => (literal_of_bool v (HCons.mk i b f)) :: acc
-                              end) u nil.
-
-Definition show_clauses (cl : @map_clauses int) :=
-  IntMap.fold (fun i '(l1,l2) acc => (l1++l2)++acc) cl nil.
-
-Definition show_state (h:hmap) (st: @state int) :=
-  (show_units h (units st), unit_stack st , show_clauses (clauses st)).
-*)

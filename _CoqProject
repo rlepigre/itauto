@@ -1,6 +1,6 @@
 -Q theories/ Cdcl
 -Q src/ Cdcl
-theories/ZifyInt.v
+# theories/ZifyInt.v
 theories/KeyInt.v
 theories/PatriciaR.v
 theories/Formula.v

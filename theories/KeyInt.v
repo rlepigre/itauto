@@ -1,10 +1,9 @@
+Require Import Bool ZifyClasses ZifyInt63 ZArith Lia.
 Require Import Cdcl.PatriciaR.
-Require Import Bool ZifyClasses ZArith Lia.
-Require Import Cdcl.ZifyInt.
+
+Unset Lia Cache.
 
 Require Int63.
-
-Ltac Zify.zify_post_hook ::= Z.to_euclidean_division_equations.
 
 Section S.
   Import Int63.
@@ -124,27 +123,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
 
   End NatUP2.
 
-(*  Lemma testbit_M : forall m n,
-      63 <= n ->
-      testbit m n = false.
-  Proof.
-    intros.
-    unfold testbit.
-    destruct (63 <=?n) eqn:LE; auto.
-    lia.
-  Qed.
-
-  Lemma testbit_M' : forall m n,
-      testbit m n = true ->
-      n < 63.
-  Proof.
-    intros.
-    assert (63 <= n \/ n < 63)%nat by lia.
-    destruct H0 ; auto.
-    apply testbit_M with (m:=m) in H0 ; auto.
-    congruence.
-  Qed.
- *)
 
   Lemma bool_and : forall (b: bool) (P: bool -> Prop),
       (b = true -> P true) /\
@@ -181,7 +159,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
       unfold testbit in *.
       revert TEST.
       rewrite Int63.bit_lsl.
-      unfold Int63.digits.
       rewrite bit_1.
       repeat elim_if.
       lia.
@@ -190,7 +167,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
         intuition congruence. }
       unfold testbit.
       rewrite Int63.bit_lsl.
-      unfold Int63.digits.
       rewrite bit_1.
       repeat elim_if ; intuition try lia.
   Qed.
@@ -333,13 +309,13 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
         unfold digits, size in *.
         lia.
       }
-      unfold wB,size in BOUND. lia.
+      lia.
     -
       assert (1 < 2 ^ Z.of_nat size)%Z.
       {
         apply Z.pow_gt_1.
         lia.
-        unfold size. lia.
+        lia.
       }
       rewrite Z_mod_nz_opp_full; rewrite Z.mod_small ; try lia.
       replace ( 2 ^ Z.of_nat size - φ (1)%int63)%Z
@@ -347,8 +323,8 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
       rewrite <- Z.ones_equiv.
       rewrite Z.testbit_ones_nonneg by lia.
       destruct ((p < n)%int63 && (p < 63)%int63) eqn:T2.
-      unfold size in *; lia.
-      unfold size in *; lia.
+      lia.
+      lia.
   Qed.
 
 
@@ -477,7 +453,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     + rewrite bit_M; auto.
       repeat elim_if.
       rewrite! bit_1.
-      unfold digits in *.
       lia.
   Qed.
 
@@ -571,10 +546,9 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
       split.
       apply Z.pow_nonneg.
       lia.
-      unfold wB.
       apply Z.pow_lt_mono_r.
-      lia. unfold size.
-      lia. unfold size.
+      lia.
+      lia.
       lia.
     }
     assert (B2 : (2^1 <= 2 ^ ((φ (m)%int63 + 1)))%Z).
@@ -591,7 +565,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
    φ (k)%int63 / 2 ^ ((φ (m)%int63 + 1) mod wB) * 2 ^ ((φ (m)%int63 + 1) mod wB) <
    wB)%Z).
     {
-    unfold wB in *.
       change (Z.of_nat size) with 63%Z in *.
       rewrite Z.mod_small by lia.
       split.
@@ -769,7 +742,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     assert (2^ to_Z n < 2 ^ 63)%Z.
     {
       apply Z.pow_lt_mono_r. lia.  lia.
-      unfold digits in * ; lia.
+      lia.
     }
     lia.
   Qed.
@@ -789,12 +762,14 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     rewrite! bit_lsr.
     rewrite! bit_lsl.
     rewrite bit_lsr.
-    rewrite bit_not_int by lia.
-    replace ((m + 1 + (n - (m + 1))))%int63 with n by (unfold digits in * ; lia).
+    rewrite bit_not_int.
+    replace ((m + 1 + (n - (m + 1))))%int63 with n by lia.
     rewrite bit_1.
     repeat elim_if.
     intuition try lia.
     destruct (bit k n); lia.
+    zify.
+    lia.
   Qed.
 
 
@@ -818,6 +793,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     rewrite opp_spec.
     rewrite! not_int_lsl by auto.
     repeat rewrite <- bit_add_or.
+    zify.
     lia.
     - intros.
       rewrite bit_lsl in H1.
@@ -980,7 +956,9 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     repeat elim_if ; lia.
   Qed.
 
-    Definition digits := Some 63%nat.
+  Definition digits := Some 63%nat.
+
+
 
   Lemma testbit_M : forall k n, le_o digits n -> testbit k n = false.
   Proof.
