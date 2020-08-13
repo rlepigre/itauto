@@ -1,8 +1,6 @@
 Require Import Bool ZifyClasses ZifyInt63 ZArith Lia.
 Require Import Cdcl.PatriciaR.
 
-Unset Lia Cache.
-
 Require Int63.
 
 Section S.

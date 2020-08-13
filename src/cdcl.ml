@@ -371,6 +371,7 @@ module Theory = struct
       Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list c;
       cc := c :: !cc;
       Some (hm, c)
+  
 end
 
 let run_prover cc (genv, sigma) ep f =
