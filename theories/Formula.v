@@ -195,13 +195,11 @@ Arguments IntMap.ptrie [key] A.
 Inductive op :=
 | AND | OR | IMPL.
 
-Section S.
-  Context {A: Type}.
 
   Inductive Formula  : Type :=
   | TT  : Formula
   | FF  : Formula
-  | AT  : A -> Formula
+  | AT  : int -> Formula
   | OP  : op -> HCons.t Formula -> HCons.t Formula -> Formula.
 
 
@@ -253,7 +251,6 @@ Section S.
 
   Open Scope int63.
 
-  Variable atom_eqb : A -> A -> bool.
 
   Definition op_eqb (o o': op) : bool :=
     match o , o' with
@@ -273,14 +270,14 @@ Section S.
 
   Section S.
 
-    Variable AT_is_dec : A -> bool.
+    Variable AT_is_dec : int -> bool.
 
   Fixpoint chkHc (m: hmap) (f:Formula) (i:int) (b:bool) : bool :=
     match f with
     | FF => (i == 0) && Bool.eqb b true
     | TT => (i == 1) && Bool.eqb b true
     | AT a => match IntMap.get' i m with
-             | Some(b',AT a') => atom_eqb a a' && Bool.eqb b (AT_is_dec a) && Bool.eqb b b'
+             | Some(b',AT a') => (a == a') && Bool.eqb b (AT_is_dec a) && Bool.eqb b b'
              |  _   => false
              end
     | OP o f1 f2 => chkHc m f1.(elt) f1.(id) f1.(is_dec)
@@ -308,9 +305,6 @@ Section S.
       f1.(id) = f1'.(id) ->  f2.(id) = f2'.(id)  ->
       b = f1.(is_dec) && f2.(is_dec) ->
       has_form m (HCons.mk i b (OP o f1 f2)).
-
-  Variable atom_eqb_true :
-    forall a a', atom_eqb  a a' = true -> a=a'.
 
   Definition  hFF := HCons.mk 0 true FF.
   Definition  hTT := HCons.mk 1 true TT.
@@ -354,7 +348,7 @@ Section S.
       rewrite! eqb_true_iff in H.
       destruct H as ((H1, H2),H3).
       subst.
-      apply atom_eqb_true in H1. subst.
+      assert (a = i0) by lia. subst.
       econstructor ; eauto.
     - simpl ; intros.
       repeat rewrite andb_true_iff in H.
@@ -421,7 +415,7 @@ Section S.
       f_equal.
   Qed.
 
-  Variable eval_atom : A -> Prop.
+  Variable eval_atom : int -> Prop.
 
 
   Definition eval_op (o: op) (f1 f2 : Prop) : Prop :=
@@ -5201,7 +5195,7 @@ Qed.
 
   End Prover.
   End S.
-End S.
+
 
 
 Definition empty (A:Type) : @IntMap.ptrie int A := IntMap.empty A.
@@ -5272,9 +5266,9 @@ Register mkDecAtom as cdcl.mkDecAtom.
 Register empty as cdcl.IntMap.empty.
 Register set   as cdcl.IntMap.add.
 
-Definition empty_thy_prover {A:Type} (hm:@hmap A) (l:list (@literal A)) : option (@hmap A * list (@literal A)) := None.
+Definition empty_thy_prover  (hm:hmap ) (l:list literal) : option (hmap  * list (literal)) := None.
 
-Definition empty_thy {A:Type} (is_dec: A -> bool) (eA: A -> Prop) : Thy is_dec eA.
+Definition empty_thy  (is_dec: int -> bool) (eA: int -> Prop) : Thy is_dec eA.
   apply mkThy  with (thy_prover := empty_thy_prover).
   - unfold empty_thy_prover.
     congruence.
@@ -5282,10 +5276,9 @@ Qed.
 
 
 Lemma hcons_prover_int_correct : forall n f am,
-    hcons_prover  Int63.eqb (eval_is_dec am) (eval_prop am) (empty_thy (eval_is_dec am) (eval_prop am)) n f  = true -> eval_hformula (eval_prop am) f.
+    hcons_prover  (eval_is_dec am) (eval_prop am) (empty_thy (eval_is_dec am) (eval_prop am)) n f  = true -> eval_hformula (eval_prop am) f.
 Proof.
   intros n f am.
   eapply hcons_prover_correct; eauto.
-  -  intros. apply Int63.eqb_correct ;auto.
   -  apply is_dec_correct.
 Qed.

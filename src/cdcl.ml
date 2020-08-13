@@ -270,13 +270,34 @@ let constr_of_hcons typ constr_of_elt f =
        ; constr_of_bool f.P.HCons.is_dec
        ; constr_of_elt f.P.HCons.elt |] )
 
-let constr_of_formula typ f =
+(*let constr_of_formula typ f =
   let tt = EConstr.mkApp (Lazy.force coq_TT, [|typ|]) in
   let ff = EConstr.mkApp (Lazy.force coq_FF, [|typ|]) in
   let ftyp = EConstr.mkApp (Lazy.force coq_Formula, [|typ|]) in
   let at i = EConstr.mkApp (Lazy.force coq_AT, [|typ; EConstr.mkInt i|]) in
   let mk_op = Lazy.force coq_OP in
   let mkop o f1 f2 = EConstr.mkApp (mk_op, [|typ; constr_of_op o; f1; f2|]) in
+  P.(
+    let rec constr_of_op_formula f =
+      match f with
+      | TT -> tt
+      | FF -> ff
+      | AT i -> at i
+      | OP (o, f1, f2) ->
+        mkop o
+          (constr_of_hcons ftyp constr_of_op_formula f1)
+          (constr_of_hcons ftyp constr_of_op_formula f2)
+    in
+    constr_of_hcons ftyp constr_of_op_formula f)
+ *)
+
+let constr_of_formula f =
+  let tt = Lazy.force coq_TT in
+  let ff = Lazy.force coq_FF in
+  let ftyp = Lazy.force coq_Formula in
+  let at i = EConstr.mkApp (Lazy.force coq_AT, [|EConstr.mkInt i|]) in
+  let mk_op = Lazy.force coq_OP in
+  let mkop o f1 f2 = EConstr.mkApp (mk_op, [|constr_of_op o; f1; f2|]) in
   P.(
     let rec constr_of_op_formula f =
       match f with
@@ -371,7 +392,6 @@ module Theory = struct
       Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list c;
       cc := c :: !cc;
       Some (hm, c)
-  
 end
 
 let run_prover cc (genv, sigma) ep f =
@@ -382,7 +402,7 @@ let run_prover cc (genv, sigma) ep f =
     with Not_found -> false
   in
   let m = P.hcons_form f in
-  P.prover_formula Uint63.equal is_dec
+  P.prover_formula is_dec
     (Theory.thy_prover cc Micromega_plugin.Coq_micromega.linear_Z (genv, sigma)
        ep)
     true m (nat_of_int 200) f
@@ -453,10 +473,9 @@ let change_goal =
       let genv = Tacmach.New.pf_env gl in
       let concl = Tacmach.New.pf_concl gl in
       let hyps = Tacmach.New.pf_hyps_types gl in
-      let typ = Lazy.force coq_int in
       let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
       let form, env = make_formula env (List.rev hyps) concl in
-      let cform = constr_of_formula typ form in
+      let cform = constr_of_formula form in
       let m = Env.map_of_env env in
       Tacticals.New.tclTHEN
         (Tactics.generalize
@@ -464,7 +483,6 @@ let change_goal =
         (Tactics.change_concl
            (EConstr.mkApp
               ( Lazy.force coq_eval_hformula
-              , [|typ; EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|]
-              ))))
+              , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] ))))
 
 let cdcl tac = Tacticals.New.tclTHEN (assert_conflicts_clauses tac) change_goal
