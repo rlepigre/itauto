@@ -29,6 +29,7 @@ open Tacarg
 DECLARE PLUGIN "cdcl_plugin"
 
 TACTIC EXTEND CDCL
+| [ "cdcl_nnpp" ]     -> { Cdcl.nnpp }
 | [ "cdcl_change"  ] -> { Cdcl.change_goal     }
 | [ "cdcl_conflicts" tactic(t)] -> { Cdcl.assert_conflicts_clauses (Tacinterp.tactic_of_value ist t)}
 | [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }

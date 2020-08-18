@@ -18,4 +18,4 @@ Extract Inductive list => list [ "[]" "(::)" ].
 
 Require Import Cdcl.Formula.
 
-Extraction "../src/prover.ml" hcons_prover.
+Extraction "../src/prover.ml" hcons_bprover.

@@ -128,72 +128,16 @@ Arguments HCons.elt {A} .
 Arguments HCons.id {A} .
 Arguments HCons.is_dec {A} .
 
-(*Module OrdInt <: OrderedType.OrderedType.
-    Definition t := int.
-    Definition eq : t -> t -> Prop := fun x y => Int63.eqb x y = true.
-    Definition lt : t -> t -> Prop := fun x y => Int63.ltb x y = true.
-    Lemma eq_refl : forall x : t, eq x x.
-    Proof.
-      intros; unfold eq.
-      lia.
-    Qed.
-
-    Lemma eq_sym : forall x y : t, eq x y -> eq y x.
-    Proof.
-      unfold eq; intros.
-      lia.
-    Qed.
-
-    Lemma eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
-    Proof.
-      unfold eq; intros.
-      lia.
-    Qed.
-
-    Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
-    Proof.
-      unfold lt. intros.
-      lia.
-    Qed.
-
-    Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-    Proof.
-      unfold lt,eq. intros.
-      lia.
-    Qed.
-
-    Lemma compare : forall x y : t, OrderedType.Compare lt eq x y.
-    Proof.
-      intros.
-      destruct (ltb x y) eqn:LTB.
-      apply OrderedType.LT ; auto.
-      destruct (eqb x y) eqn:EQB.
-      apply OrderedType.EQ ; auto.
-      apply OrderedType.GT.
-      {
-        unfold lt.
-        lia.
-      }
-    Defined.
-
-    Lemma eq_dec : forall x y : t, {eq x y} + {~ eq x y}.
-    Proof.
-      unfold eq.
-      intros.
-      destruct (x ==y)%int63.
-      left ; auto.
-      right. congruence.
-    Defined.
-
-End OrdInt.
- *)
-
 Module IntMap  := PatriciaR.PTrie.
 
 Arguments IntMap.ptrie [key] A.
 
 Inductive op :=
 | AND | OR | IMPL.
+(* IFF - is complicated.  The main reason is that the clausal encoding
+   introduces IMPL.  Those are not sub-formulae and therefore this
+   requires some ad'hoc specific treatment *)
+
 
 
   Inductive Formula  : Type :=
@@ -239,15 +183,6 @@ Inductive op :=
     Qed.
 
   End FormInd.
-
-  Fixpoint aformula (f: Formula) : Formula :=
-    match f with
-    | TT => TT
-    | FF => FF
-    | AT a => AT a
-    | OP o f1 f2 => OP o (HCons.mk 0%int63 f1.(is_dec) (aformula f1.(elt)))
-                       (HCons.mk 0%int63 f2.(is_dec) (aformula f2.(elt)))
-    end.
 
   Open Scope int63.
 
@@ -545,15 +480,19 @@ Inductive op :=
 
   Definition empty_watch_map  := IntMap.empty (key:=int) watch_map_elt.
 
+  Definition iset := IntMap.ptrie (key:=int) unit.
 
   Record state : Type :=
     mkstate {
         fresh_clause_id : int;
         hconsmap : hmap;
-        (* Formulae of the form a -> b need a special processing *)
+        (* [arrows] :
+           Formulae of the form a -> b need a special processing and are stored in arrows *)
         arrows : list literal;
+        (* [wneg] : watched negative litterals - are needed to generate complete conflict clauses*)
+        wneg : iset;
         (* Formulae which cnf has been already unfold *)
-        defs : IntMap.ptrie (key:=int) unit * IntMap.ptrie (key:=int) unit ;
+        defs : iset * iset ;
         units : IntMap.ptrie (key:=int) bool;
         unit_stack : list literal;
         (* unit_list is a stack of unit clauses to be processed *)
@@ -567,6 +506,7 @@ Inductive op :=
     fresh_clause_id := 0;
     hconsmap := m;
     arrows := nil;
+    wneg := IntMap.empty unit;
     defs := (IntMap.empty unit , IntMap.empty unit);
     units := IntMap.empty bool;
     unit_stack := nil;
@@ -628,6 +568,7 @@ Inductive op :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
+    wneg   := wneg st;
     defs   := defs st;
     arrows :=  arrows st;
     units := units st;
@@ -635,17 +576,26 @@ Inductive op :=
     clauses := clauses st
     |}.
 
+  Definition add_wneg_lit (l: literal) (wn: iset)  : iset :=
+    match l with
+    | POS _ => wn
+    | NEG f => IntMap.set' (HCons.id f) tt wn
+    end.
+
+  Definition add_wneg_wcl (wn : iset) (cl:watched_clause) : iset :=
+    add_wneg_lit (watch2 cl) (add_wneg_lit  (watch1 cl) wn) .
+
   Definition insert_lit_clause (l:literal) (clause_id: int) (cl: watched_clause) (st : state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs   := defs st;
+    wneg   := add_wneg_wcl (wneg st) cl;
     arrows := arrows st ;
     units := units st;
     unit_stack := unit_stack st;
     clauses := add_clause l clause_id cl (clauses st)
     |}.
-
 
 
 
@@ -902,6 +852,7 @@ Inductive op :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
+    wneg := wneg st;
     defs := m;
     arrows := ar;
     units  := units st;
@@ -913,6 +864,7 @@ Inductive op :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
+    wneg := wneg st;
     defs := defs st;
     arrows := ar;
     units  := units st;
@@ -992,6 +944,7 @@ Inductive op :=
       fresh_clause_id := fresh_clause_id st;
       hconsmap := hconsmap st;
       arrows := arrows st;
+      wneg   := add_wneg_lit w1 (add_wneg_lit w2 (wneg st));
       defs   := defs st ;
       units  := units st;
       unit_stack := unit_stack st;
@@ -1003,6 +956,7 @@ Inductive op :=
     (res,{|
        fresh_clause_id := res + 1;
        hconsmap := hconsmap st;
+       wneg := wneg st;
        arrows := arrows st;
       defs := defs st;
       units := units st;
@@ -1108,13 +1062,12 @@ Inductive op :=
   Qed.
 
 
-
-
   Definition remove_clauses (l:literal) (st: state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs   := defs st;
+    wneg  := wneg st; (* Should we remove ? *)
     arrows := arrows st;
     units := units st;
     unit_stack := unit_stack st;
@@ -1132,13 +1085,15 @@ Inductive op :=
     | NEG f => is_arrow f.(elt)
     end.
 
-
+  Definition remove_wneg (l:literal) (s:iset) :=
+    IntMap.remove' (id_of_literal l) s.
 
   Definition insert_literal (l:literal) (st: state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs := defs st;
+    wneg := remove_wneg l (wneg st);
     arrows := if is_neg_arrow l then (l::arrows st) else arrows st;
     units := add_literal l (units st);
     unit_stack := unit_stack st;
@@ -1196,6 +1151,7 @@ Inductive op :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
+    wneg := wneg st;
     defs := defs st;
     arrows := arrows st ;
     units := units st;
@@ -1207,6 +1163,7 @@ Inductive op :=
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs := defs st;
+    wneg := wneg st;
     arrows := l:: arrows st ;
     units := units st;
     unit_stack := unit_stack st;
@@ -1248,6 +1205,7 @@ Inductive op :=
       fresh_clause_id := fresh_clause_id st;
       hconsmap := hconsmap st;
       arrows := arrows st;
+      wneg := wneg st;
       defs := defs st;
       units := units st;
       unit_stack := unit_stack st;
@@ -1405,6 +1363,18 @@ Inductive op :=
 
   Hint Resolve wf_map_add : wf.
 
+  Lemma wf_map_remove :
+    forall {A: Type} x
+           (m : IntMap.ptrie A)
+           (WF: wf_map m),
+      wf_map (IntMap.remove' x m).
+  Proof.
+    intros.
+    apply IntMap.wf_remove'; auto.
+  Qed.
+
+  Hint Resolve wf_map_remove : wf.
+
   Definition eval_clauses  (h : watch_map) :=
     IntMapForall (IntMapForall2 eval_watched_clause) h.
 
@@ -1420,7 +1390,7 @@ Inductive op :=
   Definition wf_watch_map (m : watch_map) :=
     IntMapForall (fun x => wf_map (fst x) /\ wf_map (snd x)) m.
 
-  Definition wf_units_def (u: IntMap.ptrie bool) (m: hmap) : Prop :=
+  Definition wf_units_def {A:Type} (u: IntMap.ptrie A) (m: hmap) : Prop :=
     forall i, IntMap.get' i u <> None -> exists f,
         has_form m f /\ f.(id)= i.
 
@@ -1428,8 +1398,10 @@ Inductive op :=
     {
     wf_hm      : wf (hconsmap st);
     wf_arrows  : List.Forall (has_literal (hconsmap st)) (arrows st) ;
-    wf_units : wf_units_def (units st) (hconsmap st);
-    wf_stack : List.Forall (has_literal  (hconsmap st)) (unit_stack st);
+    wf_wn_m    : wf_map (wneg st);
+    wf_wneg    : wf_units_def (wneg st) (hconsmap st);
+    wf_units   : wf_units_def (units st) (hconsmap st);
+    wf_stack   : List.Forall (has_literal  (hconsmap st)) (unit_stack st);
     wf_clauses : has_clauses  (hconsmap st) (clauses st);
     wf_units_m : wf_map (units st);
     wf_clauses_m1 :  wf_map (clauses st);
@@ -1963,7 +1935,60 @@ Inductive op :=
     apply IntMapForallAdd;auto.
   Qed.
 
+  Lemma wf_add_wneg_lit :
+    forall l wn hm
+           (WFM :  wf_map wn)
+           (WF: wf_units_def wn hm)
+           (HL : has_literal hm l),
+      wf_units_def (add_wneg_lit l wn) hm.
+  Proof.
+    unfold add_wneg_lit.
+    intros.
+    destruct l ; auto.
+    unfold wf_units_def in *.
+    intros.
+    rewrite gsspec in H; auto.
+    destruct (eqs i (id f)) ; auto.
+    simpl in HL.
+    exists f ; simpl ; auto.
+  Qed.
 
+  Lemma wf_map_add_wneg_lit : forall l wn,
+      wf_map wn ->
+      wf_map (add_wneg_lit l wn).
+  Proof.
+    unfold add_wneg_lit.
+    destruct l; auto.
+    intros.
+    apply wf_map_add; auto.
+  Qed.
+
+  Lemma wf_add_wneg_wcl :
+    forall wn hm cl
+           (WFM : wf_map wn)
+           (WF: wf_units_def wn hm)
+           (WFC: has_watched_clause hm cl),
+      wf_units_def (add_wneg_wcl wn cl) hm.
+  Proof.
+    unfold add_wneg_wcl.
+    intros.
+    unfold has_watched_clause in WFC.
+    inv WFC. inv H2.
+    apply wf_add_wneg_lit; auto.
+    apply wf_map_add_wneg_lit ; auto.
+    apply wf_add_wneg_lit;auto.
+  Qed.
+
+  Lemma wf_map_add_wneg_wcl :
+    forall m cl,
+      wf_map m ->
+      wf_map (add_wneg_wcl m cl).
+  Proof.
+    unfold add_wneg_wcl.
+    intros.
+    apply wf_map_add_wneg_lit;auto.
+    apply wf_map_add_wneg_lit;auto.
+  Qed.
 
   Lemma wf_insert_lit_clause :
     forall l id cl st
@@ -1975,6 +2000,8 @@ Inductive op :=
     intros.
     destruct WFS ; destruct st ; simpl in *.
     constructor ; simpl ; auto with wf.
+    - apply wf_map_add_wneg_wcl;auto.
+    - apply wf_add_wneg_wcl ; auto.
     - apply wf_add_clause; auto.
     - apply wf_watch_map_add_clause; auto.
   Qed.
@@ -2037,6 +2064,20 @@ Inductive op :=
 
   Hint Resolve wf_map_add_literal : wf.
 
+  Lemma wf_remove_wneg :
+    forall w l hm
+           (WFM : wf_map w)
+           (WF: wf_units_def w hm),
+      wf_units_def (remove_wneg l w) hm.
+  Proof.
+    unfold wf_units_def, remove_wneg.
+    intros.
+    rewrite grspec in H by assumption.
+    destruct (eqs i (id_of_literal l)).
+    congruence.
+    apply WF ; auto.
+  Qed.
+
   Lemma wf_insert_literal : forall l st
            (WF : wf_state st)
            (HF : has_literal (hconsmap st) l),
@@ -2049,6 +2090,10 @@ Inductive op :=
       destruct (is_neg_arrow l). constructor ; auto.
       auto.
     }
+    -
+      unfold remove_wneg.
+      auto with wf.
+    -  apply wf_remove_wneg; auto.
     - unfold add_literal.
       unfold wf_units_def.
       intros.
@@ -2290,13 +2335,19 @@ Inductive op :=
     unfold add_watched_clause.
     intros.
     destruct WFS ; constructor ; auto with wf.
-    simpl.
+    - simpl.
+      repeat apply wf_map_add_wneg_lit; auto.
+    - simpl.
+      inv WFC. inv H2.
+      repeat apply wf_add_wneg_lit ; auto.
+      apply wf_map_add_wneg_lit; auto.
+    - simpl.
     apply wf_add_clause; auto with wf.
     apply wf_watch_map_add_clause;auto.
     apply wf_add_clause; auto with wf.
-    simpl.
+    - simpl.
     apply wf_map_add_clause ;auto with wf.
-    simpl.
+    - simpl.
     apply wf_watch_map_add_clause ;auto with wf.
     apply wf_watch_map_add_clause ;auto with wf.
   Qed.
@@ -2436,18 +2487,6 @@ Inductive op :=
     | None => IntMap.empty _
     | Some st => hconsmap st
     end.
-
-(*  Lemma incr_hconsmap_option : forall st st',
-      (incr_hconsmap st st')->
-      hmap_order (hconsmap_option st) (hconsmap_option st').
-  Proof.
-    destruct st,st'; simpl in *; try tauto.
-    repeat intro.
-    rewrite empty_o in H0. congruence.
-    repeat intro.
-    rewrite empty_o in H0. congruence.
-  Qed.
-*)
 
   Definition ohold2 {A B:Type} (P : A -> B -> Prop) (o: option A) (b:B) :=
     match o with
@@ -3852,6 +3891,7 @@ Qed.
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hm;
+    wneg := wneg st;
     arrows := arrows st;
     defs := defs st;
     units := units st;
@@ -4280,6 +4320,22 @@ Qed.
       congruence.
     Qed.
 
+    Lemma wf_units_def_mono :
+      forall {A: Type} m m' (w: @IntMap.ptrie int A)
+             (LE : hmap_order m m')
+             (WF : wf_units_def w m),
+        wf_units_def w m'.
+    Proof.
+      unfold wf_units_def.
+      intros.
+      apply WF in H ; auto.
+      destruct H as (f & FORM & ID).
+      exists f ; split ; auto.
+      revert FORM.
+      apply has_form_mono;auto.
+    Qed.
+
+
     Lemma set_hmap_correct :
       forall m st
              (LE: hmap_order (hconsmap st) m)
@@ -4300,13 +4356,8 @@ Qed.
         + revert wf_arrows0.
           apply Forall_Forall.
           intro. apply has_literal_mono; auto.
-        + unfold wf_units_def.
-          intros.
-          apply wf_units0 in H.
-          destruct H as (f & FORM & ID).
-          exists f ; split ; auto.
-          revert FORM.
-          apply has_form_mono;auto.
+        + eapply wf_units_def_mono; eauto.
+        + eapply wf_units_def_mono; eauto.
         +
         revert wf_stack0.
         apply Forall_Forall.
@@ -4566,11 +4617,21 @@ Qed.
                   else (fst acc, POS f::snd acc)
       end.
 
+    Definition get_wneg (m:hmap) (acc: list literal) (k:int) (b : unit) :=
+      match get_atom m k with
+      | None => acc
+      | Some f => POS f::acc
+      end.
+
+
+    Definition collect_all_wneg (m:hmap) (wn : IntMap.ptrie (key:=int) unit) :=
+      IntMap.fold' (get_wneg m) wn nil.
+
 
     Definition extract_theory_problem (m : hmap) (u : IntMap.ptrie (key:=int) bool) : list literal * list literal :=
       IntMap.fold' (collect_literal m) u (nil,nil).
 
-    Definition generate_conflict_clause (ln: list literal) (lp: list literal) : list literal := ln ++ lp.
+    Definition app_conflict_clause (ln: list literal) (lp: list literal) : list literal := ln ++ lp.
 
 
     Definition add_conclusion  (c : option HFormula) (acc : list literal * list literal) :=
@@ -4582,9 +4643,14 @@ Qed.
                   end
       end.
 
-    Definition run_thy_prover (st: state) (g: option HFormula)  :=
+    Definition generate_conflict_clause (st:state) (g: option HFormula) :=
       let (ln,lp) := add_conclusion  g (extract_theory_problem (hconsmap st) (units st)) in
-      let cl := generate_conflict_clause ln lp in
+      let wn  := collect_all_wneg (hconsmap st) (wneg st) in
+      app_conflict_clause ln (wn++lp).
+
+
+    Definition run_thy_prover (st: state) (g: option HFormula)  :=
+      let cl := generate_conflict_clause st g in
       match thy.(thy_prover) (hconsmap st) cl with
       | None => HasModel (hconsmap st,nil)
       | Some (h',cl') => match augment_with_clause  cl' (set_hmap h' st) with
@@ -4676,11 +4742,11 @@ Qed.
     destruct (elt h) eqn:EQ; simpl; auto.
   Qed.
 
-  Lemma wf_generate_conflict_clause :
+  Lemma wf_app_conflict_clause :
     forall [hm l1 l2]
            (WFL1: Forall (has_literal hm) l1)
            (WFL2: Forall (has_literal hm) l2),
-      Forall (has_literal hm) (generate_conflict_clause l1 l2).
+      Forall (has_literal hm) (app_conflict_clause l1 l2).
   Proof.
     unfold generate_conflict_clause.
     intros.
@@ -4688,21 +4754,93 @@ Qed.
     tauto.
   Qed.
 
-    Lemma run_thy_prover_correct : forall st, is_correct_prover run_thy_prover  st.
+  Lemma wf_collect_all_wneg :
+    forall hm w
+           (WF : wf_map w)
+           (WFU : wf_units_def w hm),
+      Forall (has_literal hm) (collect_all_wneg hm w).
+  Proof.
+    unfold collect_all_wneg.
+    intros.
+    set (Q := fun (r:list literal) => Forall (has_literal hm) r).
+    rewrite PTrie.fold_elements'.
+    unfold wf_units_def in WFU.
+    assert (forall i v, In (i,v) (PTrie.elements' w nil) ->
+                        forall b a,
+                          IntMap.get' i hm = Some (b,AT a) ->
+                          has_form hm (HCons.mk i b (AT a))).
+    {
+      intros.
+      apply PTrie.in_elements' with (opt:=None) in H.
+      simpl in H.
+      destruct H ; [|tauto].
+      assert (PTrie.get' i w <> None) by congruence.
+      apply WFU in H1.
+      destruct H1 as (f1 & HF & ID).
+      inv HF; simpl in * ; try congruence.
+      rewrite H0 in H1.
+      inv H1. constructor; auto.
+      auto.
+    }
+    assert (QACC : Q nil).
+    {
+      unfold Q. simpl.
+      constructor.
+    }
+    revert QACC.
+    generalize (nil: list literal).
+    induction (PTrie.elements' w nil).
+    -  simpl. auto.
+    - intros.
+      simpl in *.
+      eapply IHl ; eauto.
+      unfold Q.
+      unfold get_wneg.
+      destruct (get_atom hm (fst a)) eqn:GA ; auto.
+      assert (has_form hm t0).
+      {
+        unfold get_atom in GA.
+        destruct (IntMap.get' (fst a) hm) eqn:EQ ; try congruence.
+        destruct p.
+        destruct f ; try congruence.
+        inv GA.
+        destruct a ; simpl in *.
+        eapply H ; eauto.
+      }
+      constructor ; auto.
+  Qed.
+
+  Lemma wf_generate_conflict_clause :
+    forall [st g]
+           (WF: wf_state st)
+           (HASG: has_oform (hconsmap st) g),
+      Forall (has_literal (hconsmap st)) (generate_conflict_clause st g).
+  Proof.
+    unfold generate_conflict_clause.
+    intros.
+    destruct WF.
+    destruct (extract_theory_problem (hconsmap st) (units st)) as (ln,lp) eqn:EQ.
+    apply wf_extract_thy_pb in EQ; auto.
+    destruct EQ as (C1 & C2).
+    specialize (wf_add_conclusion  C1 C2 HASG).
+    destruct (add_conclusion g (ln,lp)) as (ln1,lp1).
+    simpl.
+    unfold app_conflict_clause.
+    intros (C1' & C2').
+    repeat rewrite Forall_app.
+    repeat split ; auto.
+    apply wf_collect_all_wneg; auto.
+  Qed.
+
+
+  Lemma run_thy_prover_correct : forall st, is_correct_prover run_thy_prover  st.
     Proof.
       unfold is_correct_prover.
       intros.
       unfold run_thy_prover in PRF.
-      destruct (extract_theory_problem (hconsmap st) (units st)) as (l1,l2) eqn:EQ .
-      apply wf_extract_thy_pb in EQ; [| destruct WFS; auto| destruct WFS;auto].
-      destruct EQ as (WFL1 & WFL2).
-      generalize (wf_add_conclusion WFL1 WFL2 HASF).
-      destruct (add_conclusion g (l1,l2)) as (l1',l2').
-      simpl. intros (C1 & C2).
-      generalize (wf_generate_conflict_clause C1 C2).
-      revert PRF.
-      generalize (generate_conflict_clause l1' l2').
-      intros.
+      specialize (wf_generate_conflict_clause WFS HASF).
+      set (l := (generate_conflict_clause st g)) in * ; clearbody l.
+      intro C.
       destruct (thy_prover thy (hconsmap st) l) eqn:THY ; try congruence.
       destruct p as (h',cl').
       apply thy_prover_sound in THY.
@@ -5082,16 +5220,24 @@ Qed.
     |  _    => false
     end.
 
+  Lemma wf_units_def_empty : forall {A: Type} m,
+      wf_units_def (IntMap.empty A) m.
+  Proof.
+    unfold wf_units_def.
+    intros.
+    rewrite empty_o in H.
+    congruence.
+  Qed.
+
   Lemma wf_empty : forall m,
       wf m ->
       wf_state (empty_state m).
   Proof.
     unfold empty_state.
     constructor ; simpl ; auto.
-    - unfold wf_units_def.
-      intros.
-      rewrite empty_o in H0.
-      congruence.
+    - apply wf_map_empty;auto.
+    - apply wf_units_def_empty.
+    - apply wf_units_def_empty.
     - repeat intro.
       unfold empty_watch_map in H.
       unfold empty_watch_map in H0.
@@ -5193,75 +5339,427 @@ Qed.
     auto.
   Qed.
 
+
   End Prover.
   End S.
 
+  Inductive kind : Type :=
+  |IsProp
+  |IsBool.
 
+  Definition eval_kind (k:kind) : Type :=
+    match k with
+    | IsProp => Prop
+    | IsBool => bool
+    end.
+
+
+Module BForm.
+
+  Inductive BFormula  : kind -> Type :=
+  | BTT   : forall (k: kind), BFormula k
+  | BFF   : forall (k: kind), BFormula k
+  | BAT   : forall (k: kind), int -> BFormula k
+  | BOP   : forall (k: kind), op -> HCons.t (BFormula k) ->
+                             HCons.t (BFormula k) -> (BFormula k)
+  | BIT   : (BFormula IsBool) -> BFormula IsProp.
+
+  Definition HBFormula := HCons.t (BFormula IsProp).
+
+
+  Section S.
+    Variable eval_atom : forall (k:kind), int -> eval_kind k.
+
+    Definition eval_TT (k:kind) : eval_kind k :=
+      match k with
+      | IsProp => True
+      | IsBool => true
+      end.
+
+    Definition eval_FF (k:kind) : eval_kind k :=
+      match k with
+      | IsProp => False
+      | IsBool => false
+      end.
+
+    Definition eval_binop (fp : Prop -> Prop -> Prop) (fb : bool -> bool -> bool)  (k:kind) : eval_kind k -> eval_kind k -> eval_kind k :=
+      match k with
+      | IsProp => fp
+      | IsBool => fb
+      end.
+
+    Definition eval_op (o:op) (k:kind) : eval_kind k -> eval_kind k -> eval_kind k :=
+      match o with
+      | AND => eval_binop and andb k
+      | OR  => eval_binop or orb k
+      | IMPL => eval_binop (fun x y => x -> y) implb k
+      end.
+
+    Fixpoint eval_bformula (k:kind) (f: BFormula k) : eval_kind k :=
+      match f with
+      | BTT k => eval_TT k
+      | BFF k => eval_FF k
+      | BAT k i => eval_atom k i
+      | BOP k o f1 f2 => eval_op o k
+                                (eval_bformula k f1.(elt))
+                                (eval_bformula k f2.(elt))
+      | BIT f => Is_true (eval_bformula _ f)
+      end.
+
+    (** Certain atoms have no boolean counterpart *)
+    Variable has_bool : int -> bool.
+
+    Definition map_hcons {A B:Type} (f: A -> B) (e : HCons.t A) : HCons.t B :=
+      HCons.mk e.(id) e.(is_dec) (f e.(elt)).
+
+    Definition poll (o:op) (pol:bool)  :=
+      match o with
+      | AND | OR => pol
+      | IMPL => negb pol
+      end.
+
+    Definition keep_atom (k:kind) (i:int) :=
+      match k with
+      | IsProp => true
+      | IsBool => has_bool i
+      end.
+
+    Fixpoint to_formula (pol:bool) (k:kind) (f:BFormula k) : Formula :=
+      match f with
+      | BTT k => TT
+      | BFF k => FF
+      | BAT k i => if keep_atom k i
+                   then AT i
+                   else if pol then FF else TT
+      | BOP k o f1 f2 => OP o (map_hcons (to_formula (poll o pol) k) f1) (map_hcons (to_formula pol k) f2)
+      | BIT f =>  (to_formula pol IsBool f)
+      end.
+
+    Definition hold (k:kind) : eval_kind k ->  Prop :=
+      match k with
+      | IsBool => fun v => Is_true v
+      | IsProp => fun v => v
+      end.
+
+    Definition impl_pol (pol : bool) (p1 p2: Prop) :=
+      if pol then p1 -> p2 else p2 -> p1.
+
+    Lemma impl_pol_iff : forall pol p q, (p <-> q) -> impl_pol pol p q.
+    Proof.
+      unfold impl_pol.
+      destruct pol; tauto.
+    Qed.
+
+    Lemma hold_eval_TT : forall k, hold k (eval_TT k) <-> True.
+    Proof.
+      destruct k ; simpl.
+      tauto.
+      unfold Is_true.
+      tauto.
+    Qed.
+
+    Lemma hold_eval_FF : forall k,
+        hold k (eval_FF k) <-> False.
+    Proof.
+      destruct k ; simpl.
+      tauto.
+      unfold Is_true.
+      intuition congruence.
+    Qed.
+
+    Variable has_bool_correct :
+      forall i : int,
+        has_bool i = true -> eval_atom IsProp i <-> Is_true (eval_atom IsBool i).
+
+    Lemma has_bool_hold_eval_atom :
+      forall k i, has_bool i = true ->
+                  eval_atom IsProp i <-> hold k (eval_atom k i).
+    Proof.
+      destruct k ; simpl; intros.
+      tauto.
+      apply has_bool_correct ; auto.
+    Qed.
+
+    Lemma hold_eval_binop_and : forall k f1 f2,
+        hold k (eval_binop and andb k f1 f2) <->
+        (hold k f1 /\ hold k f2).
+    Proof.
+      destruct k ; simpl; intros.
+      - tauto.
+      - split; intros.
+        apply andb_prop_elim. auto.
+        apply andb_prop_intro.  tauto.
+    Qed.
+
+    Lemma hold_eval_binop_or : forall k f1 f2,
+        hold k (eval_binop or orb k f1 f2) <->
+        (hold k f1 \/ hold k f2).
+    Proof.
+      destruct k ; simpl; intros.
+      - tauto.
+      - split; intros.
+        apply orb_prop_elim. auto.
+        apply orb_prop_intro.  tauto.
+    Qed.
+
+    Lemma hold_eval_binop_impl : forall k f1 f2,
+        hold k (eval_binop (fun x y => x -> y) implb k f1 f2) <->
+        (hold k f1 -> hold k f2).
+    Proof.
+      destruct k ; simpl; intros.
+      - tauto.
+      - split; intros.
+        destruct f1,f2 ; unfold Is_true in *; simpl in *; auto.
+        destruct f1,f2 ; unfold Is_true in *; simpl in *; auto.
+    Qed.
+
+
+
+    Fixpoint aux_to_formula_correct (pol:bool) (k:kind) (f:BFormula k) {struct f} :
+      if pol
+      then eval_formula (eval_atom IsProp) (to_formula pol k f) -> hold k (eval_bformula k f)
+      else hold k (eval_bformula k f) -> eval_formula (eval_atom IsProp) (to_formula pol k f).
+    Proof.
+      destruct f; simpl.
+      -
+        destruct pol.
+        + rewrite hold_eval_TT. tauto.
+        + rewrite hold_eval_TT. tauto.
+      - destruct pol.
+        + rewrite hold_eval_FF. tauto.
+        + rewrite hold_eval_FF. tauto.
+      -
+        unfold keep_atom.
+        destruct k.
+        +  destruct pol ; simpl ; tauto.
+        +
+        destruct (has_bool i) eqn:EQ.
+        * apply has_bool_hold_eval_atom with (k:=IsBool) in EQ.
+          destruct pol.
+          simpl. tauto.
+          simpl. tauto.
+        *  destruct pol; simpl.
+           tauto.
+           tauto.
+      - generalize (aux_to_formula_correct pol k (elt t0)).
+        generalize (aux_to_formula_correct pol k (elt t1)).
+        destruct o; simpl.
+        + destruct pol ; rewrite hold_eval_binop_and.
+          tauto.
+          tauto.
+        + destruct pol ; rewrite hold_eval_binop_or.
+          tauto.
+          tauto.
+        + generalize (aux_to_formula_correct (negb pol) k (elt t0)).
+          destruct pol; rewrite hold_eval_binop_impl.
+          * simpl.
+            tauto.
+          * simpl.
+            tauto.
+      - generalize (aux_to_formula_correct pol IsBool f).
+        destruct pol.
+        + simpl. tauto.
+        + simpl. tauto.
+    Qed.
+
+    Lemma to_formula_correct : forall (f:BFormula IsProp),
+        eval_formula (eval_atom IsProp) (to_formula true IsProp f) ->
+        eval_bformula IsProp f.
+    Proof.
+      apply (aux_to_formula_correct true IsProp).
+    Qed.
+
+    Definition to_hformula (f : HBFormula) :=
+      map_hcons (to_formula true IsProp) f.
+
+    Definition eval_hbformula  (f: HBFormula) :=
+      eval_bformula  IsProp f.(elt).
+
+    Lemma to_hformula_correct : forall (f:HBFormula),
+        eval_hformula (eval_atom IsProp) (to_hformula  f) ->
+        eval_hbformula  f.
+    Proof.
+      intros.
+      apply to_formula_correct.
+      apply H.
+    Qed.
+
+
+
+  End S.
+
+End BForm.
 
 Definition empty (A:Type) : @IntMap.ptrie int A := IntMap.empty A.
 Definition set (A:Type) (i:int) (v:A) (m : IntMap.ptrie A) :=
   IntMap.set' i v m.
 
-Definition dProp := {p : Prop & option (p \/ ~ p)}.
+Inductive atomT : Type :=
+| NBool : forall (p : Prop), option (p \/ ~ p) -> atomT
+| TBool : forall (b: bool) (p: Prop), p <-> Is_true b -> atomT.
 
-Definition eval_prop (m: IntMap.ptrie dProp) (i:int)  :=
-  match IntMap.get' i m with
-  | None => False
-  | Some (existT _ p _)  => p
+Definition mkAtom (p:Prop) := NBool p None.
+Definition mkAtomDec (p:Prop) (H:p\/ ~p) := NBool p (Some H).
+
+Definition hold_prop (p:Prop) (k: kind) : eval_kind k :=
+  match k with
+  | IsProp => p
+  | IsBool => false
   end.
 
-Definition eval_is_dec (m: IntMap.ptrie dProp) (i:int)  :=
+Definition hold_bool (b:bool) (k: kind) : eval_kind k :=
+  match k with
+  | IsProp => False
+  | IsBool => b
+  end.
+
+Definition eval_prop (m: IntMap.ptrie atomT) (k:kind) (i:int)  : eval_kind k :=
+  match IntMap.get' i m with
+  | None => BForm.eval_FF k
+  | Some v => match v with
+              | NBool p _ => hold_prop p k
+              | TBool b p _ => match k with
+                               | IsBool => b
+                               | IsProp => p
+                               end
+              end
+  end.
+
+Definition has_bool (m:IntMap.ptrie atomT) (i:int) : bool :=
   match IntMap.get' i m with
   | None => false
-  | Some (existT _ _ o)  => match o with
-                            | None => false
-                            | Some _ => true
-                            end
+  | Some v => match v with
+              | NBool _ _ => false
+              | TBool _ _ _ => true
+              end
   end.
 
-Lemma is_dec_correct : forall m i, eval_is_dec m i = true -> eval_prop m i \/ ~ eval_prop m i.
+Lemma has_bool_correct : forall am i,
+  has_bool am i = true -> eval_prop am IsProp i <-> Is_true (eval_prop am IsBool i).
+Proof.
+  unfold has_bool, eval_prop.
+  intros.
+  destruct (IntMap.get' i am).
+  - destruct a ; try congruence.
+  - simpl. tauto.
+Qed.
+
+Definition eval_is_dec (m: IntMap.ptrie atomT) (i:int)  :=
+  match IntMap.get' i m with
+  | None => false
+  | Some v => match v with
+              | NBool _ o =>
+                match o with
+                | None => false
+                | Some _ => true
+                end
+              | TBool _ _ _ => true
+              end
+  end.
+
+Lemma is_dec_correct : forall m i, eval_is_dec m i = true -> eval_prop m IsProp i  \/ ~ eval_prop m IsProp i .
 Proof.
   unfold eval_is_dec, eval_prop.
   intros. destruct (IntMap.get' i m);[| tauto].
-  destruct d as (p,o).
-  destruct o; auto.
-  congruence.
+  destruct a.
+  - destruct o ; try congruence.
+    apply o.
+  - rewrite i0.
+    destruct b; simpl; tauto.
 Qed.
 
 Class DecP1 {A : Type} (P : A -> Prop) :=
   decP1 : forall x, P x \/ ~ P x.
 
-
 Class DecP2 {A B: Type} (P : A -> B -> Prop) :=
   decP2 : forall x y, P x y \/ ~ P x y.
 
-Definition mkAtom (p: Prop): dProp :=
-  existT _ p None.
+Module Reflect.
 
-Definition mkDecAtom (p: Prop) (dec: p \/ ~ p) : dProp :=
-  existT _ p (Some dec).
+  Class Rbool1 {A:Type} (P : A -> bool) :=
+    mkrbool1 {
+        p1 : A -> Prop;
+        p1_prf : forall x, p1 x <-> Is_true (P x)
+      }.
+
+  Class Rbool2 {A B: Type} (P : A -> B -> bool) :=
+    mkrbool2 {
+        p2 : A -> B -> Prop;
+        p2_prf : forall x y, p2 x y <-> Is_true (P x y)
+      }.
+
+  (* Reverse mapping *)
+
+  Class RProp1 {A:Type} (P : A -> Prop) :=
+    mkrProp1 {
+       b1 : A -> bool;
+       b1_prf : forall x, P x <-> Is_true (b1 x)
+      }.
+
+  Class RProp2 {A B: Type} (P : A -> B -> Prop) :=
+    mkrProp2 {
+        b2 : A -> B -> bool;
+        b2_prf : forall x y, P x y <-> Is_true (b2 x y)
+      }.
+
+End Reflect.
 
 Register HCons.mk as cdcl.HCons.mk.
+
+Register AND as cdcl.op.AND.
+Register OR as cdcl.op.OR.
+Register IMPL as cdcl.op.IMPL.
+
+Register Is_true as cdcl.Is_true.
+Register iff_refl as cdcl.iff_refl.
+
+(** Propositional formulae *)
 Register Formula as cdcl.Formula.type.
 Register TT as cdcl.Formula.TT.
 Register FF as cdcl.Formula.FF.
 Register AT as cdcl.Formula.AT.
 Register OP as cdcl.Formula.OP.
-Register AND as cdcl.op.AND.
-Register OR as cdcl.op.OR.
-Register IMPL as cdcl.op.IMPL.
+
+(** Boolean formulae *)
+Import BForm.
+Register IsProp as cdcl.kind.IsProp.
+Register IsBool as cdcl.kind.IsBool.
+Register BFormula as cdcl.BFormula.type.
+Register BTT as cdcl.BFormula.BTT.
+Register BFF as cdcl.BFormula.BFF.
+Register BAT as cdcl.BFormula.BAT.
+Register BOP as cdcl.BFormula.BOP.
+Register BIT as cdcl.BFormula.BIT.
+
 Register eval_hformula as cdcl.eval_hformula.
+Register eval_hbformula as cdcl.eval_hbformula.
 Register eval_formula as cdcl.eval_formula.
 Register eval_prop as cdcl.eval_prop.
 Register eval_is_dec as cdcl.eval_is_dec.
-Register dProp as cdcl.dProp.
-Register DecP1 as cdcl.DecP1.
-Register DecP2 as cdcl.DecP2.
-Register decP1 as cdcl.decP1.
-Register decP2 as cdcl.decP2.
-Register mkAtom as cdcl.mkAtom.
-Register mkDecAtom as cdcl.mkDecAtom.
 
+Register DecP1 as cdcl.DecP1.
+Register decP1 as cdcl.decP1.
+Register DecP2 as cdcl.DecP2.
+Register decP2 as cdcl.decP2.
+
+Register Reflect.Rbool1    as cdcl.Rbool1.type.
+Register Reflect.p1        as cdcl.Rbool1.p1.
+Register Reflect.p1_prf    as cdcl.Rbool1.p1_prf.
+Register Reflect.Rbool2    as cdcl.Rbool2.type.
+Register Reflect.p2        as cdcl.Rbool2.p2.
+Register Reflect.p2_prf    as cdcl.Rbool2.p2_prf.
+
+Register Reflect.RProp1    as cdcl.RProp1.type.
+Register Reflect.b1        as cdcl.RProp1.b1.
+Register Reflect.b1_prf    as cdcl.RProp1.b1_prf.
+Register Reflect.RProp2    as cdcl.RProp2.type.
+Register Reflect.b2        as cdcl.RProp2.b2.
+Register Reflect.b2_prf    as cdcl.RProp2.b2_prf.
+
+Register atomT      as cdcl.atomT.type.
+Register mkAtom     as cdcl.mkAtom.
+Register mkAtomDec  as cdcl.mkAtomDec.
+Register TBool      as cdcl.atomT.TBool.
 
 Register empty as cdcl.IntMap.empty.
 Register set   as cdcl.IntMap.add.
@@ -5274,11 +5772,18 @@ Definition empty_thy  (is_dec: int -> bool) (eA: int -> Prop) : Thy is_dec eA.
     congruence.
 Qed.
 
+Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:Thy (eval_is_dec m) (eval_prop m IsProp)) (n:nat) (f: BForm.HBFormula) :=
+    hcons_prover (eval_is_dec m) (eval_prop m IsProp) thy n (BForm.to_hformula (has_bool m) f).
 
-Lemma hcons_prover_int_correct : forall n f am,
-    hcons_prover  (eval_is_dec am) (eval_prop am) (empty_thy (eval_is_dec am) (eval_prop am)) n f  = true -> eval_hformula (eval_prop am) f.
+Lemma hcons_bprover_correct : forall n (f:BForm.HBFormula) am,
+    hcons_bprover am (empty_thy (eval_is_dec am) (eval_prop am IsProp)) n f = true ->
+    BForm.eval_hbformula  (eval_prop am)  f.
 Proof.
   intros n f am.
-  eapply hcons_prover_correct; eauto.
-  -  apply is_dec_correct.
+  intros.
+  apply BForm.to_hformula_correct with (has_bool := has_bool am).
+  - apply has_bool_correct.
+  - unfold hcons_bprover in H.
+    eapply hcons_prover_correct; eauto.
+    apply is_dec_correct.
 Qed.
