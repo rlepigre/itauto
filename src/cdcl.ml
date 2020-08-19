@@ -588,46 +588,26 @@ module Theory = struct
     select 1 l
 
   let deps_of_proof evd c =
-    let rec deps d s c =
-      match EConstr.kind evd c with
-      | Rel i ->
-        let i' = i - d in
-        if i' <= 0 then s else ISet.add i' s
-      | App (c, i) -> Array.fold_left (fun s t -> deps d s t) (deps d s c) i
-      | Const _ | Construct _ | Var _ | Sort _ | Ind _ -> s
-      | Lambda (x, t, e) -> deps (d + 1) (deps d s t) e
-      | Prod (x, t, e) -> deps (d + 1) (deps d s t) e
-      | LetIn (x, e1, t1, e2) -> deps (d + 1) (deps d (deps d s e1) t1) e2
-      | Cast (c, _, t) -> deps d (deps d s c) t
-      | Int _ | Float _ -> s
-      | _ ->
-        Feedback.msg_debug
-          Pp.(str "deps_of_proof : " ++ pr_constr (Global.env ()) evd c);
-        failwith "deps of proof"
+    let rec deps_rec depth (acc : ISet.t) (c : Constr.constr) =
+      match Constr.kind c with
+      | Constr.Rel i ->
+        let i' = i - depth in
+        if i' <= 0 then acc else ISet.add i' acc
+      | _ -> fold_constr_with_binders succ deps_rec depth acc c
     in
+    let deps c = deps_rec 0 ISet.empty c in
     let binders, prf = intros_proof evd [] c in
-    (binders, hyps_of_rels (deps 0 ISet.empty prf) binders, prf)
+    (binders, hyps_of_rels (deps (EConstr.to_constr evd prf)) binders, prf)
 
   let remap_proof m evd c =
-    let rec remap d c =
+    let rec remap evd d c =
       match EConstr.kind evd c with
       | Rel i ->
         let i' = i - d in
         if i' <= 0 then EConstr.mkRel i else EConstr.mkRel (IMap.find i' m + d)
-      | App (c, a) -> EConstr.mkApp (remap d c, Array.map (remap d) a)
-      | Const _ | Construct _ | Var _ | Sort _ | Ind _ -> c
-      | Lambda (x, t, e) -> EConstr.mkLambda (x, remap d t, remap (d + 1) e)
-      | Prod (x, t, e) -> EConstr.mkProd (x, remap d t, remap (d + 1) e)
-      | LetIn (x, e1, t1, e2) ->
-        EConstr.mkLetIn (x, remap d e1, remap d t1, remap (d + 1) e2)
-      | Cast (c, k, t) -> EConstr.mkCast (remap d c, k, remap d t)
-      | Int _ | Float _ -> c
-      | _ ->
-        Feedback.msg_debug
-          Pp.(str "remap_proof : " ++ pr_constr (Global.env ()) evd c);
-        failwith "remap_proof"
+      | _ -> EConstr.map_with_binders evd succ (remap evd) d c
     in
-    remap 0 c
+    remap evd 0 c
 
   let remap_binders l' l =
     let rec remap i j m l' l =
@@ -666,16 +646,24 @@ module Theory = struct
     | (x, u) :: l -> EConstr.mkLambda (Context.nameR x, u, mkLambdas l t)
 
   let reduce_proof sigma cl prf =
-    let binders, used_binders, prf' = deps_of_proof sigma prf in
-    let rused = List.rev used_binders in
-    let core = get_used_hyps rused cl in
-    let prf_core =
-      remap_proof (remap_binders used_binders binders) sigma prf'
-    in
-    (core, mkLambdas rused prf_core)
+    try
+      let binders, used_binders, prf' = deps_of_proof sigma prf in
+      let rused = List.rev used_binders in
+      let core = get_used_hyps rused cl in
+      let prf_core =
+        remap_proof (remap_binders used_binders binders) sigma prf'
+      in
+      (core, mkLambdas rused prf_core)
+    with
+    | Not_found -> failwith "reduce proof error"
+    | e' ->
+      Feedback.msg_debug Pp.(str "reduce proof : " ++ CErrors.print e');
+      raise e'
 
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause ep cl in
+    Feedback.msg_debug
+      Pp.(str "Looking for unsat core : " ++ pr_constr env sigma gl);
     let e, pv = Proofview.init sigma [(env, gl)] in
     try
       let _, pv, _, _ =
@@ -686,27 +674,33 @@ module Theory = struct
              (Tacticals.New.tclCOMPLETE tac))
           pv
       in
+      Feedback.msg_debug Pp.(str "proof has run");
       match Proofview.partial_proof e pv with
       | [prf] -> UnsatCore (reduce_proof sigma cl prf)
       | _ -> failwith "Multiple proof terms"
-    with e when CErrors.noncritical e -> NoCore (CErrors.print e, gl)
+    with e when CErrors.noncritical e ->
+      Feedback.msg_debug
+        Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
+      NoCore (CErrors.print e, gl)
+
+  let cons_core c f a =
+    match c with
+    | UnsatCore c -> UnsatCore c
+    | NoCore e -> (
+      match f a with UnsatCore c -> UnsatCore c | NoCore l -> NoCore (e :: l) )
 
   let find_unsat_core ep cl tac env sigma =
+    let gl = constr_of_clause ep cl in
+    Feedback.msg_debug
+      Pp.(str "Looking for unsat core : " ++ pr_constr env sigma gl ++ str "\n");
     let ln, lp = split_clause cl in
     let rec all_cores c =
       match c with
       | [] -> NoCore []
-      | c1 :: c -> (
-        match find_unsat_core ep (ln @ [c1]) tac env sigma with
-        | UnsatCore s -> UnsatCore s
-        | NoCore r -> (
-          match all_cores c with
-          | UnsatCore s -> UnsatCore s
-          | NoCore r' -> NoCore (r :: r') ) )
+      | c1 :: c ->
+        cons_core (find_unsat_core ep (ln @ [c1]) tac env sigma) all_cores c
     in
-    match find_unsat_core ep lp tac env sigma with
-    | NoCore _ -> all_cores lp
-    | UnsatCore s -> UnsatCore s
+    cons_core (find_unsat_core ep ln tac env sigma) all_cores lp
 
   let pp_no_core env sigma l =
     Pp.(
@@ -766,7 +760,7 @@ let tclRETYPE c =
       let sigma, _ = Typing.type_of env sigma c in
       Unsafe.tclEVARS sigma)
 
-let assert_conflicts ep l tac gl =
+let assert_conflicts ep l gl =
   let mk_goal c = Theory.constr_of_clause ep c in
   let rec assert_conflicts n l =
     match l with
@@ -775,7 +769,6 @@ let assert_conflicts ep l tac gl =
       let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
       Tacticals.New.tclTHEN
         (Tactics.assert_by (Names.Name id) (mk_goal c)
-           (*(Tacticals.New.tclTHEN (Tactics.keep []) tac)*)
            (Tacticals.New.tclTHEN (tclRETYPE prf) (Tactics.exact_check prf)))
         (assert_conflicts (n + 1) l)
   in
@@ -801,7 +794,7 @@ let assert_conflicts_clauses tac =
       let form = P.BForm.to_hformula has_bool bform in
       let cc = ref [] in
       match run_prover tac cc (genv, sigma) env form with
-      | P.HasProof _ -> assert_conflicts env !cc tac gl
+      | P.HasProof _ -> assert_conflicts env !cc gl
       | _ -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology"))
 
 let change_goal =
