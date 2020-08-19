@@ -572,10 +572,11 @@ module Theory = struct
 
   let rec intros_proof evd binders c =
     match EConstr.kind evd c with
-    | Lambda (c, _, t) -> intros_proof evd (name_of_binder c :: binders) t
+    | Lambda (c, t, e) -> intros_proof evd ((name_of_binder c, t) :: binders) e
     | _ -> (binders, c)
 
   module ISet = Set.Make (Int)
+  module IMap = Map.Make (Int)
 
   let hyps_of_rels s l =
     let rec select i l =
@@ -605,7 +606,42 @@ module Theory = struct
         failwith "deps of proof"
     in
     let binders, prf = intros_proof evd [] c in
-    hyps_of_rels (deps 0 ISet.empty prf) binders
+    (binders, hyps_of_rels (deps 0 ISet.empty prf) binders, prf)
+
+  let remap_proof m evd c =
+    let rec remap d c =
+      match EConstr.kind evd c with
+      | Rel i ->
+        let i' = i - d in
+        if i' <= 0 then EConstr.mkRel i else EConstr.mkRel (IMap.find i' m + d)
+      | App (c, a) -> EConstr.mkApp (remap d c, Array.map (remap d) a)
+      | Const _ | Construct _ | Var _ | Sort _ | Ind _ -> c
+      | Lambda (x, t, e) -> EConstr.mkLambda (x, remap d t, remap (d + 1) e)
+      | Prod (x, t, e) -> EConstr.mkProd (x, remap d t, remap (d + 1) e)
+      | LetIn (x, e1, t1, e2) ->
+        EConstr.mkLetIn (x, remap d e1, remap d t1, remap (d + 1) e2)
+      | Cast (c, k, t) -> EConstr.mkCast (remap d c, k, remap d t)
+      | Int _ | Float _ -> c
+      | _ ->
+        Feedback.msg_debug
+          Pp.(str "remap_proof : " ++ pr_constr (Global.env ()) evd c);
+        failwith "remap_proof"
+    in
+    remap 0 c
+
+  let remap_binders l' l =
+    let rec remap i j m l' l =
+      match l' with
+      | [] -> m
+      | (id, _) :: ll' -> (
+        match l with
+        | (id', _) :: ll ->
+          if Names.Id.equal id id' then
+            remap (i + 1) (j + 1) (IMap.add j i m) ll' ll
+          else remap i (j + 1) m l' ll
+        | [] -> failwith "remap_binders not a sublist" )
+    in
+    remap 1 1 IMap.empty l' l
 
   let rec concl_of_clause cl =
     match cl with
@@ -615,14 +651,28 @@ module Theory = struct
   let rec get_used_hyps l' cl =
     match l' with
     | [] -> concl_of_clause cl
-    | e :: l' -> (
+    | (e, t) :: l' -> (
       match cl with
       | [] -> failwith "get_used_hyps"
       | at :: cl ->
         if Names.Id.equal e (id_of_literal at) then at :: get_used_hyps l' cl
-        else get_used_hyps (e :: l') cl )
+        else get_used_hyps ((e, t) :: l') cl )
 
-  type 'a core = UnsatCore of P.literal list | NoCore of 'a
+  type 'a core = UnsatCore of (P.literal list * EConstr.t) | NoCore of 'a
+
+  let rec mkLambdas l t =
+    match l with
+    | [] -> t
+    | (x, u) :: l -> EConstr.mkLambda (Context.nameR x, u, mkLambdas l t)
+
+  let reduce_proof sigma cl prf =
+    let binders, used_binders, prf' = deps_of_proof sigma prf in
+    let rused = List.rev used_binders in
+    let core = get_used_hyps rused cl in
+    let prf_core =
+      remap_proof (remap_binders used_binders binders) sigma prf'
+    in
+    (core, mkLambdas rused prf_core)
 
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause ep cl in
@@ -637,9 +687,7 @@ module Theory = struct
           pv
       in
       match Proofview.partial_proof e pv with
-      | [prf] ->
-        let l = List.rev (deps_of_proof sigma prf) in
-        UnsatCore (get_used_hyps l cl)
+      | [prf] -> UnsatCore (reduce_proof sigma cl prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e -> NoCore (CErrors.print e, gl)
 
@@ -669,9 +717,9 @@ module Theory = struct
   let thy_prover tac cc p (genv, sigma) ep hm l =
     match find_unsat_core ep l tac genv sigma with
     | NoCore r -> CErrors.user_err (pp_no_core genv sigma r)
-    | UnsatCore core ->
+    | UnsatCore (core, prf) ->
       Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
-      cc := core :: !cc;
+      cc := (core, prf) :: !cc;
       Some (hm, core)
 end
 
@@ -702,16 +750,33 @@ let fresh_id id gl =
           Evarutil.new_evar env sigma ~principal:true concl))
  *)
 
+(* tclEVARS and tclRETYPE are borrowed from aactactics *)
+
+let tclEVARS sigma gl =
+  let open Evd in
+  {it = [gl.it]; sigma}
+
+let tclRETYPE c =
+  let open Proofview.Notations in
+  let open Proofview in
+  tclEVARMAP
+  >>= fun sigma ->
+  Proofview.Goal.enter (fun goal ->
+      let env = Proofview.Goal.env goal in
+      let sigma, _ = Typing.type_of env sigma c in
+      Unsafe.tclEVARS sigma)
+
 let assert_conflicts ep l tac gl =
   let mk_goal c = Theory.constr_of_clause ep c in
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC
-    | c :: l ->
+    | (c, prf) :: l ->
       let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
       Tacticals.New.tclTHEN
         (Tactics.assert_by (Names.Name id) (mk_goal c)
-           (Tacticals.New.tclTHEN (Tactics.keep []) tac))
+           (*(Tacticals.New.tclTHEN (Tactics.keep []) tac)*)
+           (Tacticals.New.tclTHEN (tclRETYPE prf) (Tactics.exact_check prf)))
         (assert_conflicts (n + 1) l)
   in
   assert_conflicts 0 l
