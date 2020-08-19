@@ -491,7 +491,7 @@ Inductive op :=
         arrows : list literal;
         (* [wneg] : watched negative litterals - are needed to generate complete conflict clauses*)
         wneg : iset;
-        (* Formulae which cnf has been already unfold *)
+        (* Formulae which cnf has been already unfolded *)
         defs : iset * iset ;
         units : IntMap.ptrie (key:=int) bool;
         unit_stack : list literal;
