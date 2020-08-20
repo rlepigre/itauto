@@ -9,5 +9,6 @@ theories/Coqlib.v
 -I src/
 src/proverPatch.ml
 src/cdcl.ml
+src/no.ml
 src/g_cdcl.mlg
 src/cdcl_plugin.mlpack

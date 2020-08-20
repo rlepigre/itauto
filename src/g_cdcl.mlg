@@ -19,7 +19,7 @@
 {
 
 open Ltac_plugin 
-(*open Stdarg*)
+open Stdarg
 open Tacarg 
 
 
@@ -33,5 +33,11 @@ TACTIC EXTEND CDCL
 | [ "cdcl_change"  ] -> { Cdcl.change_goal     }
 | [ "cdcl_conflicts" tactic(t)] -> { Cdcl.assert_conflicts_clauses (Tacinterp.tactic_of_value ist t)}
 | [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }
+END
+
+TACTIC EXTEND NO
+| [ "purify" constr(c) ]     -> { No.purify_tac c }
+| [ "no" constr(c) tactic(t1) tactic(t2) ] ->
+   { No.no_tac c (Tacinterp.tactic_of_value ist t1) (Tacinterp.tactic_of_value ist t2) }
 END
 

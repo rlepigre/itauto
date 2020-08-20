@@ -203,6 +203,48 @@ Inductive op :=
 
   Definition hmap := IntMap.ptrie (key:=int) (bool*Formula)%type.
 
+
+  Inductive literal : Type :=
+  | POS (f:HFormula)
+  | NEG (f:HFormula).
+
+  Module Annot.
+
+    Record t (A: Type) : Type :=
+    {
+      elt : A;
+      splits : IntMap.ptrie (key:= int) bool (* Set of literals that are obtained by a split *)
+    }.
+
+  End Annot.
+
+
+  Module Prf.
+
+    Inductive cnfOp :=
+    | Proj1 (* [A /\ B] -> A *)
+    | Proj2 (* [A /\ B] -> B *)
+    | Conj  (* A -> B -> [A /\ B] *)
+    | Or_introl (* A -> [A \/ B] *)
+    | Or_intror (* B -> [A \/ B] *)
+    | Or_dest   (* [A \/ B] -> A \/ B *)
+    | Impl_introW (* B -> [A -> B] *)
+    | Impl_introS (* A \/ [A -> B] *)
+    | Impl_dest   (* [A -> B] -> A -> B *).
+
+    Inductive ax : Type :=
+    | Intro (f:HFormula) (* Intro [A -> B] generates the formula A *)
+    | Case  (i:int) (l:list literal). (* extracts the ith literal *)
+
+    Inductive t :=
+    | Ax (a:ax)
+    | Tauto (c:cnfOp) (f: HFormula)
+    | MP (p1: HCons.t t) (cl: HCons.t t).
+
+  End Prf.
+
+
+  
   Section S.
 
     Variable AT_is_dec : int -> bool.
@@ -390,20 +432,16 @@ Inductive op :=
       destruct o ; simpl ; tauto.
   Qed.
 
-
-  Inductive literal : Type :=
-  | POS (f:HFormula)
-  | NEG (f:HFormula).
-
-
-
-
   Record watched_clause : Type :=
     {
     watch1 : literal;
     watch2 : literal;
     unwatched : list literal
     }.
+
+
+
+
 
   Inductive clause :=
   | EMPTY
@@ -473,6 +511,7 @@ Inductive op :=
             hmap_order hm hm' /\
             Forall (has_literal hm') cl'
       }.
+
 
   Definition watch_map_elt := (IntMap.ptrie (key:=int) watched_clause * IntMap.ptrie (key:=int) watched_clause )%type.
 
@@ -645,8 +684,6 @@ Inductive op :=
     unwatched := nil
     |} :: rst.
 
-  (* This one is incomplete
-     - should take into account the conclusion! *)
   Definition cnf_plus_impl (is_classic: bool) (f1 f2: HFormula) (f: HFormula) (rst: list watched_clause) :=
     if is_classic
     then
@@ -1035,6 +1072,8 @@ Inductive op :=
   Definition cnf_hyps (is_classic: bool) (l: list literal) (st: state) :=
     fold_update (augment_hyp is_classic) l st.
 
+
+  Check intro_impl.
 
 
   Definition intro_state (st:state) (f: Formula) (hf: HFormula) :=
@@ -2202,32 +2241,6 @@ Inductive op :=
       +  eapply FOK; eauto.
   Qed.
 
-(*
-
-  Lemma fold_update_correct :
-    forall {A: Type} (F: A -> state -> option state)
-           (P: option state -> Prop) l
-           (INCR : forall st a, incr_hconsmap (Some st) (F a st))
-           (FOK : forall x st,
-               In x l -> P (Some st) ->
-               incr_hconsmap (Some st) (F x st) ->
-               P (F x st))
-           st
-           (Acc : P (Some st)),
-           P (fold_update F  l st).
-  Proof.
-    induction l; simpl.
-    - auto.
-    - intros.
-      generalize (FOK _ _ (or_introl eq_refl) Acc).
-      destruct (F a st)eqn:EQ ; auto.
-      intros. apply IHl; auto.
-      apply H.
-      change (incr_hconsmap (Some st) (Some s)).
-      rewrite <- EQ.
-      apply INCR.
-  Qed.
-*)
 
   Lemma eval_fold_update :
     forall {A: Type} (EVAL : A -> Prop) (WP : hmap -> A -> Prop) F l
