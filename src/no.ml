@@ -80,24 +80,15 @@ let rec remember_term ty env evd senv t =
     Array.fold_right
       (fun e (l, senv) ->
         let r, senv = remember_term ty env evd senv e in
-        Feedback.msg_debug
-          Pp.(
-            str "remember "
-            ++ Printer.pr_econstr_env env evd e
-            ++ str "="
-            ++ pp_econstr_purity env evd r);
         (r :: l, senv))
       a ([], senv)
   in
   let name k (c, p) senv =
     if k = p then
-      match EConstr.kind evd c with
-      | Var _ -> (c, senv)
-      | _ -> (
-        try (EConstr.mkVar (HConstr.find c senv.map), senv)
-        with Not_found ->
-          let c, senv = register_constr senv ty c in
-          (c, senv) )
+      try (EConstr.mkVar (HConstr.find c senv.map), senv)
+      with Not_found ->
+        let c, senv = register_constr senv ty c in
+        (c, senv)
     else (c, senv)
   in
   let names k l senv =
@@ -169,6 +160,12 @@ let rec all_pairs l =
   | [] -> []
   | e :: l -> List.fold_left (fun acc e' -> (e, e') :: acc) (all_pairs l) l
 
+let show_goal =
+  Proofview.Goal.enter (fun gl ->
+      Feedback.msg_debug
+        Pp.(str " Current  goal " ++ Printer.pr_goal (Proofview.Goal.print gl));
+      Tacticals.New.tclIDTAC)
+
 let or_prover tac1 tac2 = Tacticals.New.tclSOLVE [tac1; tac2]
 
 let idtac_constr msg l =
@@ -179,36 +176,54 @@ let idtac_constr msg l =
         Pp.(str msg ++ pr_enum (Printer.pr_econstr_env env evd) l);
       Tacticals.New.tclIDTAC)
 
-let no_tac ty tac1 tac2 s ll =
-  let rec no_tac1 s ll =
-    Tacticals.New.tclORD (or_prover tac1 tac2) (fun () -> no_tac2 s ll)
-  and no_tac2 s ll =
-    match ll with
-    | [] -> Tacticals.New.tclIDTAC
-    | (e1, e2) :: ll ->
-      Tacticals.New.tclTHEN
-        (idtac_constr "Trying to prove " [e1; e2])
-        (Tacticals.New.tclIFTHENELSE
-           (prove_equation s ty e1 e2 (or_prover tac1 tac2))
-           (no_tac1 (Nameops.Subscript.succ s) ll)
-           (no_tac2 (Nameops.Subscript.succ s) ll))
-  in
-  no_tac1 s ll
+open Proofview.Notations
 
-let no_tac ty tac1 tac2 =
+let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
+  match tacl with
+  | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove using any prover")
+  | (tac, i) :: tacl ->
+    if select i then
+      Proofview.tclOR
+        (by tac >>= fun () -> Proofview.tclUNIT i)
+        (fun _ -> solve_with select by tacl)
+    else solve_with select by tacl
+
+let utactic tac = tac >>= fun _ -> Tacticals.New.tclIDTAC
+
+let no_tacs ty tacl =
+  let rec prove_one_equation s acc ll =
+    match ll with
+    | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove any equation")
+    | (e1, e2) :: ll ->
+      Proofview.tclOR
+        ( solve_with (fun _ -> true) (prove_equation s ty e1 e2) tacl
+        >>= fun i -> Proofview.tclUNIT (i, List.rev_append acc ll) )
+        (fun _ -> prove_one_equation s ((e1, e2) :: acc) ll)
+  in
+  let rec no_tac s ll =
+    prove_one_equation s [] ll
+    >>= fun (i, ll') ->
+    Proofview.tclOR
+      (solve_with (fun i' -> i <> i') (fun x -> x) tacl)
+      (fun e -> no_tac (Nameops.Subscript.succ s) ll')
+  in
   Tacticals.New.tclTHEN
     (Tacticals.New.tclREPEAT Tactics.intro)
     (Proofview.Goal.enter (fun gl ->
          let s, l = collect_shared ty gl in
-         Feedback.msg_debug
-           Pp.(str "Starting no_tac with " ++ int (List.length l) ++ str "\n");
          let ll =
            all_pairs
              (List.map
                 (fun (x, s, _, _) -> EConstr.mkVar (Nameops.add_subscript x s))
                 l)
          in
-         Tacticals.New.tclTHENLIST [purify l; no_tac ty tac1 tac2 s ll]))
+         Tacticals.New.tclTHENLIST [purify l; utactic (no_tac s ll)]))
+
+let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)
+
+let no_tac ty tac1 tac2 =
+  let tacs = List.mapi (fun i t -> (t, i)) [tac1; tac2] in
+  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs ty tacs)
 
 let purify_tac ty =
   Proofview.Goal.enter (fun gl ->
