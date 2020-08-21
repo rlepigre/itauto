@@ -1,4 +1,4 @@
-COQLIB = /home/fbesson/.opam/coq-fajb/lib/coq/kernel
+HOME=/home/fbesson/sources/coq-fajb/bin/
 
 all : CoqMakefile _CoqProject
 	make -f CoqMakefile
@@ -27,5 +27,5 @@ clean :
 	make -f CoqMakefile clean
 
 CoqMakefile : _CoqProject
-	coq_makefile -f _CoqProject -o CoqMakefile
+	$(HOME)coq_makefile -f _CoqProject -o CoqMakefile
 

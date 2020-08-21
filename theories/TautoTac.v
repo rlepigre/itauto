@@ -27,6 +27,6 @@ Ltac tauto := tauton idtac 100%nat.
 Tactic Notation "tauto" := tauto.
 Tactic Notation "tauto" tactic(tac) := tauton tac 100%nat.
 
-Ltac smt ty :=
-  let tac := no ty congruence lia in
+Ltac smt :=
+  let tac := no congruence lia in
   tauton tac 100%nat.

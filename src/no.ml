@@ -27,21 +27,32 @@ module HConstr = struct
 end
 
 let decompose_app env evd e =
-  match EConstr.kind evd e with
-  | App (c, a) -> (c, a)
-  | _ -> (EConstr.whd_evar evd e, [||])
+  try
+    match EConstr.kind evd e with
+    | App (c, a) -> (c, a)
+    | _ -> (EConstr.whd_evar evd e, [||])
+  with _ -> failwith "decompose_app"
+
+type purify =
+  (* [Pure] term of type ty such that any substerm is of type ty *)
+  | Pure
+  (* [Impure] may be of any type but does not contain pure subterms (except variables) *)
+  | Impure
 
 type spec_env =
-  { map : Names.Id.t HConstr.t
+  { map : (Names.Id.t * purify) HConstr.t
   ; term_name : Names.Id.t
   ; fresh : Nameops.Subscript.t
   ; remember : (Names.Id.t * Nameops.Subscript.t * EConstr.t * EConstr.t) list
   }
 
-let register_constr {map; term_name; fresh; remember} ty c =
+let register_constr env evd {map; term_name; fresh; remember} c p =
+  Feedback.msg_debug
+    Pp.(str "register_constr " ++ Printer.pr_econstr_env env evd c);
   let tname = Nameops.add_subscript term_name fresh in
+  let ty = Retyping.get_type_of env evd c in
   ( EConstr.mkVar tname
-  , { map = HConstr.add c tname map
+  , { map = HConstr.add c (tname, p) map
     ; term_name
     ; fresh = Nameops.Subscript.succ fresh
     ; remember = (term_name, fresh, ty, c) :: remember } )
@@ -62,32 +73,36 @@ let init_env tname s =
 let has_typ env evd ty t =
   EConstr.eq_constr evd ty (Retyping.get_type_of env evd t)
 
-type purify =
-  (* [Pure] term of type ty such that any substerm is of type ty *)
-  | Pure
-  (* [Impure] may be of any type but does not contain pure subterms (except variables) *)
-  | Impure
-
 let is_pure = function Pure -> true | _ -> false
 let pp_purity = function Pure -> Pp.str "Pure" | Impure -> Pp.str "Impure"
 
 let pp_econstr_purity env evd (c, p) =
   Pp.(Printer.pr_econstr_env env evd c ++ str ":" ++ pp_purity p)
 
-let rec remember_term ty env evd senv t =
-  let c, a = decompose_app env evd t in
-  let a, senv =
-    Array.fold_right
-      (fun e (l, senv) ->
-        let r, senv = remember_term ty env evd senv e in
-        (r :: l, senv))
-      a ([], senv)
+let declared_term env evd c a =
+  let msg =
+    Pp.(
+      str "declared_term "
+      ++ Printer.pr_econstr_env env evd c
+      ++ str "("
+      ++ prvect (fun c -> Printer.pr_econstr_env env evd c ++ str " | ") a
+      ++ str ") : ")
   in
+  match Zify_plugin.Zify.declared_term env evd c a with
+  | c', a' ->
+    Feedback.msg_debug Pp.(msg ++ str "Pure");
+    (c', a')
+  | exception Not_found ->
+    Feedback.msg_debug Pp.(msg ++ str "Impure");
+    raise Not_found
+
+let rec remember_term env evd senv t =
+  let isVar c = try EConstr.isVar evd c with _ -> true in
   let name k (c, p) senv =
     if k = p then
-      try (EConstr.mkVar (HConstr.find c senv.map), senv)
+      try (EConstr.mkVar (fst (HConstr.find c senv.map)), senv)
       with Not_found ->
-        let c, senv = register_constr senv ty c in
+        let c, senv = register_constr env evd senv c p in
         (c, senv)
     else (c, senv)
   in
@@ -98,14 +113,31 @@ let rec remember_term ty env evd senv t =
         (c' :: l, senv))
       l ([], senv)
   in
-  if has_typ env evd ty t && List.for_all (fun (t, _) -> has_typ env evd ty t) a
-  then
-    (* We generate a pure term *)
-    let a, senv = names Impure a senv in
-    ((EConstr.mkApp (c, Array.of_list a), Pure), senv)
-  else
-    let a, senv = names Pure a senv in
-    ((EConstr.mkApp (c, Array.of_list a), Impure), senv)
+  try
+    let id, p = HConstr.find t senv.map in
+    ((EConstr.mkVar id, p), senv)
+  with Not_found -> (
+    let c, a = decompose_app env evd t in
+    let c, a, p =
+      match declared_term env evd c a with
+      | c, a -> (c, a, Pure)
+      | exception Not_found ->
+        if isVar c && a = [||] then (c, a, Pure) else (c, a, Impure)
+    in
+    let a, senv =
+      Array.fold_right
+        (fun e (l, senv) ->
+          let r, senv = remember_term env evd senv e in
+          (r :: l, senv))
+        a ([], senv)
+    in
+    match p with
+    | Pure ->
+      let a, senv = names Impure a senv in
+      ((EConstr.mkApp (c, Array.of_list a), Pure), senv)
+    | Impure ->
+      let a, senv = names Pure a senv in
+      ((EConstr.mkApp (c, Array.of_list a), Impure), senv) )
 
 (** [eq_proof typ source target] returns (target = target : source = target) *)
 let eq_proof typ source target =
@@ -114,16 +146,29 @@ let eq_proof typ source target =
     , DEFAULTcast
     , EConstr.mkApp (force eq, [|typ; source; target|]) )
 
+let show_goal =
+  Proofview.Goal.enter (fun gl ->
+      Feedback.msg_debug
+        Pp.(str " Current  goal " ++ Printer.pr_goal (Proofview.Goal.print gl));
+      Tacticals.New.tclIDTAC)
+
 let remember_tac id h (s, ty, t) =
   let tn = Nameops.add_subscript id s in
   let hn = Nameops.add_subscript h s in
-  Tacticals.New.tclTHENLIST
-    [ Tactics.letin_tac None (Names.Name tn) t None
-        {Locus.onhyps = None; Locus.concl_occs = Locus.AllOccurrences}
-    ; Tactics.pose_proof (Name hn) (eq_proof ty (EConstr.mkVar tn) t)
-    ; Tactics.clear_body [tn] ]
+  Proofview.Goal.enter (fun gl ->
+      let env = Tacmach.New.pf_env gl in
+      let evd = Tacmach.New.project gl in
+      Feedback.msg_debug
+        Pp.(
+          str "remember "
+          ++ Printer.pr_econstr_env env evd t
+          ++ str " as " ++ Names.Id.print tn);
+      Tactics.letin_tac
+        (Some (false, CAst.make (Namegen.IntroFresh hn)))
+        (Names.Name tn) t None
+        {Locus.onhyps = None; Locus.concl_occs = Locus.AllOccurrences})
 
-let collect_shared ty gl =
+let collect_shared gl =
   let terms =
     Tacmach.New.pf_concl gl :: List.map snd (Tacmach.New.pf_hyps_types gl)
   in
@@ -133,38 +178,41 @@ let collect_shared ty gl =
   let pr = Names.Id.of_string "pr" in
   let senv =
     List.fold_left
-      (fun acc t -> snd (remember_term ty env evd acc t))
+      (fun acc t -> snd (remember_term env evd acc t))
       (init_env pr s) terms
   in
   (senv.fresh, List.rev senv.remember)
 
 let purify l =
   Proofview.Goal.enter (fun gl ->
+      let env = Tacmach.New.pf_env gl in
+      let evd = Tacmach.New.project gl in
+      Feedback.msg_debug
+        Pp.(
+          str "purify "
+          ++ Pp.pr_enum (fun (_, _, _, t) -> Printer.pr_econstr_env env evd t) l);
       let hpr = Names.Id.of_string "hpr" in
       Tacticals.New.tclMAP
         (fun (tn, s, ty, t) -> remember_tac tn hpr (s, ty, t))
-        (List.rev l))
+        l)
 
 let fresh_id id gl =
   Tactics.fresh_id_in_env Id.Set.empty id (Proofview.Goal.env gl)
 
-let prove_equation s ty c1 c2 tac =
+let prove_equation s c1 ty c2 tac =
   Proofview.Goal.enter (fun gl ->
       let id = Nameops.add_subscript (Names.Id.of_string "__eq") s in
       Tactics.assert_by (Names.Name id)
         (EConstr.mkApp (Lazy.force eq, [|ty; c1; c2|]))
         tac)
 
-let rec all_pairs l =
+let rec all_pairs eq_typ l =
   match l with
   | [] -> []
-  | e :: l -> List.fold_left (fun acc e' -> (e, e') :: acc) (all_pairs l) l
-
-let show_goal =
-  Proofview.Goal.enter (fun gl ->
-      Feedback.msg_debug
-        Pp.(str " Current  goal " ++ Printer.pr_goal (Proofview.Goal.print gl));
-      Tacticals.New.tclIDTAC)
+  | (e, ty) :: l ->
+    List.fold_left
+      (fun acc (e', ty') -> if eq_typ ty ty' then (e, ty, e') :: acc else acc)
+      (all_pairs eq_typ l) l
 
 let or_prover tac1 tac2 = Tacticals.New.tclSOLVE [tac1; tac2]
 
@@ -190,15 +238,15 @@ let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
 
 let utactic tac = tac >>= fun _ -> Tacticals.New.tclIDTAC
 
-let no_tacs ty tacl =
+let no_tacs tacl =
   let rec prove_one_equation s acc ll =
     match ll with
     | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove any equation")
-    | (e1, e2) :: ll ->
+    | (e1, ty, e2) :: ll ->
       Proofview.tclOR
-        ( solve_with (fun _ -> true) (prove_equation s ty e1 e2) tacl
+        ( solve_with (fun _ -> true) (prove_equation s e1 ty e2) tacl
         >>= fun i -> Proofview.tclUNIT (i, List.rev_append acc ll) )
-        (fun _ -> prove_one_equation s ((e1, e2) :: acc) ll)
+        (fun _ -> prove_one_equation s ((e1, ty, e2) :: acc) ll)
   in
   let rec no_tac s ll =
     prove_one_equation s [] ll
@@ -210,22 +258,27 @@ let no_tacs ty tacl =
   Tacticals.New.tclTHEN
     (Tacticals.New.tclREPEAT Tactics.intro)
     (Proofview.Goal.enter (fun gl ->
-         let s, l = collect_shared ty gl in
+         Feedback.msg_debug (Pp.str "About to collect\n");
+         let s, l = collect_shared gl in
+         Feedback.msg_debug (Pp.str "Done collect\n");
+         let evd = Tacmach.New.project gl in
          let ll =
-           all_pairs
+           all_pairs (EConstr.eq_constr evd)
              (List.map
-                (fun (x, s, _, _) -> EConstr.mkVar (Nameops.add_subscript x s))
+                (fun (x, s, ty, _) ->
+                  (EConstr.mkVar (Nameops.add_subscript x s), ty))
                 l)
          in
+         Feedback.msg_debug (Pp.str "About to purify\n");
          Tacticals.New.tclTHENLIST [purify l; utactic (no_tac s ll)]))
 
 let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)
 
-let no_tac ty tac1 tac2 =
+let no_tac tac1 tac2 =
   let tacs = List.mapi (fun i t -> (t, i)) [tac1; tac2] in
-  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs ty tacs)
+  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs tacs)
 
-let purify_tac ty =
+let purify_tac =
   Proofview.Goal.enter (fun gl ->
-      let s, l = collect_shared ty gl in
+      let s, l = collect_shared gl in
       purify l)
