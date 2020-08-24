@@ -2,9 +2,9 @@
 
 open Constr
 open Names
-
-(*open Pp*)
 open Lazy
+
+let debug = false
 
 let constr_of_string str =
   EConstr.of_constr (UnivGen.constr_of_monomorphic_global (Coqlib.lib_ref str))
@@ -47,8 +47,9 @@ type spec_env =
   }
 
 let register_constr env evd {map; term_name; fresh; remember} c p =
-  Feedback.msg_debug
-    Pp.(str "register_constr " ++ Printer.pr_econstr_env env evd c);
+  if debug then
+    Feedback.msg_debug
+      Pp.(str "register_constr " ++ Printer.pr_econstr_env env evd c);
   let tname = Nameops.add_subscript term_name fresh in
   let ty = Retyping.get_type_of env evd c in
   ( EConstr.mkVar tname
@@ -79,23 +80,6 @@ let pp_purity = function Pure -> Pp.str "Pure" | Impure -> Pp.str "Impure"
 let pp_econstr_purity env evd (c, p) =
   Pp.(Printer.pr_econstr_env env evd c ++ str ":" ++ pp_purity p)
 
-let declared_term env evd c a =
-  let msg =
-    Pp.(
-      str "declared_term "
-      ++ Printer.pr_econstr_env env evd c
-      ++ str "("
-      ++ prvect (fun c -> Printer.pr_econstr_env env evd c ++ str " | ") a
-      ++ str ") : ")
-  in
-  match Zify_plugin.Zify.declared_term env evd c a with
-  | c', a' ->
-    Feedback.msg_debug Pp.(msg ++ str "Pure");
-    (c', a')
-  | exception Not_found ->
-    Feedback.msg_debug Pp.(msg ++ str "Impure");
-    raise Not_found
-
 let rec remember_term env evd senv t =
   let isVar c = try EConstr.isVar evd c with _ -> true in
   let name k (c, p) senv =
@@ -119,7 +103,7 @@ let rec remember_term env evd senv t =
   with Not_found -> (
     let c, a = decompose_app env evd t in
     let c, a, p =
-      match declared_term env evd c a with
+      match Zify_plugin.Zify.declared_term env evd c a with
       | c, a -> (c, a, Pure)
       | exception Not_found ->
         if isVar c && a = [||] then (c, a, Pure) else (c, a, Impure)
@@ -158,11 +142,12 @@ let remember_tac id h (s, ty, t) =
   Proofview.Goal.enter (fun gl ->
       let env = Tacmach.New.pf_env gl in
       let evd = Tacmach.New.project gl in
-      Feedback.msg_debug
-        Pp.(
-          str "remember "
-          ++ Printer.pr_econstr_env env evd t
-          ++ str " as " ++ Names.Id.print tn);
+      if debug then
+        Feedback.msg_debug
+          Pp.(
+            str "remember "
+            ++ Printer.pr_econstr_env env evd t
+            ++ str " as " ++ Names.Id.print tn);
       Tactics.letin_tac
         (Some (false, CAst.make (Namegen.IntroFresh hn)))
         (Names.Name tn) t None
@@ -187,10 +172,13 @@ let purify l =
   Proofview.Goal.enter (fun gl ->
       let env = Tacmach.New.pf_env gl in
       let evd = Tacmach.New.project gl in
-      Feedback.msg_debug
-        Pp.(
-          str "purify "
-          ++ Pp.pr_enum (fun (_, _, _, t) -> Printer.pr_econstr_env env evd t) l);
+      if debug then
+        Feedback.msg_debug
+          Pp.(
+            str "purify "
+            ++ Pp.pr_enum
+                 (fun (_, _, _, t) -> Printer.pr_econstr_env env evd t)
+                 l);
       let hpr = Names.Id.of_string "hpr" in
       Tacticals.New.tclMAP
         (fun (tn, s, ty, t) -> remember_tac tn hpr (s, ty, t))
@@ -220,8 +208,9 @@ let idtac_constr msg l =
   Proofview.Goal.enter (fun gl ->
       let env = Tacmach.New.pf_env gl in
       let evd = Tacmach.New.project gl in
-      Feedback.msg_debug
-        Pp.(str msg ++ pr_enum (Printer.pr_econstr_env env evd) l);
+      if debug then
+        Feedback.msg_debug
+          Pp.(str msg ++ pr_enum (Printer.pr_econstr_env env evd) l);
       Tacticals.New.tclIDTAC)
 
 open Proofview.Notations
@@ -258,9 +247,7 @@ let no_tacs tacl =
   Tacticals.New.tclTHEN
     (Tacticals.New.tclREPEAT Tactics.intro)
     (Proofview.Goal.enter (fun gl ->
-         Feedback.msg_debug (Pp.str "About to collect\n");
          let s, l = collect_shared gl in
-         Feedback.msg_debug (Pp.str "Done collect\n");
          let evd = Tacmach.New.project gl in
          let ll =
            all_pairs (EConstr.eq_constr evd)
@@ -269,7 +256,6 @@ let no_tacs tacl =
                   (EConstr.mkVar (Nameops.add_subscript x s), ty))
                 l)
          in
-         Feedback.msg_debug (Pp.str "About to purify\n");
          Tacticals.New.tclTHENLIST [purify l; utactic (no_tac s ll)]))
 
 let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)

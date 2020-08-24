@@ -2,6 +2,7 @@ open Names
 open Constr
 module P = ProverPatch
 
+let debug = false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -646,24 +647,16 @@ module Theory = struct
     | (x, u) :: l -> EConstr.mkLambda (Context.nameR x, u, mkLambdas l t)
 
   let reduce_proof sigma cl prf =
-    try
-      let binders, used_binders, prf' = deps_of_proof sigma prf in
-      let rused = List.rev used_binders in
-      let core = get_used_hyps rused cl in
-      let prf_core =
-        remap_proof (remap_binders used_binders binders) sigma prf'
-      in
-      (core, mkLambdas rused prf_core)
-    with
-    | Not_found -> failwith "reduce proof error"
-    | e' ->
-      Feedback.msg_debug Pp.(str "reduce proof : " ++ CErrors.print e');
-      raise e'
+    let binders, used_binders, prf' = deps_of_proof sigma prf in
+    let rused = List.rev used_binders in
+    let core = get_used_hyps rused cl in
+    let prf_core =
+      remap_proof (remap_binders used_binders binders) sigma prf'
+    in
+    (core, mkLambdas rused prf_core)
 
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause ep cl in
-    Feedback.msg_debug
-      Pp.(str "Looking for unsat core : " ++ pr_constr env sigma gl);
     let e, pv = Proofview.init sigma [(env, gl)] in
     try
       let _, pv, _, _ =
@@ -674,13 +667,13 @@ module Theory = struct
              (Tacticals.New.tclCOMPLETE tac))
           pv
       in
-      Feedback.msg_debug Pp.(str "proof has run");
       match Proofview.partial_proof e pv with
       | [prf] -> UnsatCore (reduce_proof sigma cl prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e ->
-      Feedback.msg_debug
-        Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
+      if debug then
+        Feedback.msg_debug
+          Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
       NoCore (CErrors.print e, gl)
 
   let cons_core c f a =
@@ -690,9 +683,6 @@ module Theory = struct
       match f a with UnsatCore c -> UnsatCore c | NoCore l -> NoCore (e :: l) )
 
   let find_unsat_core ep cl tac env sigma =
-    let gl = constr_of_clause ep cl in
-    Feedback.msg_debug
-      Pp.(str "Looking for unsat core : " ++ pr_constr env sigma gl ++ str "\n");
     let ln, lp = split_clause cl in
     let rec all_cores c =
       match c with
@@ -712,7 +702,8 @@ module Theory = struct
     match find_unsat_core ep l tac genv sigma with
     | NoCore r -> CErrors.user_err (pp_no_core genv sigma r)
     | UnsatCore (core, prf) ->
-      Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
+      if debug then
+        Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
       cc := (core, prf) :: !cc;
       Some (hm, core)
 end

@@ -98,15 +98,17 @@ let output_state o st =
 (**  *)
 
 (** *)
-let cnf pol is_classic cp cm ar acc f hf =
+
+(*let cnf pol is_classic cp cm ar acc f hf =
   let x, cl = cnf pol is_classic cp cm ar acc f hf in
   Printf.printf "cnf %a ⊢ %a\n" output_formula f
     (output_list output_useful_watched_clause)
     cl;
   (x, cl)
-
+ *)
 (** *)
-let reduce lit cl =
+
+(*let reduce lit cl =
   let res = reduce lit cl in
   ( match res with
   | None -> Printf.printf "reduce : %a -> ∅\n" output_literal_list cl
@@ -114,16 +116,16 @@ let reduce lit cl =
     Printf.printf "reduce : %a -> %a\n" output_literal_list cl
       output_literal_list r );
   res
-
+ *)
 (** *)
 
-let cnf_hyps b hs st =
+(*let cnf_hyps b hs st =
   Printf.printf "cnf_hyps: %a\n" output_literal_list hs;
   cnf_hyps b hs st
-
+ *)
 (** *)
 
-let intro_state st f hf =
+(*let intro_state st f hf =
   match intro_state st f hf with
   | None ->
     Printf.printf "intro state ⊢ ⊥ \n";
@@ -131,19 +133,19 @@ let intro_state st f hf =
   | Some (st', g) ->
     Printf.printf "intro state ⊢\n%a\n" output_state st';
     Some (st', g)
-
+ *)
 (** *)
 
-let unit_propagation n st concl =
+(*let unit_propagation n st concl =
   let res = unit_propagation n st concl in
   ( match res with
   | Success -> Printf.printf "OK"
   | OutOfFuel -> Printf.printf "KO"
   | Progress st -> Printf.printf "unit_propagation ⊢\n%a\n" output_state st );
   res
-
+ *)
 (** *)
-let select_clause b l acc k cl =
+(*let select_clause b l acc k cl =
   let res = select_clause b l acc k cl in
   ( match (acc, res) with
   | _, Some l ->
@@ -152,26 +154,28 @@ let select_clause b l acc k cl =
   | _, _ -> Printf.printf "select_clause %a -> ∅ \n" output_watched_clause cl
   );
   res
-
+ *)
 (** *)
-let find_split lit is_bot cl =
+(*let find_split lit is_bot cl =
   let res = find_split lit is_bot cl in
   ( match res with
   | None -> Printf.printf "find_split  -> ∅\n"
   | Some l -> Printf.printf "find_split  -> %a\n" (output_list output_lit) l );
   res
-
+ *)
 (** *)
-let find_arrows st l =
+(*let find_arrows st l =
   let res = find_arrows st l in
   Printf.printf "find_arrows %a -> %a\n" (output_list output_lit) l
     (output_list output_lit) res;
   res
+ *)
 (** *)
-
+(*
 let prover_intro p st g =
   let res = prover_intro p st g in
   ( match res with
   | HasProof _ -> Printf.fprintf stdout "prover ⊢ %a\n" output_oform g
   | _ -> Printf.fprintf stdout "prover ⊬ %a\n" output_oform g );
   flush stdout; res
+ *)
