@@ -873,7 +873,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     destruct LPO.
     exists (Z.to_nat (to_Z x)).
     unfold testbit.
-    destruct (63 <=? Z.to_nat (to_Z x))%int63 eqn:LE.
+    destruct (63 <=? Z.to_nat (to_Z x)) eqn:LE.
     unfold int_of_nat,size in H0.
     lia.
     destruct H0.

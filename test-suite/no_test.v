@@ -2,7 +2,7 @@ Require Import ZArith List Lia.
 Declare ML Module "cdcl_plugin".
 
 Require Import Cdcl.Formula.
-Require Import Cdcl.TautoTac.
+Require Import Cdcl.Itauto.
 
 Goal forall x, 1 + x :: nil = x + 1 :: nil.
 Proof.

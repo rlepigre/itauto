@@ -1,13 +1,12 @@
-Require Import Cdcl.TautoTac.
-Declare ML Module "cdcl_plugin".
-Require Import Bool ZArith Cdcl.Formula Lia.
+Require Import Cdcl.Itauto.
+Require Import Bool Cdcl.Formula ZArith Lia.
 Open Scope Z_scope.
 Require Import Int63.
 
 Lemma l1 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.
 Proof.
   intros.
-  tauto lia.
+  itauto lia.
 Qed.
 
 Lemma cc : forall (A:Type) (a b c:A) (d e:Z),
@@ -15,23 +14,23 @@ Lemma cc : forall (A:Type) (a b c:A) (d e:Z),
     a = b -> b = c -> a = c.
 Proof.
   intros.
-  tauto congruence.
+  itauto congruence.
 Qed.
 
 Lemma false_true :  Is_true (false) -> Is_true true.
-Proof. tauto. Qed.
+Proof. itauto. Qed.
 
 
 Lemma true_andb_true : Is_true (true && true).
 Proof.
   intros.
-  tauto.
+  itauto.
 Qed.
 
 Lemma x_andb_true : forall x, Is_true (x && true) -> Is_true x.
 Proof.
   intros.
-  tauto.
+  itauto.
 Qed.
 
 Instance Zge_dec : DecP2 Z.ge.
@@ -53,7 +52,7 @@ Qed.
 Lemma l2 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.
 Proof.
   intros.
-  tauto lia.
+  itauto lia.
 Qed.
 
 
@@ -90,14 +89,14 @@ Lemma comb3 : forall (p: Prop) (x: Z),
 Proof.
   intros.
   Fail intuition lia.
-  tauto lia.
+  itauto lia.
 Qed.
 
 Lemma comp_congr : forall (T:Type) (a b c:T) (p:Prop),
     a = b -> b = c -> (a = c -> p) -> p.
 Proof.
   Fail intuition congruence.
-  tauto congruence.
+  itauto congruence.
 Qed.
 
 (* From https://github.com/coq/coq/issues/10743#issuecomment-643391083 *)
@@ -173,7 +172,7 @@ Proof.
   intros.
   (* zify. (* creates many disjunctions of the form "0 < z /\ z0 = z \/ z <= 0 /\ z0 = 0" *) *)
   (* Time repeat split; assumption. (* 0 secs *) *)
-  Time tauto lia.
+  Time itauto lia.
 Qed.
 
 
@@ -186,7 +185,7 @@ Goal
 Proof.
   intros.
   unfold not in *.
-  tauto lia.
+  itauto lia.
 Qed.
 
 Require Import Bool.
@@ -209,7 +208,7 @@ Proof.
   intros.
   zify.
   clear.
-  tauto idtac.
+  itauto idtac.
 Qed.
 
 Goal forall b, andb b b = b.
@@ -217,7 +216,7 @@ Proof.
   intros.
   zify.
   clear.
-  tauto idtac.
+  itauto idtac.
 Qed.
 
 Goal forall b b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14
@@ -233,7 +232,7 @@ Proof.
   intros.
   zify.
   clear.
-  Fail tauto idtac.
+  Fail itauto idtac.
 Abort.
 
 
@@ -274,21 +273,16 @@ Goal
   0 <= y2 - (y1 + q * 2 ^ r0 + 8) < M.
 Proof.
   intros.
-  Fail tauto lia.
+  Fail itauto lia.
 Abort.
 
 Require Import Classical.
 
-Lemma double_neg : forall (a:Prop) , ((a -> False) -> False) -> a.
-Proof.
-  intros.
-  tauto.
-Qed.
 
 Lemma discr : forall {A:Type} (a: A), a::nil = nil -> a::nil = a::nil -> False.
 Proof.
   intros.
-  tauto congruence.
+  itauto congruence.
 Qed.
 
 Lemma ifb : forall (P: bool -> Prop) (a b c:bool),
@@ -325,7 +319,7 @@ Proof.
   end.
   rewrite is_true_eq.
   repeat rewrite negb_eq.
-  tauto.
+  itauto.
 Time Qed.
 
 Lemma test_orb2 : forall a b,
@@ -333,12 +327,6 @@ Lemma test_orb2 : forall a b,
     (implb (a || b) (implb (implb b false && implb a false) false) &&
      implb (implb (a || b) false) (implb a false && implb b false)).
 Proof.
-  tauto.
+  itauto.
 Time Qed.
 
-Lemma test_xorb a : xorb a a = false.
-Proof.
-  zify.
-  repeat rewrite negb_eq.
-  (* TODO eqb *)
-Qed.
