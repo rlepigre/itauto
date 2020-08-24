@@ -72,7 +72,7 @@ The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-O
 
 In Coq, we have a reflexive intuitionistic SAT solver parametrised by a
 theory module.  The theory module takes an input a clause of the form
-$p_1 \to \dots \to p_n -> q_1 \lor \dots \lor q_n$
+$`p_1 \to \dots \to p_n \to q_1 \lor \dots \lor q_n`$
 and returns and unsat core that
 is used by the SAT solver for the rest of the proof.
 
@@ -97,8 +97,8 @@ specificities of intuitionistic logic.
 identified by a unique primitive integer.
 
 - The input formula is transformed using a definitional cnf
-and we obtain a set of clauses of the following form $ p_1 \to \dots
-\to p_n -> q_1 \lor \dots \lor q_n $ 
+and we obtain a set of clauses of the following form $` p_1 \to \dots
+\to p_n \to q_1 \lor \dots \lor q_n `$ 
 
 After this pre-processing, the SAT solver iterates unit-propgation and
 case-splits.
@@ -106,11 +106,11 @@ case-splits.
 - unit propagation is implemented using a variation of head tail pointers.
 
 - When unit propatation is done, the solver branches over a clause of
-the form $ q_1 \lor \dots \q_n $ 
+the form $` q_1 \lor \dots \q_n `$ 
 
 - When there is no disjunction to branch over, the solver searches for
-a literal bound to a formula of the form $f \to g $ and tried to
-prove $g$ assuming $f$.  
+a literal bound to a formula of the form $`f \to g `$ and tried to
+prove $`g`$ assuming $`f`$.  
 
 - When no propositional progress is possible, a clause is built and
 sent to the theory prover. If a conflict clause is generated, the SAT
