@@ -15,7 +15,7 @@ Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
 Declare ML Module "cdcl_plugin".
 Require Import Cdcl.Formula.
 
-Ltac tauton tac n :=
+Ltac itauton tac n :=
   intros; unfold not in *; unfold iff in *;
   cdcl_nnpp; unfold not;
   (cdcl_conflicts tac);
@@ -23,10 +23,10 @@ Ltac tauton tac n :=
   apply (hcons_bprover_correct n);
   vm_compute; reflexivity.
 
-Ltac tauto := tauton idtac 100%nat.
-Tactic Notation "tauto" := tauto.
-Tactic Notation "tauto" tactic(tac) := tauton tac 100%nat.
+Ltac itauto := itauton idtac 100%nat.
+Tactic Notation "itauto" := itauto.
+Tactic Notation "itauto" tactic(tac) := itauton tac 100%nat.
 
 Ltac smt :=
   let tac := no congruence lia in
-  tauton tac 100%nat.
+  itauton tac 100%nat.

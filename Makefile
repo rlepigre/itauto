@@ -1,21 +1,27 @@
-HOME=/home/fbesson/sources/coq-fajb/bin/
+# For debugging purposes, it is desirable to patch the Coq extracted code
+# This is done by calling `make prover` once the Coq code is extracted
 
-all : CoqMakefile _CoqProject
-	make -f CoqMakefile
+.PHONY: clean cleanaux coq
 
-src/prover.ml : theories/Formula.vo theories/Formula.v
-	cd theories ; coqc  Prover.v
+all : src/proverPatch.ml
+	rm src/cdcl.ml.d
+	rm src/cdcl_plugin.mlpack.d
+	make -f CoqMakefile 
 
-src/prover.cmx : src/prover.ml
-	rm -f src/prover.mli
-	ocamlopt -rectypes -c src/prover.ml -bin-annot -I $(COQLIB)
+coq :
+	make -f CoqMakefile theories/Prover.vo
+
+theories/Prover.vo src/prover.ml : CoqMakefile coq
 
 
-src/proverPatch.ml : src/prover.cmx src/ppprover.ml
+
+
+src/patch/mlpatch :
+	cd src/patch ; make 
+
+src/proverPatch.ml : src/prover.ml src/ppprover.ml src/patch/mlpatch
 	./src/patch/mlpatch -ifile src/prover.ml -pfile src/ppprover.ml > src/proverPatch.in
 	ocamlformat src/proverPatch.in > src/proverPatch.ml
-
-prover :  src/proverPatch.ml 
 
 install :
 	make -f CoqMakefile install
@@ -23,9 +29,13 @@ install :
 uninstall:
 	make -f CoqMakefile uninstall
 
-clean :
+cleanaux : 
+	rm -f src/prover.*  src/proverPatch.ml src/patch/mlpatch
+
+clean : cleanaux
 	make -f CoqMakefile clean
 
+
 CoqMakefile : _CoqProject
-	$(HOME)coq_makefile -f _CoqProject -o CoqMakefile
+	coq_makefile -f _CoqProject -o CoqMakefile
 

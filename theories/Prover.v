@@ -18,4 +18,6 @@ Extract Inductive list => list [ "[]" "(::)" ].
 
 Require Import Cdcl.Formula.
 
-Extraction "../src/prover.ml" hcons_bprover.
+(* This extracts at the right place only if Pwd is itauto top-level
+directory *)
+Extraction "src/prover.ml" hcons_bprover.
