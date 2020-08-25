@@ -51,12 +51,15 @@ The development requires PR https://github.com/coq/coq/pull/12648 .
 Therefore, you need to build coq from https://github.com/fajb/coq/tree/zify_int
 
 Clone the current repository:
+
 `git clone https://gitlab.inria.fr/fbesson/itauto.git`
-And move to the `itauto` directory.
+
+and move to the `itauto` directory.
 
 ### Using opam
 
 `opam pin add coq https://github.com/fajb/coq.git#zify_int`
+
 `opam install .`
 
 ### Manual install
