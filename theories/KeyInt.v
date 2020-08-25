@@ -1,3 +1,5 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+
 Require Import Bool ZifyClasses ZifyInt63 ZArith Lia.
 Require Import Cdcl.PatriciaR.
 

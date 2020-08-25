@@ -1,3 +1,5 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+
 Require Import Cdcl.PatriciaR Cdcl.KeyInt.
 Require Import Bool ZifyBool  ZArith Int63 Lia List.
 Import ZifyClasses.

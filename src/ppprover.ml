@@ -1,3 +1,4 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 open Prover
 
 (** val empty_state *)

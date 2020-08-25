@@ -1,3 +1,7 @@
+(** Copyright 2020  Alix Trieu <alix.trieu@ens-rennes.fr>
+  * Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> adapted from functor to record
+*)
+
 Require Import Lia.
 Require Import Cdcl.Coqlib.
 

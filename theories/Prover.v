@@ -1,3 +1,5 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+
 Require Extraction.
 Require Import Int63.
 

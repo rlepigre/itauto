@@ -1,3 +1,5 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+
 open Names
 open Constr
 module P = ProverPatch

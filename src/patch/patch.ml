@@ -1,3 +1,4 @@
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 type elt = Comment of string | Code of string
 type document = elt list
 

@@ -1,3 +1,5 @@
+(** Copyright 2020  Alix Trieu <alix.trieu@ens-rennes.fr>
+*)
 Require Import Lia.
 Require Import Cdcl.Coqlib.
 

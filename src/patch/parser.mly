@@ -1,5 +1,6 @@
 %{
-open Patch
+(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+ open Patch
 %}
 
 %token LCOMMENT RCOMMENT EOF
