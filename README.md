@@ -47,7 +47,7 @@ In other words, reuse learned theory clauses along the propositional proof searc
 
 ## Installation
 
-The development uses a for of coq https://github.com/fajb/coq/tree/for_itauto
+The development uses a fork of coq https://github.com/fajb/coq/tree/for_itauto
 
 Clone the current repository:
 
