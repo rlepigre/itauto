@@ -64,7 +64,7 @@ and move to the `itauto` directory.
 
 ### Manual install
 
-Install coq from `https://github.com/fajb/coq.git#zify_int`
+Install `coq` from `https://github.com/fajb/coq.git#zify_int`
 In the `itauto` top directory, `make; make install` builds and installs the plugin.
 
 ## Usage

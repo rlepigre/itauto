@@ -806,12 +806,10 @@ let change_goal =
           ( Lazy.force coq_eval_hbformula
           , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] )
       in
-      Tacticals.New.tclOR
-        (Tacticals.New.tclTHEN
+        Tacticals.New.tclTHEN
            (Tactics.generalize
               (List.rev_map (fun x -> EConstr.mkVar (fst x)) hyps))
            (Tactics.change_concl change))
-        (Tacticals.New.tclFAIL 0 (pr_constr genv sigma change)))
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in

@@ -44,17 +44,21 @@ Qed.
 Section test.
    Variable f : nat -> nat.
 
-   (* Il faut raisonner sous la fonction [f] *)
    Goal forall m n, f (m + n) = f (n + m).
    Proof.
      intros.
      no congruence lia.
    Qed.
 
-   (* Il faut raisonner à la fois sous la fonction [f] et en dehors. *)
    Goal forall m n, 2 * f (m + n) = (f (n + m)) * 2.
    Proof.
      intros. no congruence lia.
    Qed.
+
+   Goal forall m n, n = m -> 2 * f n = f m * 2.
+   Proof.
+     intros.
+     purify.
+     no congruence lia.
 
 End test.
