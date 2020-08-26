@@ -47,8 +47,7 @@ In other words, reuse learned theory clauses along the propositional proof searc
 
 ## Installation
 
-The development requires PR https://github.com/coq/coq/pull/12648 .
-Therefore, you need to build coq from https://github.com/fajb/coq/tree/zify_int
+The development uses a for of coq https://github.com/fajb/coq/tree/for_itauto
 
 Clone the current repository:
 
@@ -58,13 +57,13 @@ and move to the `itauto` directory.
 
 ### Using opam
 
-`opam pin add coq https://github.com/fajb/coq.git#zify_int`
+`opam pin add coq https://github.com/fajb/coq.git#for_itauto`
 
 `opam install .`
 
 ### Manual install
 
-Install `coq` from `https://github.com/fajb/coq.git#zify_int`
+Install `coq` from `https://github.com/fajb/coq.git#for_itauto`
 In the `itauto` top directory, `make; make install` builds and installs the plugin.
 
 ## Usage
