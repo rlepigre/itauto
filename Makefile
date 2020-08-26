@@ -8,12 +8,10 @@ all : src/proverPatch.ml
 	rm src/cdcl_plugin.mlpack.d
 	make -f CoqMakefile 
 
-coq :
+coq : CoqMakefile
 	make -f CoqMakefile theories/Prover.vo
 
 theories/Prover.vo src/prover.ml : CoqMakefile coq
-
-
 
 
 src/patch/mlpatch :

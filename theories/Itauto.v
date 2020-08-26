@@ -1,6 +1,7 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
 Require Import Cdcl.Formula.
+Require Export Cdcl.ReifClasses.
 Require Import Lia.
 
 Require Import List.
@@ -31,4 +32,8 @@ Tactic Notation "itauto" tactic(tac) := itauton tac 100%nat.
 
 Ltac smt :=
   let tac := no congruence lia in
-  itauton tac 100%nat.
+  (* zify of div mod generate propositional formulae *)
+  Zify.zify ; itauton tac 100%nat.
+
+Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
+Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)

@@ -1,8 +1,8 @@
 Require Import Cdcl.Itauto.
-Require Import Bool Cdcl.Formula ZArith Lia.
-Open Scope Z_scope.
-Require Import Int63.
 
+Require Import Bool  ZArith Lia.
+
+Open Scope Z_scope.
 Lemma l1 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.
 Proof.
   intros.
@@ -54,10 +54,6 @@ Proof.
   intros.
   itauto lia.
 Qed.
-
-
-Ltac Zify.zify_post_hook ::= idtac.
-Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 
 Lemma comb : forall (p: Prop) (x: Z),
     p ->
@@ -206,8 +202,7 @@ Add Zify UnOp Op_negb.
 Goal forall b, orb b true = true.
 Proof.
   intros.
-  zify.
-  clear.
+  zify;
   itauto idtac.
 Qed.
 
@@ -215,7 +210,6 @@ Goal forall b, andb b b = b.
 Proof.
   intros.
   zify.
-  clear.
   itauto idtac.
 Qed.
 

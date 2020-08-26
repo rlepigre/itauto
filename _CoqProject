@@ -1,6 +1,7 @@
 -Q theories/ Cdcl
 -Q src/ Cdcl
 # theories/ZifyInt.v
+theories/ReifClasses.v
 theories/Coqlib.v
 theories/PatriciaR.v
 theories/KeyInt.v
