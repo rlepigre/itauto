@@ -5,7 +5,7 @@ dev-repo: "git@gitlab.inria.fr:fbesson/itauto.git"
 authors: ["Frédéric Besson"]
 bug-reports: "frederic.besson@inria.fr"
 license: "GPL 3"
-description: "A 'itauto' tactic to solve SMT goals"
+synopsis: "A 'itauto' tactic to solve SMT goals"
 build: [
   [make]
 ]
@@ -16,7 +16,8 @@ remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
   "coq" {= "dev" }
 ]
-
+depopts: [ "ocamlformat" ]
+  
 tags: [
   "keyword:integers" "keyword:arithmetic" "keyword:automation"
   "logpath:Cdcl"

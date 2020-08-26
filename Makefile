@@ -19,9 +19,17 @@ theories/Prover.vo src/prover.ml : CoqMakefile coq
 src/patch/mlpatch :
 	cd src/patch ; make 
 
-src/proverPatch.ml : src/prover.ml src/ppprover.ml src/patch/mlpatch
+HASOCAMLFORMAT := $(shell command -v ocamlformat 2> /dev/null)
+
+src/proverPatch.in : src/prover.ml src/ppprover.ml src/patch/mlpatch
 	./src/patch/mlpatch -ifile src/prover.ml -pfile src/ppprover.ml > src/proverPatch.in
+
+src/proverPatch.ml : src/proverPatch.in
+ifdef $(HASOCAMLFORMAT)
 	ocamlformat src/proverPatch.in > src/proverPatch.ml
+else
+	cp src/proverPatch.in src/proverPatch.ml
+endif
 
 install :
 	make -f CoqMakefile install
