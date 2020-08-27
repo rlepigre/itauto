@@ -40,24 +40,33 @@ type purify =
   (* [Impure] may be of any type but does not contain pure subterms (except variables) *)
   | Impure
 
+type var = {name : Names.Id.t; sub : Nameops.Subscript.t; typ : EConstr.t}
+type 'a texpr = {expr : 'a; kpure : purify; typ : EConstr.t}
+
 type spec_env =
-  { map : (Names.Id.t * purify) HConstr.t
+  { map : Names.Id.t texpr HConstr.t
   ; term_name : Names.Id.t
   ; fresh : Nameops.Subscript.t
-  ; remember : (Names.Id.t * Nameops.Subscript.t * EConstr.t * EConstr.t) list
-  }
+  ; remember : (var * EConstr.t option) list }
 
 let register_constr env evd {map; term_name; fresh; remember} c p =
   if debug then
     Feedback.msg_debug
       Pp.(str "register_constr " ++ Printer.pr_econstr_env env evd c);
   let tname = Nameops.add_subscript term_name fresh in
-  let ty = Retyping.get_type_of env evd c in
+  let ty =
+    try (HConstr.find c map).typ
+    with Not_found -> Retyping.get_type_of env evd c
+  in
   ( EConstr.mkVar tname
-  , { map = HConstr.add c (tname, p) map
+  , { map =
+        HConstr.add (EConstr.mkVar tname)
+          {expr = tname; kpure = p; typ = ty}
+          (HConstr.add c {expr = tname; kpure = p; typ = ty} map)
     ; term_name
     ; fresh = Nameops.Subscript.succ fresh
-    ; remember = (term_name, fresh, ty, c) :: remember } )
+    ; remember = ({name = term_name; sub = fresh; typ = ty}, Some c) :: remember
+    } )
 
 let fresh_subscript env =
   let ctx = (Environ.named_context_val env).Environ.env_named_map in
@@ -85,7 +94,7 @@ let rec remember_term env evd senv t =
   let isVar c = try EConstr.isVar evd c with _ -> true in
   let name k (c, p) senv =
     if k = p then
-      try (EConstr.mkVar (fst (HConstr.find c senv.map)), senv)
+      try (EConstr.mkVar (HConstr.find c senv.map).expr, senv)
       with Not_found ->
         let c, senv = register_constr env evd senv c p in
         (c, senv)
@@ -99,7 +108,7 @@ let rec remember_term env evd senv t =
       l ([], senv)
   in
   try
-    let id, p = HConstr.find t senv.map in
+    let {expr = id; kpure = p; typ = _} = HConstr.find t senv.map in
     ((EConstr.mkVar id, p), senv)
   with Not_found -> (
     let c, a = decompose_app env evd t in
@@ -178,11 +187,17 @@ let purify l =
           Pp.(
             str "purify "
             ++ Pp.pr_enum
-                 (fun (_, _, _, t) -> Printer.pr_econstr_env env evd t)
+                 (fun (_, t) ->
+                   match t with
+                   | None -> str ""
+                   | Some t -> Printer.pr_econstr_env env evd t)
                  l);
       let hpr = Names.Id.of_string "hpr" in
       Tacticals.New.tclMAP
-        (fun (tn, s, ty, t) -> remember_tac tn hpr (s, ty, t))
+        (fun ({name; sub; typ}, t) ->
+          match t with
+          | None -> Tacticals.New.tclIDTAC
+          | Some t -> remember_tac name hpr (sub, typ, t))
         l)
 
 let fresh_id id gl =
@@ -253,8 +268,8 @@ let no_tacs tacl =
          let ll =
            all_pairs (EConstr.eq_constr evd)
              (List.map
-                (fun (x, s, ty, _) ->
-                  (EConstr.mkVar (Nameops.add_subscript x s), ty))
+                (fun ({name; sub; typ}, _) ->
+                  (EConstr.mkVar (Nameops.add_subscript name sub), typ))
                 l)
          in
          Tacticals.New.tclTHENLIST [purify l; utactic (no_tac s ll)]))

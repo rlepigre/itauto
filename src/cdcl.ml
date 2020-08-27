@@ -4,7 +4,7 @@ open Names
 open Constr
 module P = ProverPatch
 
-let debug = false
+let debug = true
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -665,8 +665,10 @@ module Theory = struct
         Proofview.apply
           ~name:(Names.Id.of_string "unsat_core")
           ~poly:false env
-          (Tacticals.New.tclTHEN (Tactics.keep [])
-             (Tacticals.New.tclCOMPLETE tac))
+          (Tacticals.New.tclTHENLIST
+             [ Tactics.keep []
+             ; Tacticals.New.tclREPEAT Tactics.intro
+             ; Tacticals.New.tclCOMPLETE tac ])
           pv
       in
       match Proofview.partial_proof e pv with
@@ -762,7 +764,8 @@ let assert_conflicts ep l gl =
       let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
       Tacticals.New.tclTHEN
         (Tactics.assert_by (Names.Name id) (mk_goal c)
-           (Tacticals.New.tclTHEN (tclRETYPE prf) (Tactics.exact_check prf)))
+           (Tacticals.New.tclTHENLIST
+              [Tactics.keep []; tclRETYPE prf; Tactics.exact_no_check prf]))
         (assert_conflicts (n + 1) l)
   in
   assert_conflicts 0 l
@@ -806,10 +809,10 @@ let change_goal =
           ( Lazy.force coq_eval_hbformula
           , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] )
       in
-        Tacticals.New.tclTHEN
-           (Tactics.generalize
-              (List.rev_map (fun x -> EConstr.mkVar (fst x)) hyps))
-           (Tactics.change_concl change))
+      Tacticals.New.tclTHEN
+        (Tactics.generalize
+           (List.rev_map (fun x -> EConstr.mkVar (fst x)) hyps))
+        (Tactics.change_concl change))
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in
