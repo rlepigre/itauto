@@ -762,11 +762,12 @@ let assert_conflicts ep l gl =
     | [] -> Tacticals.New.tclIDTAC
     | (c, prf) :: l ->
       let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
-      Tacticals.New.tclTHEN
-        (Tactics.assert_by (Names.Name id) (mk_goal c)
-           (Tacticals.New.tclTHENLIST
-              [Tactics.keep []; tclRETYPE prf; Tactics.exact_no_check prf]))
-        (assert_conflicts (n + 1) l)
+      Tacticals.New.tclTHENLIST
+        [ Tactics.assert_by (Names.Name id) (mk_goal c)
+            (Tacticals.New.tclTHENLIST
+               [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_check prf])
+        ; Tactics.generalize [EConstr.mkVar id]
+        ; assert_conflicts (n + 1) l ]
   in
   assert_conflicts 0 l
 
@@ -778,8 +779,7 @@ let assert_conflicts_clauses tac =
       let sigma = Tacmach.New.project gl in
       let genv = Tacmach.New.pf_env gl in
       let concl = Tacmach.New.pf_concl gl in
-      let hyps = Tacmach.New.pf_hyps_types gl in
-      let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
+      let hyps, concl, env = reify_goal genv (Env.empty sigma) [] concl in
       let bform, env = make_formula env (List.rev hyps) concl in
       let has_bool i =
         try
@@ -793,14 +793,21 @@ let assert_conflicts_clauses tac =
       | P.HasProof _ -> assert_conflicts env !cc gl
       | _ -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology"))
 
+let generalize =
+  Proofview.Goal.enter (fun gl ->
+      let sigma = Tacmach.New.project gl in
+      let genv = Tacmach.New.pf_env gl in
+      let hyps = Tacmach.New.pf_hyps_types gl in
+      let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
+      Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
+
 let change_goal =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
       let sigma = Tacmach.New.project gl in
       let genv = Tacmach.New.pf_env gl in
       let concl = Tacmach.New.pf_concl gl in
-      let hyps = Tacmach.New.pf_hyps_types gl in
-      let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
+      let hyps, concl, env = reify_goal genv (Env.empty sigma) [] concl in
       let form, env = make_formula env (List.rev hyps) concl in
       let cform = constr_of_bformula form in
       let m = Env.map_of_env env in
@@ -809,10 +816,7 @@ let change_goal =
           ( Lazy.force coq_eval_hbformula
           , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] )
       in
-      Tacticals.New.tclTHEN
-        (Tactics.generalize
-           (List.rev_map (fun x -> EConstr.mkVar (fst x)) hyps))
-        (Tactics.change_concl change))
+      Tactics.change_concl change)
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in
@@ -830,4 +834,6 @@ let nnpp =
         Tactics.apply (Lazy.force coq_nnpp)
       else Tacticals.New.tclIDTAC)
 
-let cdcl tac = Tacticals.New.tclTHEN (assert_conflicts_clauses tac) change_goal
+let cdcl tac =
+  Tacticals.New.tclTHENLIST
+    [generalize; assert_conflicts_clauses tac; change_goal]

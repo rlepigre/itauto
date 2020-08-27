@@ -21,6 +21,7 @@ Require Import Cdcl.Formula.
 Ltac itauton tac n :=
   intros; unfold not in *; unfold iff in *;
   cdcl_nnpp; unfold not;
+  cdcl_generalize ;
   (cdcl_conflicts tac);
   cdcl_change;
   apply (hcons_bprover_correct n);
