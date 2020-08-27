@@ -1,6 +1,6 @@
 Require Import Cdcl.Itauto.
 
-Require Import Bool  ZArith Lia.
+Require Import Int63 Bool  ZArith Lia.
 
 Open Scope Z_scope.
 Lemma l1 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.

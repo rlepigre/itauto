@@ -1,12 +1,12 @@
 # For debugging purposes, it is desirable to patch the Coq extracted code
 # This is done by calling `make prover` once the Coq code is extracted
 
-.PHONY: clean cleanaux coq
+.PHONY: clean cleanaux coq test
 
 all : src/proverPatch.ml
 	rm src/cdcl.ml.d
 	rm src/cdcl_plugin.mlpack.d
-	make -f CoqMakefile 
+	make -f CoqMakefile src/cdcl_plugin.cmxs
 
 coq : CoqMakefile
 	make -f CoqMakefile theories/Prover.vo
@@ -45,3 +45,26 @@ clean : cleanaux
 CoqMakefile : _CoqProject
 	coq_makefile -f _CoqProject -o CoqMakefile
 
+
+TESTSUITE = arith.v no_test.v refl_bool.v
+ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v
+
+ALLTESTV = $(addprefix test-suite/,$(TESTSUITE)) $(addprefix issues/,$(ISSUES))
+ALLTESTVO = $(ALLTESTV:.v=.vo)
+
+-include CoqMakefile.conf
+
+ifneq (,$(COQBIN))
+# add an ending /
+COQBIN:=$(COQBIN)/
+endif
+
+COQC ?= "$(COQBIN)coqc"
+
+%.vo : %.v
+	$(COQC) $(COQMF_COQLIBS_NOML) $<
+
+test : $(ALLTESTVO)
+
+cleantest :
+	rm -f $(ALLTESTVO)

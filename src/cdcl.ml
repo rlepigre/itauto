@@ -77,6 +77,7 @@ let coq_eval_hformula = lazy (constr_of_ref "cdcl.eval_hformula")
 let coq_eval_hbformula = lazy (constr_of_ref "cdcl.eval_hbformula")
 let coq_empty = lazy (constr_of_ref "cdcl.IntMap.empty")
 let coq_add = lazy (constr_of_ref "cdcl.IntMap.add")
+let whd = Reductionops.clos_whd_flags CClosure.all
 
 let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
@@ -99,9 +100,32 @@ module Env = struct
 
   type atom_spec =
     | AtomProp of EConstr.t * EConstr.t option (* NBool *)
-    | AtomBool of EConstr.t * EConstr.t * EConstr.t
+    (* TBool *)
+    | AtomBool of
+        { constr_bool : EConstr.t
+        ; constr_prop : EConstr.t
+        ; constr_iff : EConstr.t }
 
-  (* TBool *)
+  let check_atom env evd = function
+    | AtomProp _ -> ()
+    | AtomBool {constr_bool; constr_prop; constr_iff} ->
+      (let ty = Retyping.get_type_of env evd constr_bool in
+       if EConstr.eq_constr evd ty (constr_of_ref "core.bool.type") then ()
+       else
+         Feedback.msg_debug
+           Pp.(
+             str "check_atom_constr_bool "
+             ++ Printer.pr_econstr_env env evd constr_bool
+             ++ str " : "
+             ++ Printer.pr_econstr_env env evd ty));
+      if is_prop env evd constr_prop then ()
+      else
+        Feedback.msg_debug
+          Pp.(
+            str "check_atom_constr_prop "
+            ++ Printer.pr_econstr_env env evd constr_prop)
+
+  let check_atom env evd res = check_atom env evd res; res
 
   type t =
     { fresh : int
@@ -112,7 +136,7 @@ module Env = struct
 
   let get_proposition_of_atom_spec = function
     | AtomProp (p, _) -> p
-    | AtomBool (_, p, _) -> p
+    | AtomBool {constr_prop} -> constr_prop
 
   let get_constr_of_atom ep a =
     ProverPatch.(
@@ -152,7 +176,9 @@ module Env = struct
         let tc = EConstr.mkApp (Lazy.force coq_DecP1, [|ty; c|]) in
         try
           let _evd, dec = Typeclasses.resolve_one_typeclass env evd tc in
-          Some (EConstr.mkApp (Lazy.force coq_decP1, [|ty; c; dec; a.(0)|]))
+          Some
+            (whd env evd
+               (EConstr.mkApp (Lazy.force coq_decP1, [|ty; c; dec; a.(0)|])))
         with Not_found -> None
       else
         let c, v1, v2 =
@@ -168,15 +194,21 @@ module Env = struct
         try
           let _evd, dec = Typeclasses.resolve_one_typeclass env evd tc in
           Some
-            (EConstr.mkApp (Lazy.force coq_decP2, [|ty1; ty2; c; dec; v1; v2|]))
+            (whd env evd
+               (EConstr.mkApp
+                  (Lazy.force coq_decP2, [|ty1; ty2; c; dec; v1; v2|])))
         with Not_found -> None )
     | _ -> None
 
-  let default_bool t =
+  let default_bool env evd t =
     let is_true =
       EConstr.mkApp (constr_of_gref (Lazy.force coq_Is_true), [|t|])
     in
-    AtomBool (t, is_true, EConstr.mkApp (Lazy.force coq_iff_refl, [|is_true|]))
+    check_atom env evd
+      (AtomBool
+         { constr_bool = t
+         ; constr_prop = is_true
+         ; constr_iff = EConstr.mkApp (Lazy.force coq_iff_refl, [|is_true|]) })
 
   let make_atom_of_bool env evd t =
     match EConstr.kind evd t with
@@ -188,12 +220,17 @@ module Env = struct
         let tc = EConstr.mkApp (Lazy.force coq_Rbool1, [|ty; c|]) in
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
-          let p1 = EConstr.mkApp (Lazy.force coq_p1, [|ty; c; refl; a.(0)|]) in
-          let p1_prf =
-            EConstr.mkApp (Lazy.force coq_p1_prf, [|ty; c; refl; a.(0)|])
+          let p1 =
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_p1, [|ty; c; refl; a.(0)|]))
           in
-          AtomBool (t, p1, p1_prf)
-        with Not_found -> default_bool t
+          let p1_prf =
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_p1_prf, [|ty; c; refl; a.(0)|]))
+          in
+          check_atom env evd
+            (AtomBool {constr_bool = t; constr_prop = p1; constr_iff = p1_prf})
+        with Not_found -> default_bool env evd t
       else
         let c, v1, v2 =
           if len = 2 then (c, a.(0), a.(1))
@@ -208,14 +245,18 @@ module Env = struct
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
           let p2 =
-            EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|])
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|]))
           in
           let p2_prf =
-            EConstr.mkApp (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|])
+            whd env evd
+              (EConstr.mkApp
+                 (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|]))
           in
-          AtomBool (t, p2, p2_prf)
-        with Not_found -> default_bool t )
-    | _ -> default_bool t
+          check_atom env evd
+            (AtomBool {constr_bool = t; constr_prop = p2; constr_iff = p2_prf})
+        with Not_found -> default_bool env evd t )
+    | _ -> default_bool env evd t
 
   let default_prop env evd t = AtomProp (t, is_dec_constr env evd t)
 
@@ -229,11 +270,16 @@ module Env = struct
         let tc = EConstr.mkApp (Lazy.force coq_RProp1, [|ty; c|]) in
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
-          let b1 = EConstr.mkApp (Lazy.force coq_b1, [|ty; c; refl; a.(0)|]) in
-          let b1_prf =
-            EConstr.mkApp (Lazy.force coq_b1_prf, [|ty; c; refl; a.(0)|])
+          let b1 =
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_b1, [|ty; c; refl; a.(0)|]))
           in
-          AtomBool (b1, t, b1_prf)
+          let b1_prf =
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_b1_prf, [|ty; c; refl; a.(0)|]))
+          in
+          check_atom env evd
+            (AtomBool {constr_bool = b1; constr_prop = t; constr_iff = b1_prf})
         with Not_found -> default_prop env evd t
       else
         let c, v1, v2 =
@@ -249,12 +295,16 @@ module Env = struct
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
           let p2 =
-            EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|])
+            whd env evd
+              (EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|]))
           in
           let p2_prf =
-            EConstr.mkApp (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|])
+            whd env evd
+              (EConstr.mkApp
+                 (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|]))
           in
-          AtomBool (t, p2, p2_prf)
+          check_atom env evd
+            (AtomBool {constr_bool = p2; constr_prop = t; constr_iff = p2_prf})
         with Not_found -> default_prop env evd t )
     | _ -> default_prop env evd t
 
@@ -264,7 +314,7 @@ module Env = struct
     | P.IsBool -> (
       match a with
       | AtomProp _ -> None
-      | AtomBool (b, _, _) -> eq_constr (genv, sigma) b v )
+      | AtomBool {constr_bool = b} -> eq_constr (genv, sigma) b v )
 
   let hcons_atom genv env k v =
     let rec find sigma v vars =
@@ -310,7 +360,7 @@ module Env = struct
       | AtomProp (p, None) -> EConstr.mkApp (Lazy.force coq_mkAtom, [|p|])
       | AtomProp (p, Some prf) ->
         EConstr.mkApp (Lazy.force coq_mkAtomDec, [|p; prf|])
-      | AtomBool (b, p, prf) ->
+      | AtomBool {constr_bool = b; constr_prop = p; constr_iff = prf} ->
         EConstr.mkApp (Lazy.force coq_TBool, [|b; p; prf|])
     in
     let add i e m =
@@ -802,6 +852,23 @@ let generalize =
       let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
       Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
 
+let generalize_env env =
+  let prop_of_atom (a, _) =
+    Env.(
+      match a with
+      | AtomProp (p, o) -> ( match o with None -> [p] | Some prf -> [p; prf] )
+      | AtomBool {constr_bool; constr_prop; constr_iff} ->
+        [constr_prop; constr_bool; constr_iff])
+  in
+  let gen_list l =
+    let n = List.length l in
+    Tacticals.New.tclTRY
+      (Tacticals.New.tclTHEN (Tactics.generalize l)
+         (Tacticals.New.tclDO n Tactics.intro))
+  in
+  let gen_tac tac a = Tacticals.New.tclTHEN tac (gen_list (prop_of_atom a)) in
+  List.fold_left gen_tac Tacticals.New.tclIDTAC env.Env.vars
+
 let change_goal =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
@@ -817,7 +884,10 @@ let change_goal =
           ( Lazy.force coq_eval_hbformula
           , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] )
       in
-      Tactics.change_concl change)
+      if debug then
+        Feedback.msg_debug
+          Pp.(str "change " ++ Printer.pr_econstr_env genv sigma change);
+      Tacticals.New.tclTHEN (Tactics.change_concl change) (generalize_env env))
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in
