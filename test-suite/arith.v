@@ -18,19 +18,19 @@ Proof.
 Qed.
 
 Lemma false_true :  Is_true (false) -> Is_true true.
-Proof. itauto. Qed.
+Proof. itauto idtac. Qed.
 
 
 Lemma true_andb_true : Is_true (true && true).
 Proof.
   intros.
-  itauto.
+  itauto idtac.
 Qed.
 
 Lemma x_andb_true : forall x, Is_true (x && true) -> Is_true x.
 Proof.
   intros.
-  itauto.
+  itauto idtac.
 Qed.
 
 Instance Zge_dec : DecP2 Z.ge.
@@ -313,7 +313,7 @@ Proof.
   end.
   rewrite is_true_eq.
   repeat rewrite negb_eq.
-  itauto.
+  itauto idtac.
 Time Qed.
 
 Lemma test_orb2 : forall a b,
@@ -321,6 +321,6 @@ Lemma test_orb2 : forall a b,
     (implb (a || b) (implb (implb b false && implb a false) false) &&
      implb (implb (a || b) false) (implb a false && implb b false)).
 Proof.
-  itauto.
+  itauto idtac.
 Time Qed.
 

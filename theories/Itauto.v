@@ -27,9 +27,7 @@ Ltac itauton tac n :=
   apply (hcons_bprover_correct n);
   vm_compute; reflexivity.
 
-Ltac itauto := itauton idtac 100%nat.
-Tactic Notation "itauto" := itauto.
-Tactic Notation "itauto" tactic(tac) := itauton tac 100%nat.
+Ltac itauto tac := itauton tac 100%nat.
 
 Ltac smt :=
   let tac := no congruence lia in

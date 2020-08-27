@@ -63,15 +63,6 @@ Section test.
    Qed.
 End test.
 
-Ltac ftac := xlia zchecker.
-
-Lemma foo1: forall (a: nat), a + a = a * 2.
-Proof.
-  intros.
-  Zify.zify.
-  itauto (xlia zchecker).
-Qed.
-
 Axiom f : nat -> nat.
 Goal forall m n, 2 * f (m + n) = f (m + n) + f (n + m).
 Proof.

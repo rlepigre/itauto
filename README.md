@@ -72,11 +72,18 @@ A few relevant tests are found in the `test-suite` directory.
 
 `Require Import Cdcl.Itauto` defines the `itauto` tactic.  
 
-- Without argument, `itauto` solves goals over a combination of boolean and
-propositional logic. 
-- With a tactic argument, `itauto tac` calls `tac` when no propositional progress is possible.
+`itauto tac` calls `tac` when no propositional progress is possible.
 
 The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia`.
+
+## Limitations
+
+This is still an early prototype. Do not hesitate to report bugs by [email](mailto:frederic.besson@inria.fr) 
+or fill an issue https://gitlab.inria.fr/fbesson/itauto/-/issues .
+
+Know limitations:
+
+- Proofs may depend on unused section variables (see https://gitlab.inria.fr/fbesson/itauto/-/issues/3 ).
 
 
 ## Internals

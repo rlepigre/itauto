@@ -9,5 +9,5 @@ Goal forall (x : Z) (n : x <> 0),
     False.
 Proof.
   intros.
-  itauto lia. (* Error: Not convertible. *)
+  itauto lia.
 Qed.
