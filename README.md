@@ -63,7 +63,11 @@ and move to the `itauto` directory.
 
 ### Manual install
 
-Install `coq` from `https://github.com/fajb/coq.git#for_itauto`
+Once de dependancies are build:
+
+- `coq` from `https://github.com/fajb/coq.git#for_itauto`
+- `ocamlbuild` https://ocaml.org/learn/tutorials/
+
 In the `itauto` top directory, `make; make install` builds and installs the plugin.
 
 ## Usage

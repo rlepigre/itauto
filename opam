@@ -15,8 +15,9 @@ install: [
 remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
   "coq" {= "dev" }
+  "ocamlbuild" {build }
 ]
-depopts: [ "ocamlformat" ]
+depopts: [ "ocamlformat" {build} ]
   
 tags: [
   "keyword:integers" "keyword:arithmetic" "keyword:automation"

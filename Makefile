@@ -6,7 +6,7 @@
 all : src/proverPatch.ml
 	rm src/cdcl.ml.d
 	rm src/cdcl_plugin.mlpack.d
-	make -f CoqMakefile src/cdcl_plugin.cmxs
+	make -f CoqMakefile 
 
 coq : CoqMakefile
 	make -f CoqMakefile theories/Prover.vo
