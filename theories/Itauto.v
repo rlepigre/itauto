@@ -18,16 +18,37 @@ Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
 Declare ML Module "cdcl_plugin".
 Require Import Cdcl.Formula.
 
-Ltac itauton tac n :=
+Ltac gen_conflicts tac :=
   intros; unfold not in *; unfold iff in *;
+  (* Apply ~ ~ p -> p if Classical is loaded *)
   cdcl_nnpp; unfold not;
+  (* Generate conflict clauses *)
+  (cdcl_conflicts tac).
+
+Ltac run_solver n :=
+  (* Generalize all the propositions
+     (in reverse order to avoid problems with dependent hypotheses *)
   cdcl_generalize ;
-  (cdcl_conflicts tac);
+  (* Reify the conclusion *)
   cdcl_change;
-  apply (hcons_bprover_correct n);
+  (* Apply soundness proof and compute *)
+  apply (hcons_bprover_correct n); (* todo compute n *)
   vm_compute; reflexivity.
 
+Ltac itauto_use_tauto := constr:(false).
+
+Ltac itauton tac n :=
+  gen_conflicts tac ;
+  lazymatch itauto_use_tauto with
+  | true => tauto
+  | false => run_solver n
+  end.
+
+
 Ltac itauto tac := itauton tac 100%nat.
+
+
+
 
 Ltac smt :=
   let tac := no congruence lia in

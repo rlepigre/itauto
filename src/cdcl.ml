@@ -766,7 +766,7 @@ let assert_conflicts ep l gl =
         [ Tactics.assert_by (Names.Name id) (mk_goal c)
             (Tacticals.New.tclTHENLIST
                [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_check prf])
-        ; Tactics.generalize [EConstr.mkVar id]
+          (*    ; Tactics.generalize [EConstr.mkVar id] *)
         ; assert_conflicts (n + 1) l ]
   in
   assert_conflicts 0 l
@@ -779,7 +779,8 @@ let assert_conflicts_clauses tac =
       let sigma = Tacmach.New.project gl in
       let genv = Tacmach.New.pf_env gl in
       let concl = Tacmach.New.pf_concl gl in
-      let hyps, concl, env = reify_goal genv (Env.empty sigma) [] concl in
+      let hyps = Tacmach.New.pf_hyps_types gl in
+      let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
       let bform, env = make_formula env (List.rev hyps) concl in
       let has_bool i =
         try

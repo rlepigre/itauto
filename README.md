@@ -83,7 +83,10 @@ or fill an issue https://gitlab.inria.fr/fbesson/itauto/-/issues .
 
 Know limitations:
 
-- Proofs may depend on unused section variables (see https://gitlab.inria.fr/fbesson/itauto/-/issues/3 ).
+- Proofs may depend on unused section variables (see https://gitlab.inria.fr/fbesson/itauto/-/issues/3 ). 
+  A workaround is to instruct `itauto` to finish the proof using `tauto`. This may put some pressure on `tauto`.
+
+`Ltac itauto_use_tauto ::= constr:(true).` (false by default)
 
 
 ## Internals
