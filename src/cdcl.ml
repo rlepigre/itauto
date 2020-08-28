@@ -4,7 +4,7 @@ open Names
 open Constr
 module P = ProverPatch
 
-let debug = true
+let debug = false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
