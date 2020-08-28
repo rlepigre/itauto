@@ -47,7 +47,7 @@ CoqMakefile : _CoqProject
 
 
 TESTSUITE = arith.v no_test.v refl_bool.v
-ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v
+ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.v
 
 ALLTESTV = $(addprefix test-suite/,$(TESTSUITE)) $(addprefix issues/,$(ISSUES))
 ALLTESTVO = $(ALLTESTV:.v=.vo)

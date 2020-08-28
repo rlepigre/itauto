@@ -736,6 +736,14 @@ module Theory = struct
     | NoCore e -> (
       match f a with UnsatCore c -> UnsatCore c | NoCore l -> NoCore (e :: l) )
 
+  let cons_core_end c f a =
+    match c with
+    | UnsatCore c -> UnsatCore c
+    | NoCore l -> (
+      match f a with UnsatCore c -> UnsatCore c | NoCore e -> NoCore (e :: l) )
+
+  let core_list c = match c with UnsatCore _ -> c | NoCore c -> NoCore [c]
+
   let find_unsat_core ep cl tac env sigma =
     let ln, lp = split_clause cl in
     let rec all_cores c =
@@ -747,7 +755,10 @@ module Theory = struct
     match lp with
     | [] ->
       cons_core (find_unsat_core ep ln tac env sigma) (fun () -> NoCore []) ()
-    | _ -> all_cores lp
+    | _ ->
+      cons_core_end (all_cores lp)
+        (fun () -> find_unsat_core ep cl tac env sigma)
+        ()
 
   let pp_no_core env sigma l =
     Pp.(

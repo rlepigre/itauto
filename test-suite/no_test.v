@@ -10,7 +10,9 @@ Proof.
   no congruence lia.
 Qed.
 
-Goal forall (P: nat-> Prop) x, P (1 + x) -> P (x + 1).
+Close Scope  Z_scope.
+
+Goal forall (P: nat-> Prop) x, (P (1 + x) -> P (x + 1)).
 Proof.
   intros.
   smt.
