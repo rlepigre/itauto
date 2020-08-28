@@ -744,7 +744,10 @@ module Theory = struct
       | c1 :: c ->
         cons_core (find_unsat_core ep (ln @ [c1]) tac env sigma) all_cores c
     in
-    cons_core (find_unsat_core ep ln tac env sigma) all_cores lp
+    match lp with
+    | [] ->
+      cons_core (find_unsat_core ep ln tac env sigma) (fun () -> NoCore []) ()
+    | _ -> all_cores lp
 
   let pp_no_core env sigma l =
     Pp.(
