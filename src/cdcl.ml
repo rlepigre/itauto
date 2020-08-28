@@ -4,7 +4,7 @@ open Names
 open Constr
 module P = ProverPatch
 
-let debug = false
+let debug = true
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -844,13 +844,22 @@ let assert_conflicts_clauses tac =
       | P.HasProof _ -> assert_conflicts env !cc gl
       | _ -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology"))
 
-let generalize =
+let generalize_prop =
   Proofview.Goal.enter (fun gl ->
       let sigma = Tacmach.New.project gl in
       let genv = Tacmach.New.pf_env gl in
       let hyps = Tacmach.New.pf_hyps_types gl in
       let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
       Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
+
+(* I have no idea what [tclWITHHOLES] does but it fails (rightly) more often than [generalize] alone. *)
+let feedback msg =
+  Proofview.Goal.enter (fun gl ->
+      Feedback.msg_debug msg; Tacticals.New.tclIDTAC)
+
+let generalize l =
+  let l = List.map (fun c -> ((Locus.AllOccurrences, c), Anonymous)) l in
+  Tactics.generalize_gen l
 
 let generalize_env env =
   let prop_of_atom (a, _) =
@@ -863,7 +872,7 @@ let generalize_env env =
   let gen_list l =
     let n = List.length l in
     Tacticals.New.tclTRY
-      (Tacticals.New.tclTHEN (Tactics.generalize l)
+      (Tacticals.New.tclTHEN (generalize l)
          (Tacticals.New.tclDO n Tactics.intro))
   in
   let gen_tac tac a = Tacticals.New.tclTHEN tac (gen_list (prop_of_atom a)) in
@@ -907,4 +916,4 @@ let nnpp =
 
 let cdcl tac =
   Tacticals.New.tclTHENLIST
-    [generalize; assert_conflicts_clauses tac; change_goal]
+    [generalize_prop; assert_conflicts_clauses tac; change_goal]
