@@ -8,6 +8,7 @@ theories/KeyInt.v
 theories/Formula.v
 theories/Itauto.v
 theories/Prover.v
+theories/ZArithDec.v
 -I src/
 src/proverPatch.ml
 src/cdcl.ml

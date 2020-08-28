@@ -1,7 +1,7 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
 Require Import Cdcl.Formula.
-Require Export Cdcl.ReifClasses.
+Require Export Cdcl.ReifClasses Cdcl.ZArithDec.
 Require Import Lia.
 
 Require Import List.
@@ -17,6 +17,7 @@ Notation "'AT' x" := (HCons.mk _ _ (AT x)) (at level 80).
 
 Declare ML Module "cdcl_plugin".
 Require Import Cdcl.Formula.
+
 
 Ltac gen_conflicts tac :=
   intros; unfold not in *; unfold iff in *;
