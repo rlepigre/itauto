@@ -28,39 +28,39 @@ Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  replace (i < i)%int63 with false by lia.
-  replace (i == i)%int63 with true by lia.
+  replace (i <? i)%int63 with false by lia.
+  replace (i =? i)%int63 with true by lia.
   reflexivity.
 Qed.
 
-Lemma compare_Eq : forall x y, (x ?= y)%int63 = Eq <-> (x == y = true)%int63.
+Lemma compare_Eq : forall x y, (x ?= y)%int63 = Eq <-> (x =? y = true)%int63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%int63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x ==y)%int63 ;   intuition (congruence || lia).
+  destruct (x =?y)%int63 ;   intuition (congruence || lia).
 Qed.
 
-Lemma compare_Lt : forall x y, (x ?= y)%int63 = Lt <-> (x < y = true)%int63.
+Lemma compare_Lt : forall x y, (x ?= y)%int63 = Lt <-> (x <? y = true)%int63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%int63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x ==y)%int63 ;   intuition (congruence || lia).
+  destruct (x =?y)%int63 ;   intuition (congruence || lia).
 Qed.
 
-Lemma compare_Gt : forall x y, (x ?= y)%int63 = Gt <-> (y < x = true)%int63.
+Lemma compare_Gt : forall x y, (x ?= y)%int63 = Gt <-> (y <? x = true)%int63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%int63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x ==y)%int63 eqn:EQ;   intuition (congruence || lia).
+  destruct (x =?y)%int63 eqn:EQ;   intuition (congruence || lia).
 Qed.
 
 Ltac elim_compare :=
@@ -231,14 +231,11 @@ Inductive op :=
     | Impl_introS (* A \/ [A -> B] *)
     | Impl_dest   (* [A -> B] -> A -> B *).
 
-    Inductive ax : Type :=
-    | Intro (f:HFormula) (* Intro [A -> B] generates the formula A *)
-    | Case  (i:int) (l:list literal). (* extracts the ith literal *)
-
     Inductive t :=
-    | Ax (a:ax)
+    | Intro (f:HFormula)
     | Tauto (c:cnfOp) (f: HFormula)
-    | MP (p1: HCons.t t) (cl: HCons.t t).
+    | MP (p1: HCons.t t) (cl: HCons.t t)
+    | Case (i:int) (cl : HCons.t t).
 
   End Prf.
 
@@ -250,10 +247,10 @@ Inductive op :=
 
   Fixpoint chkHc (m: hmap) (f:Formula) (i:int) (b:bool) : bool :=
     match f with
-    | FF => (i == 0) && Bool.eqb b true
-    | TT => (i == 1) && Bool.eqb b true
+    | FF => (i =? 0) && Bool.eqb b true
+    | TT => (i =? 1) && Bool.eqb b true
     | AT a => match IntMap.get' i m with
-             | Some(b',AT a') => (a == a') && Bool.eqb b (AT_is_dec a) && Bool.eqb b b'
+             | Some(b',AT a') => (a =? a') && Bool.eqb b (AT_is_dec a) && Bool.eqb b b'
              |  _   => false
              end
     | OP o f1 f2 => chkHc m f1.(elt) f1.(id) f1.(is_dec)
@@ -261,8 +258,8 @@ Inductive op :=
                     match IntMap.get' i m with
                     | Some (b',OP o' f1' f2') =>
                       op_eqb o o' &&
-                      (f1.(id) == f1'.(id)) &&
-                      (f2.(id) == f2'.(id)) && Bool.eqb b (f1.(is_dec) && f2.(is_dec)) && Bool.eqb b b'
+                      (f1.(id) =? f1'.(id)) &&
+                      (f2.(id) =? f2'.(id)) && Bool.eqb b (f1.(is_dec) && f2.(is_dec)) && Bool.eqb b b'
                     | _ => false
                     end
     end.
@@ -1072,9 +1069,6 @@ Inductive op :=
     fold_update (augment_hyp is_classic) l st.
 
 
-  Check intro_impl.
-
-
   Definition intro_state (st:state) (f: Formula) (hf: HFormula) :=
     let (hs,c) := intro_impl nil f hf in
     match cnf_hyps (is_classic c) hs st with
@@ -1154,7 +1148,7 @@ Inductive op :=
 
 
   Definition is_hFF (g: HFormula) :=
-    (g.(id) == 0) && Bool.eqb g.(is_dec) true && is_FF g.(elt).
+    (g.(id) =? 0) && Bool.eqb g.(is_dec) true && is_FF g.(elt).
 
 
   Definition is_unsat (lit: IntMap.ptrie bool) (l:literal) : bool  :=
@@ -1173,7 +1167,7 @@ Inductive op :=
 
   Definition is_goal (goal : HFormula) (l:literal) : bool :=
     match l with
-    | POS f => f.(id) == goal.(id)
+    | POS f => f.(id) =? goal.(id)
     | NEG _ => false
     end.
 
@@ -5316,7 +5310,7 @@ Qed.
 
 
   Definition incr (i:int) :=
-    if i == max_int then max_int else i + 1.
+    if i =? max_int then max_int else i + 1.
 
   Fixpoint hcons  (m : hmap) (f : Formula) : hmap :=
     match f with
