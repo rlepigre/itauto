@@ -650,7 +650,11 @@ module Theory = struct
     in
     let deps c = deps_rec 0 ISet.empty c in
     let binders, prf = intros_proof evd [] c in
-    (binders, hyps_of_rels (deps (EConstr.to_constr evd prf)) binders, prf)
+    ( binders
+    , hyps_of_rels
+        (deps (EConstr.to_constr ~abort_on_undefined_evars:false evd prf))
+        binders
+    , prf )
 
   let remap_proof m evd c =
     let rec remap evd d c =
@@ -766,14 +770,40 @@ module Theory = struct
         (fun (fail, gl) -> fail ++ str " for " ++ pr_constr env sigma gl)
         l)
 
+  let compare_atom a a' =
+    match (a, a') with
+    | NEG f, NEG f' | POS f, POS f' ->
+      Int.compare (Uint63.hash f.HCons.id) (Uint63.hash f'.HCons.id)
+    | NEG _, POS _ -> -1
+    | POS _, NEG _ -> 1
+
+  (** [subset_clause] assumes that both clauses are sorted *)
+  let rec subset_clause cl1 cl2 =
+    match (cl1, cl2) with
+    | [], _ -> true
+    | _, [] -> false
+    | e1 :: cl1', e2 :: cl2' ->
+      let cmp = compare_atom e1 e2 in
+      if cmp < 0 then false
+      else if cmp = 0 then subset_clause cl1' cl2'
+      else subset_clause cl1 cl2'
+
+  let rec search p l =
+    match l with [] -> None | e :: l -> if p e then Some e else search p l
+
   let thy_prover tac cc p (genv, sigma) ep hm l =
-    match find_unsat_core ep l tac genv sigma with
-    | NoCore r -> CErrors.user_err (pp_no_core genv sigma r)
-    | UnsatCore (core, prf) ->
-      if debug then
-        Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
-      cc := (core, prf) :: !cc;
-      Some (hm, core)
+    let l = List.sort compare_atom l in
+    match search (fun (x, _) -> subset_clause x l) !cc with
+    | None -> (
+      (* Really run the prover *)
+      match find_unsat_core ep l tac genv sigma with
+      | NoCore r -> CErrors.user_err (pp_no_core genv sigma r)
+      | UnsatCore (core, prf) ->
+        if debug then
+          Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
+        cc := (List.sort compare_atom core, (core, prf)) :: !cc;
+        Some (hm, core) )
+    | Some (core, prf) -> Some (hm, core)
 end
 
 let run_prover tac cc (genv, sigma) ep f =
@@ -824,7 +854,7 @@ let assert_conflicts ep l gl =
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC
-    | (c, prf) :: l ->
+    | (_, (c, prf)) :: l ->
       let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
       Tacticals.New.tclTHENLIST
         [ Tactics.assert_by (Names.Name id) (mk_goal c)
