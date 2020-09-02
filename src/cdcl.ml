@@ -727,6 +727,9 @@ module Theory = struct
       in
       match Proofview.partial_proof e pv with
       | [prf] ->
+        if debug then
+          Feedback.msg_debug
+            Pp.(str "EPrf " ++ Printer.pr_econstr_env env sigma prf);
         let core, prf = reduce_proof sigma cl prf in
         if debug then
           Feedback.msg_debug

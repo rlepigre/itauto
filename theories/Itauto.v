@@ -35,7 +35,7 @@ Ltac run_solver :=
   let n := fresh in
   (intro n ;
   (* Apply soundness proof and compute *)
-  apply (hcons_bprover_correct (KeyInt.nat_of_int n)); (* todo compute n *)
+  apply (hcons_bprover_correct (KeyInt.nat_of_int n));
   vm_compute; reflexivity).
 
 Ltac itauto_use_tauto := constr:(false).
