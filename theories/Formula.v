@@ -145,6 +145,12 @@ Inductive op :=
   | AT  : int -> Formula
   | OP  : op -> HCons.t Formula -> HCons.t Formula -> Formula.
 
+  Inductive LForm : Type :=
+  | LAT : int -> LForm
+  | LAND : list (HCons.t LForm) -> LForm
+  | LOR  : list (HCons.t LForm) -> LForm
+  | LIMPL : list (HCons.t LForm) -> list (HCons.t LForm) -> LForm.
+
 
 
   Definition HFormula : Type := HCons.t Formula.
@@ -740,6 +746,52 @@ Inductive op :=
     | IMPL => negb b
     end.
 
+  Fixpoint decomp_or (f:Formula) (hf:HFormula) :=
+    match f with
+    | AT a => Some (hf :: nil)
+    | OP o f1 f2 =>
+      match o with
+      | OR => match decomp_or f1.(elt) f1 with
+              | None => None
+              | Some l1 => match decomp_or f2.(elt) f2 with
+                           | None => None
+                          | Some l2 => Some (l1 ++ l2)
+                          end
+              end
+      |  _  => None
+      end
+    | FF => Some nil
+    | TT => None
+    end.
+
+  (** [watch_clause_of_list] does not make sure that the watched literals are distinct *)
+  Definition watch_clause_of_list (l :list literal) : option watched_clause :=
+    match l with
+    | e1::e2::l => Some {| watch1 := e1 ; watch2 := e2 ; unwatched := l |}
+    | _  => None
+    end.
+
+  Definition cnf_minus_or_list (hf : HFormula) (l : list HFormula) (acc: list watched_clause) :=
+    match l with
+    | e1::e2::l => Some
+                     ({| watch1 := NEG hf ; watch2 := POS e1 ; unwatched := List.map POS l |} :: acc)
+    | _         => None
+    end.
+
+  Definition cnf_plus_or_list (hf : HFormula) (l : list HFormula) (acc:list watched_clause):=
+    match l with
+    | _ :: _ :: _ => Some (List.fold_left (fun acc x => {| watch1 := NEG x ; watch2 := POS hf ; unwatched := nil|}::acc) l acc)
+    | _ => None
+    end.
+
+  Definition cnf_or_opt (pol:bool)  (f:Formula) (hf:HFormula) (acc: list watched_clause) :=
+    match decomp_or f hf with
+    | None => None
+    | Some l => if pol then cnf_plus_or_list hf l acc
+                else cnf_minus_or_list hf l acc
+    end.
+
+  
   Fixpoint cnf (pol:bool) (is_classic: bool) (cp cm: IntMap.ptrie unit)
            (ar:list literal) (acc : list watched_clause)   (f: Formula) (hf: HFormula) :
     IntMap.ptrie unit * IntMap.ptrie unit * list literal * list watched_clause
@@ -750,13 +802,17 @@ Inductive op :=
       match f with
       | FF | TT | AT _ => (cp,cm,ar,acc)
       | OP op f1 f2 =>
-        let acc := (if pol then cnf_of_op_plus else cnf_of_op_minus) is_classic op f1 f2 hf acc in
         let cp  := if pol then set_cons h cp else cp in
         let cm  := if pol then cm else set_cons h cm in
+(*        match cnf_or_opt pol f hf acc with
+        | Some acc => (cp,cm,ar,acc)
+        | None     => *)
+        let acc := (if pol then cnf_of_op_plus else cnf_of_op_minus) is_classic op f1 f2 hf acc in
         let ar  := if is_impl op && negb is_classic && pol then POS hf::ar else ar in
         let '(cp,cm,ar,acc) := cnf (polarity_of_op_1 op pol) is_classic cp cm ar acc f1.(elt) f1 in
         cnf pol is_classic cp cm ar acc f2.(elt) f2
-      end.
+        end
+  .
 
   Definition eval_hformula (f: HFormula) := eval_formula f.(elt).
 
@@ -3826,6 +3882,16 @@ Qed.
   Definition check_classic (l : list literal) :=
     List.forallb is_classic_lit l.
 
+  Definition is_silly_split (l : list literal) :=
+    match l with
+    | NEG f :: POS f1 :: POS f2 :: nil =>
+      match f.(elt) with
+      | OP OR f1' f2' => (f1'.(id) =? f1.(id)) && (f2'.(id) =? f2.(id))
+      | _   => false
+      end
+    | _ => false
+    end.
+
   Definition select_clause (is_bot: bool) (lit: IntMap.ptrie bool) (acc: option (list literal)) (k:int) (cl : watched_clause) : option (list literal) :=
     match acc with
     | Some cl => Some cl
@@ -3833,7 +3899,7 @@ Qed.
       let res := reduce lit (watch1 cl :: watch2 cl :: unwatched cl) in
       match res with
       | None => None
-      | Some l => if is_bot || check_classic l then Some l else None
+      | Some l => if (is_bot || check_classic l) && negb (is_silly_split l) then Some l else None
       end
     end.
 
@@ -4987,16 +5053,20 @@ Qed.
     -  
     apply eval_reduce with (m:=m) (u:=u)in Pacc2; auto.
     apply wf_reduce with (u:=u) in Pacc1.
-    destruct ((reduce u (watch1 v :: watch2 v :: unwatched v))).
+    destruct ((reduce u (watch1 v :: watch2 v :: unwatched v))); auto.
+    lift_if ; split ; auto.
+    rewrite andb_true_iff.
+    intros (H &  _); revert H.
     destruct  g; unfold is_classic.
     + simpl in *.
-      destruct (check_classic l) eqn:C; simpl ; auto.
+      intro C.
       apply eval_literal_list_classic with (m:=m) in Pacc2; auto.
       unfold Q ; simpl. tauto.
     + simpl in *.
-      intro. simpl in H.  revert Pacc2.
+      unfold Q. simpl.
+      intros.
+      revert Pacc2.
       apply eval_literal_list_neg;auto.
-    + simpl. tauto.
   Qed.
 
   Lemma wf_find_clause_in_map :
@@ -5017,7 +5087,7 @@ Qed.
     apply wf_reduce with (u:=u) in H0.
     destruct (reduce u (watch1 v :: watch2 v :: unwatched v));
       simpl in * ; auto.
-    destruct (b || check_classic l) ; simpl ; auto.
+    destruct ((b || check_classic l) && negb (is_silly_split l)) ; simpl ; auto.
   Qed.
 
   Lemma eval_find_split :

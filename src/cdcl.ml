@@ -942,15 +942,21 @@ let change_goal =
       let form, env = make_formula env (List.rev hyps) concl in
       let cform = constr_of_bformula form in
       let m = Env.map_of_env env in
+      let f = env.Env.fresh in
+      let n = fresh_id (Names.Id.of_string "__n") gl in
       let change =
-        EConstr.mkApp
-          ( Lazy.force coq_eval_hbformula
-          , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] )
+        EConstr.mkLetIn
+          ( Context.nameR n
+          , EConstr.mkInt (Uint63.of_int (10 * f))
+          , Lazy.force coq_int
+          , EConstr.mkApp
+              ( Lazy.force coq_eval_hbformula
+              , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] ) )
       in
       if debug then
         Feedback.msg_debug
           Pp.(str "change " ++ Printer.pr_econstr_env genv sigma change);
-      Tacticals.New.tclTHEN (Tactics.change_concl change) (generalize_env env))
+      Tacticals.New.tclTHENLIST [Tactics.change_concl change; generalize_env env])
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in
