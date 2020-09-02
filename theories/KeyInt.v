@@ -298,7 +298,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
         with (Z.pred (2 ^ φ (n)%int63))%Z by lia.
       rewrite <- Z.ones_equiv.
       rewrite Z.testbit_ones_nonneg by lia.
-      destruct ((p < n) && (p < 63))%int63 eqn:LT.
+      destruct ((p <? n) && (p <? 63))%int63 eqn:LT.
       lia. lia.
       assert (BOUND : (0 < 2 ^ to_Z n < wB)%Z).
       { unfold wB.
@@ -322,7 +322,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
         with (Z.pred (2 ^ Z.of_nat size))%Z by lia.
       rewrite <- Z.ones_equiv.
       rewrite Z.testbit_ones_nonneg by lia.
-      destruct ((p < n)%int63 && (p < 63)%int63) eqn:T2.
+      destruct ((p <? n)%int63 && (p <? 63)%int63) eqn:T2.
       lia.
       lia.
   Qed.
@@ -344,19 +344,19 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     rewrite Int63.land_spec.
     rewrite! bit_ones.
     generalize (bit_M i n).
-    destruct ((n < m)%int63 || (digits ≤ n)%int63) eqn:T1.
-    destruct ((n < m)%int63 && (n < 63)%int63) eqn:T2.
+    destruct ((n <? m)%int63 || (digits ≤? n)%int63) eqn:T1.
+    destruct ((n <? m)%int63 && (n <? 63)%int63) eqn:T2.
     - unfold digits in *.
       destruct (bit i n); try lia.
     - unfold digits in *.
       destruct (bit i n); try lia.
-    - destruct ((n - m < digits)%int63 && (n - m < 63)%int63) eqn:T2.
-      destruct ((n < m)%int63 && (n < 63)%int63) eqn:T3.
+    - destruct ((n - m <? digits)%int63 && (n - m <? 63)%int63) eqn:T2.
+      destruct ((n <? m)%int63 && (n <? 63)%int63) eqn:T3.
       unfold digits in *.
       destruct (bit i n); try lia.
       unfold digits in *.
       destruct (bit i n); try lia.
-      destruct ((n < m)%int63 && (n < 63)%int63) eqn:T3.
+      destruct ((n <? m)%int63 && (n <? 63)%int63) eqn:T3.
       unfold digits in *.
       destruct (bit i n); try lia.
       unfold digits in *.
@@ -369,7 +369,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
       testbit k m = true.
 
   Definition is_set_int (k:int) (m:int) :=
-      (forall p, (p < m = true)%int63 -> bit k p = false) /\
+      (forall p, (p <? m = true)%int63 -> bit k p = false) /\
       bit k m = true.
 
   Ltac split_and :=
@@ -392,7 +392,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Lemma is_set_eq :
     forall k m, is_set k  m ->
                 exists n, n = int_of_nat m /\
-                          (n < digits = true)%int63 /\
+                          (n <? digits = true)%int63 /\
                           is_set_int k n.
   Proof.
     intros.
@@ -429,7 +429,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     rewrite lor_spec.
     rewrite ! bit_lsl.
     rewrite ! bit_lsr.
-    assert (n0 = n \/ n0 < n = true \/ (Int63.ltb n n0  && Int63.ltb n0 digits) = true \/ (Int63.leb digits n0) = true)%int63 by lia.
+    assert (n0 = n \/ n0 <? n = true \/ (Int63.ltb n n0  && Int63.ltb n0 digits) = true \/ (Int63.leb digits n0) = true)%int63 by lia.
     destruct H as [H | [H | [H |H]]].
     + subst.
       rewrite T.
@@ -442,10 +442,10 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
       lia.
     + rewrite andb_true_iff in H.
       destruct H.
-      replace (n0 < n + 1)%int63 with false by lia.
+      replace (n0 <? n + 1)%int63 with false by lia.
       simpl.
-      replace (digits <= n0)%int63 with false by lia.
-      replace ((n0 - (n + 1) ≤ n + 1 + (n0 - (n + 1)))%int63) with true by lia.
+      replace (digits <=? n0)%int63 with false by lia.
+      replace ((n0 - (n + 1) ≤? n + 1 + (n0 - (n + 1)))%int63) with true by lia.
       replace ((n + 1 + (n0 - (n + 1))))%int63 with n0 by lia.
       elim_if.
       rewrite bit_1.
@@ -528,7 +528,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
 
 
   Lemma to_Z_branch_bit : forall k m
-      (SMALL : (m < 63 = true)%int63),
+      (SMALL : (m <? 63 = true)%int63),
       to_Z
         ((k >> (m + 1)) << (m + 1) + 1 << m)%int63 =
 
@@ -617,7 +617,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Definition not_int (x : int) := (- x - 1)%int63.
 
   Lemma bit_not_int : forall x n
-      (SN : (n < digits = true)%int63),
+      (SN : (n <? digits = true)%int63),
       bit (not_int x) n = negb (bit x n).
   Proof.
     unfold not_int.
@@ -673,13 +673,13 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Qed.
 
   Lemma bit_ext' : forall a b,
-      (forall n, n < digits = true -> bit a n = bit b n)%int63 ->
+      (forall n, n <? digits = true -> bit a n = bit b n)%int63 ->
       a = b.
   Proof.
     intros.
     apply bit_ext.
     intros.
-    assert (digits <= n = true \/ n < digits = true)%int63 by lia.
+    assert (digits <=? n = true \/ n <? digits = true)%int63 by lia.
     destruct H0.
     - rewrite! bit_M by auto.
       reflexivity.
@@ -702,7 +702,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
 
 
   Lemma lsl_1_spec : forall n,
-      (n < digits = true)%int63 ->
+      (n <? digits = true)%int63 ->
       (φ (1 << n)%int63 = 2 ^ to_Z n)%Z.
   Proof.
     intros.
@@ -721,7 +721,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Qed.
 
   Lemma bit_pred_1_lsl : forall n i ,
-      (n < digits = true)%int63 ->
+      (n <? digits = true)%int63 ->
       (bit (1 << n - 1) i)%int63 =  (to_Z i <? to_Z n)%Z.
   Proof.
     intros.
@@ -749,7 +749,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
 
 
   Lemma not_int_lsl : forall k m,
-      (m < digits = true)%int63 ->
+      (m <? digits = true)%int63 ->
       (not_int ((k >> (m+1)) << (m+1) lor (1 << m)) =
          (((not_int k) >> (m+1) << (m+1)) lor (1 << m - 1)))%int63.
   Proof.
@@ -784,7 +784,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
 
 
   Lemma opp_mask : forall k m,
-      (m < digits = true)%int63 ->
+      (m <? digits = true)%int63 ->
       (- ((k >> (m + 1)) << ( m + 1) lor 1 <<  m)
       =
       (((not_int k) >> (m+1)) << (m+1)) lor ((1 << m)))%int63.
@@ -814,7 +814,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Proof.
     intros.
     unfold zero in *.
-    assert (LPO: (exists p, ((p < int_of_nat size) = true) /\ (bit k p = true))%int63).
+    assert (LPO: (exists p, ((p <? int_of_nat size) = true) /\ (bit k p = true))%int63).
     {
       case (to_Z_bounded k).
       unfold wB.
@@ -851,7 +851,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
           compute in  H.
           lia.
         +
-          assert (exists p : int, (p < int_of_nat n)%int63 = true /\ bit (k >> 1) p = true).
+          assert (exists p : int, (p <? int_of_nat n)%int63 = true /\ bit (k >> 1) p = true).
           {
             apply IHn ; auto.
             lia.
@@ -868,7 +868,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
           lia.
           destruct H5.
           rewrite bit_lsr in H6.
-          destruct ((x ≤ 1 + x)%int63) eqn:EQ ; try lia.
+          destruct ((x ≤? 1 + x)%int63) eqn:EQ ; try lia.
           rewrite <- H6.
           f_equal. lia.
     }
@@ -1010,7 +1010,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     assert (NP : (n2 <= 62)%nat) by lia.
     rewrite <- Nat.ltb_lt.
     apply eqb_iff.
-    set (Q:= fun n1 n2=>   Bool.eqb (one << int_of_nat n1 < one << int_of_nat n2)%int63 (n1 <? n2)%nat).
+    set (Q:= fun n1 n2=>   Bool.eqb (one << int_of_nat n1 <? one << int_of_nat n2)%int63 (n1 <? n2)%nat).
     change (Q n1 n2 = true).
     eapply (forall_2n_correct _ 62 62);auto.
   Qed.

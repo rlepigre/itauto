@@ -1,7 +1,7 @@
 # For debugging purposes, it is desirable to patch the Coq extracted code
 # This is done by calling `make prover` once the Coq code is extracted
 
-.PHONY: clean cleanaux coq test
+.PHONY: clean cleanaux coq test cleantest
 
 all : src/proverPatch.ml
 	rm src/cdcl.ml.d

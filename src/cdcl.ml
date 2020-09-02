@@ -726,7 +726,14 @@ module Theory = struct
           pv
       in
       match Proofview.partial_proof e pv with
-      | [prf] -> UnsatCore (reduce_proof sigma cl prf)
+      | [prf] ->
+        let core, prf = reduce_proof sigma cl prf in
+        if debug then
+          Feedback.msg_debug
+            Pp.(
+              str "Core "
+              ++ Printer.pr_econstr_env env sigma (constr_of_clause ep core));
+        UnsatCore (core, prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e ->
       if debug then
@@ -803,7 +810,10 @@ module Theory = struct
           Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
         cc := (List.sort compare_atom core, (core, prf)) :: !cc;
         Some (hm, core) )
-    | Some (core, prf) -> Some (hm, core)
+    | Some (core, prf) ->
+      if debug then
+        Printf.fprintf stdout "Thy[Again] ⊢ %a\n" P.output_literal_list core;
+      Some (hm, core)
 end
 
 let run_prover tac cc (genv, sigma) ep f =
