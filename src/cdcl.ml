@@ -605,6 +605,11 @@ module Theory = struct
     Names.Id.of_string_soft
       ("cid__" ^ string_of_int (Uint63.hash (id_of_literal a)))
 
+  let lit_is_dec a = (P.form_of_literal a).HCons.is_dec
+
+  let not_constr c =
+    EConstr.mkProd (Context.anonR, c, constr_of_gref (Lazy.force coq_False))
+
   let rec constr_of_clause ep cl =
     match cl with
     | [] -> constr_of_gref (Lazy.force coq_False)
@@ -617,6 +622,32 @@ module Theory = struct
         match l with
         | [] -> at
         | _ -> EConstr.mkApp (constr_of_gref (Lazy.force coq_or), [|at; c|]) ) )
+
+  let rec constr_of_clause_dec ep cl =
+    match cl with
+    | [] -> constr_of_gref (Lazy.force coq_False)
+    | a :: l -> (
+      match a with
+      | NEG _ ->
+        let at = fst (Env.get_constr_of_atom ep (form_of_literal a)) in
+        EConstr.mkProd
+          (Context.nameR (id_of_literal a), at, constr_of_clause_dec ep l)
+      | POS _ ->
+        if List.for_all lit_is_dec cl then constr_of_clause_dec_pos ep cl
+        else constr_of_clause ep cl )
+
+  and constr_of_clause_dec_pos ep cl =
+    match cl with
+    | [] -> constr_of_gref (Lazy.force coq_False)
+    | a :: l -> (
+      match a with
+      | NEG _ -> failwith "A positive literal is expected"
+      | POS _ ->
+        let at = fst (Env.get_constr_of_atom ep (form_of_literal a)) in
+        EConstr.mkProd
+          ( Context.nameR (id_of_literal a)
+          , not_constr at
+          , constr_of_clause_dec_pos ep l ) )
 
   let name_of_binder c =
     match Context.binder_name c with
@@ -685,9 +716,17 @@ module Theory = struct
     | [] -> []
     | at :: l -> ( match at with NEG _ -> concl_of_clause l | POS _ -> cl )
 
+  let rec concl_of_clause_dec cl =
+    match cl with
+    | [] -> []
+    | at :: l -> (
+      match at with
+      | NEG _ -> concl_of_clause_dec l
+      | POS _ -> if List.for_all lit_is_dec cl then [] else cl )
+
   let rec get_used_hyps l' cl =
     match l' with
-    | [] -> concl_of_clause cl
+    | [] -> concl_of_clause_dec cl
     | (e, t) :: l' -> (
       match cl with
       | [] -> failwith "get_used_hyps"
@@ -712,7 +751,7 @@ module Theory = struct
     (core, mkLambdas rused prf_core)
 
   let find_unsat_core ep cl tac env sigma =
-    let gl = constr_of_clause ep cl in
+    let gl = constr_of_clause_dec ep cl in
     let e, pv = Proofview.init sigma [(env, gl)] in
     try
       let _, pv, _, _ =
@@ -863,7 +902,7 @@ let tclRETYPE c =
       Unsafe.tclEVARS sigma)
 
 let assert_conflicts ep l gl =
-  let mk_goal c = Theory.constr_of_clause ep c in
+  let mk_goal c = Theory.constr_of_clause_dec ep c in
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC

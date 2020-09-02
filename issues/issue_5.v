@@ -9,5 +9,6 @@ Goal forall (x : Z) (n : x <> 0),
     False.
 Proof.
   intros.
+  gen_conflicts lia.
   itauto lia.
 Qed.
