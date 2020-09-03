@@ -3889,6 +3889,21 @@ Qed.
       | OP OR f1' f2' => (f1'.(id) =? f1.(id)) && (f2'.(id) =? f2.(id))
       | _   => false
       end
+    | NEG f :: POS f1 :: nil=>
+      match f.(elt) with
+      | OP AND f1' f2' => (f1'.(id) =? f1.(id)) || (f2'.(id) =? f1.(id))
+      | _   => false
+      end
+    | NEG f1 :: NEG f2 :: nil =>
+      match f1.(elt) with
+      | OP IMPL f1' f2' => (is_FF f2'.(elt)) && (f1'.(id) =? f2.(id))
+      | _   => false
+      end
+    | NEG f1 :: NEG f2 :: POS f3 :: nil =>
+      match f1.(elt) with
+      | OP IMPL f1' f2' =>  (f1'.(id) =? f2.(id)) && (f2'.(id) =? f3.(id))
+      | _   => false
+      end
     | _ => false
     end.
 
