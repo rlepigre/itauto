@@ -4,6 +4,8 @@ Open Scope Z_scope.
 
 Unset Lia Cache.
 
+
+
 Goal forall Y r0 r q q0 r1 q1 : Z,
   131072 <= r0 < 139264 \/
   268468224 <= r0 < 268500992 \/
@@ -24,7 +26,5 @@ Goal forall Y r0 r q q0 r1 q1 : Z,
   (4 = 0 -> q = 0 /\ r = 0) -> False.
 Proof.
   intros.
-  (* Time lia. (* 0.128 secs *) *)
-  intros.
-  Time itauto lia. (* 187 secs - this is almost forever *)
-Time Qed.
+  Time itauto lia. (* still slow, down to 38s *)
+Qed.
