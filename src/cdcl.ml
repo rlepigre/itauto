@@ -840,7 +840,7 @@ module Theory = struct
   let rec search p l =
     match l with [] -> None | e :: l -> if p e then Some e else search p l
 
-  let thy_prover tac cc p (genv, sigma) ep hm l =
+  let thy_prover tac cc (genv, sigma) ep hm l =
     let l = List.sort compare_atom l in
     match search (fun (x, _) -> subset_clause x l) !cc with
     | None -> (
@@ -867,8 +867,7 @@ let run_prover tac cc (genv, sigma) ep f =
   in
   let m = P.hcons_form f in
   P.prover_formula is_dec
-    (Theory.thy_prover tac cc Micromega_plugin.Coq_micromega.linear_Z
-       (genv, sigma) ep)
+    (Theory.thy_prover tac cc (genv, sigma) ep)
     true m (nat_of_int 200) f
 
 let fresh_id id gl =
