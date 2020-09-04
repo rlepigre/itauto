@@ -4227,6 +4227,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       | OP IMPL f1' f2' =>  (f1'.(id) =? f2.(id)) && (f2'.(id) =? f3.(id))
       | _   => false
       end
+    | POS f1 :: POS f2 :: nil =>
+      match f2.(elt) with
+      | OP IMPL f3 f4 => (f1.(id) =? f3.(id)) && (f4.(id) =? 0)
+      | _ => false
+      end
     | _ => false
     end.
 
