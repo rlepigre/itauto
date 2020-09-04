@@ -25,5 +25,6 @@ Goal forall Y r0 r q q0 r1 q1 : Z,
 Proof.
   intros.
   (* Time lia. (* 0.128 secs *) *)
-  Time itauto lia. (* seems to take forever *)
+  intros.
+  Time itauto lia. (* 187 secs - this is almost forever *)
 Time Qed.

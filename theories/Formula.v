@@ -746,23 +746,6 @@ Inductive op :=
     | IMPL => negb b
     end.
 
-  Fixpoint decomp_or (f:Formula) (hf:HFormula) :=
-    match f with
-    | AT a => Some (hf :: nil)
-    | OP o f1 f2 =>
-      match o with
-      | OR => match decomp_or f1.(elt) f1 with
-              | None => None
-              | Some l1 => match decomp_or f2.(elt) f2 with
-                           | None => None
-                          | Some l2 => Some (l1 ++ l2)
-                          end
-              end
-      |  _  => None
-      end
-    | FF => Some nil
-    | TT => None
-    end.
 
   (** [watch_clause_of_list] does not make sure that the watched literals are distinct *)
   Definition watch_clause_of_list (l :list literal) : option watched_clause :=
@@ -771,10 +754,10 @@ Inductive op :=
     | _  => None
     end.
 
-  Definition cnf_minus_or_list (hf : HFormula) (l : list HFormula) (acc: list watched_clause) :=
+  Definition cnf_minus_or_list (hf : HFormula) (l : list literal) (acc: list watched_clause) :=
     match l with
-    | e1::e2::l => Some
-                     ({| watch1 := NEG hf ; watch2 := POS e1 ; unwatched := List.map POS l |} :: acc)
+    | e1::l => Some
+                     ({| watch1 := NEG hf ; watch2 := e1 ; unwatched :=  l |} :: acc)
     | _         => None
     end.
 
@@ -784,12 +767,6 @@ Inductive op :=
     | _ => None
     end.
 
-  Definition cnf_or_opt (pol:bool)  (f:Formula) (hf:HFormula) (acc: list watched_clause) :=
-    match decomp_or f hf with
-    | None => None
-    | Some l => if pol then cnf_plus_or_list hf l acc
-                else cnf_minus_or_list hf l acc
-    end.
 
   
   Fixpoint cnf (pol:bool) (is_classic: bool) (cp cm: IntMap.ptrie unit)
@@ -813,6 +790,170 @@ Inductive op :=
         cnf pol is_classic cp cm ar acc f2.(elt) f2
         end
   .
+
+  Fixpoint is_clause_or (l : list literal) (f: Formula) (hf: HFormula) :=
+    match f with
+    | TT => Some (POS hf :: nil)
+    | FF => Some l
+    | AT a => Some (POS hf :: l)
+    | OP o f1 f2 =>
+      match o with
+      | OR =>
+        match is_clause_or l f1.(elt) f1 with
+        | None => None
+        | Some l => is_clause_or l f2.(elt) f2
+        end
+      | _  => None
+      end
+    end.
+
+  Fixpoint is_clause_and (l : list literal) (f: Formula) (hf: HFormula) :=
+    match f with
+    | TT => Some l
+    | FF => Some (NEG hf :: nil)
+    | AT a => Some (NEG hf :: l)
+    | OP o f1 f2 =>
+      match o with
+      | AND =>
+        match is_clause_and l f1.(elt) f1 with
+        | None => None
+        | Some l => is_clause_and l f2.(elt) f2
+        end
+      | _  => None
+      end
+    end.
+
+  Fixpoint is_clause (f:Formula) (hf:HFormula) :=
+    match f with
+    | TT   => Some (POS hf::nil)
+    | FF   => Some nil
+    | AT a => Some (POS hf :: nil)
+    | OP o f1 f2 =>
+      match o with
+      | OR  => is_clause_or nil f hf
+      | AND => None (* We could try to find a list of clauses *)
+      | IMPL => match is_clause_and nil f1.(elt) f1 with
+                | None => None
+                | Some l1 => match is_clause f2.(elt) f2 with
+                             | None => None
+                             | Some l2 => Some (l1++l2)
+                             end
+                end
+      end
+    end.
+
+  Lemma is_clause_or_correct :
+    forall f hf l l'
+           (HF : f = hf.(elt))
+           (CL : is_clause_or l f hf = Some l'),
+      (eval_literal_list l \/ eval_formula f) <-> eval_literal_list l'.
+  Proof.
+    intro.
+    induction f using form_ind; simpl ; intros.
+    - inv CL. simpl. rewrite <- HF. simpl. tauto.
+    - inv CL. tauto.
+    - inv CL. simpl. rewrite <- HF. tauto.
+    - destruct o ; try congruence.
+      destruct (is_clause_or l (elt f1) f1) eqn:EQ; try congruence.
+      inv HF.
+      apply IHf in EQ; auto.
+      apply IHf0 in CL; auto.
+      simpl. tauto.
+  Qed.
+
+
+  Definition neg_literal (l: literal) :=
+    match l with
+    | POS h => NEG h
+    | NEG h => POS h
+    end.
+
+  Definition is_negative_literal (l:literal) :=
+    match l with
+    | POS _ => False
+    | NEG _ => True
+    end.
+
+  Lemma is_clause_and_correct :
+    forall f hf l l'
+           (HF : f = hf.(elt))
+           (CL : is_clause_and l f hf = Some l')
+           (NEG : Forall is_negative_literal l)
+    ,
+      ((Forall eval_literal (List.map neg_literal l) /\ eval_formula f) <->
+      (Forall eval_literal (List.map neg_literal  l')))
+      /\ Forall is_negative_literal l'.
+  Proof.
+    intro.
+    induction f using form_ind; simpl ; intros.
+    - inv CL. tauto.
+    - inv CL. simpl.
+      split.
+      symmetry. rewrite Forall_rew.
+      simpl. rewrite <- HF. simpl. tauto.
+      repeat rewrite Forall_rew. simpl. tauto.
+    - inv CL.
+      split.
+      symmetry. rewrite Forall_rew.
+      simpl. rewrite <- HF. simpl.
+      tauto.
+      rewrite Forall_rew. simpl. tauto.
+    - destruct o ; try congruence.
+      destruct (is_clause_and l (elt f1) f1) eqn:EQ; try congruence.
+      inv HF.
+      apply IHf in EQ; auto.
+      apply IHf0 in CL; auto.
+      simpl. tauto.
+      tauto.
+  Qed.
+
+  Lemma True_and_iff : forall P, (True /\ P) <-> P.
+  Proof.
+    intros. tauto.
+  Qed.
+
+  Lemma is_clause_correct :
+    forall f hf l
+           (HF : f = hf.(elt))
+           (CL : is_clause f hf = Some l),
+      eval_formula f <-> eval_literal_list  l.
+  Proof.
+    intro.
+    induction f using form_ind; intros.
+    - inv CL. simpl. rewrite <- HF. simpl. tauto.
+    - inv CL. simpl. tauto.
+    - inv CL. simpl. rewrite <- HF.
+      simpl ; tauto.
+    - destruct o ; try congruence.
+      + simpl in CL ; congruence.
+      + unfold is_clause in CL.
+        apply is_clause_or_correct in CL; auto.
+        simpl in CL. simpl. tauto.
+      + simpl in CL.
+        destruct (is_clause_and nil (elt f1) f1) eqn:EQ1; try congruence.
+        inv HF.
+        apply is_clause_and_correct in EQ1; auto.
+        destruct (is_clause (elt f2) f2) eqn:EQ2 ; try congruence.
+        inv CL.
+        apply IHf0 in EQ2; auto.
+        simpl.
+        simpl in EQ1. rewrite Forall_rew in EQ1.
+        rewrite EQ2.
+        rewrite True_and_iff  in EQ1.
+        rewrite (proj1 EQ1).
+        specialize (proj2 EQ1).
+        clear.
+        revert l1.
+        induction l0; simpl.
+        * intro. repeat rewrite Forall_rew.
+          tauto.
+        * intros. inv H.
+          destruct a; simpl in H2 ; try tauto.
+          simpl. rewrite Forall_rew.
+          rewrite <- IHl0; auto.
+          simpl. tauto.
+  Qed.
+
 
   Definition eval_hformula (f: HFormula) := eval_formula f.(elt).
 
@@ -1111,7 +1252,21 @@ Inductive op :=
                          else (acc, Some hf)
     end.
 
-  Definition cnf_of_literal (l:literal) := cnf  (negb (is_positive_literal l)).
+
+  Definition cnf_opt (pol: bool) (is_classic:bool) (cp cm: IntMap.ptrie unit)
+             (ar:list literal) (acc: list watched_clause) (f: Formula) (hf: HFormula) :=
+    if pol
+    then cnf pol is_classic cp cm ar acc f hf
+    else
+      match is_clause f hf with
+      | Some l => match cnf_minus_or_list hf l acc with
+                  | None => (cp,cm,ar,acc)
+                  | Some acc' => (cp, set_cons hf.(id) cm, ar,acc')
+                  end
+      | None => cnf pol is_classic cp cm ar acc f hf
+      end.
+
+  Definition cnf_of_literal (l:literal) := cnf_opt  (negb (is_positive_literal l)).
 
   Definition augment_cnf (is_classic: bool) (h: literal) (st: state) :=
       let f := form_of_literal h in
@@ -1691,11 +1846,6 @@ Inductive op :=
       split ; apply IntMapForallEmpty.
   Qed.
 
-  Definition neg_literal (l: literal) :=
-    match l with
-    | POS h => NEG h
-    | NEG h => POS h
-    end.
 
     Lemma literal_eq : forall l,
       literal_of_bool (is_positive_literal l) (form_of_literal l) = l.
@@ -3339,15 +3489,51 @@ Qed.
     | Some v => P v
     end.
 
+  Lemma cnf_minus_or_list_correct :
+    forall hf l acc acc',
+      cnf_minus_or_list hf l acc = Some acc' ->
+      Forall eval_watched_clause acc ->
+      (eval_hformula hf -> eval_literal_list l) ->
+      Forall eval_watched_clause acc'.
+  Proof.
+    unfold cnf_minus_or_list.
+    destruct l ; try congruence.
+    intros. inv H.
+    rewrite Forall_rew.
+    split ; auto.
+  Qed.
 
-  Lemma cnf_of_literal_correct : forall g cp cm ar l,
+  
+Lemma cnf_correct_opt
+     : forall (f : Formula) (pol : bool) (g : option HFormula) (cp cm : IntMap.ptrie unit)
+         (ar : list literal) (acc : list watched_clause) (hf : t Formula),
+       elt hf = f ->
+       ((Forall eval_watched_clause acc -> eval_ohformula g) -> eval_ohformula g) ->
+       (Forall eval_watched_clause (snd (cnf_opt pol (is_classic g) cp cm ar acc f hf)) ->
+        eval_ohformula g) -> eval_ohformula g.
+Proof.
+  unfold cnf_opt.
+  destruct pol.
+  -  apply cnf_correct.
+  - intros until 0.
+    destruct (is_clause f hf) eqn:EQ;[| apply cnf_correct].
+    destruct (cnf_minus_or_list hf l acc) eqn:C;auto.
+    simpl.
+    intros.
+    apply H0. intro. apply H1.
+    apply cnf_minus_or_list_correct in C; auto.
+    apply is_clause_correct in EQ; auto.
+    subst. unfold eval_hformula. tauto.
+Qed.
+
+Lemma cnf_of_literal_correct : forall g cp cm ar l,
       (Forall eval_watched_clause (snd (cnf_of_literal l (is_classic g) cp cm
                       ar nil (elt (form_of_literal l)) (form_of_literal l))) -> eval_ohformula g) ->
       eval_ohformula g.
   Proof.
     unfold cnf_of_literal.
     intros.
-    apply cnf_correct in H ; auto.
+    apply cnf_correct_opt in H ; auto.
   Qed.
 
 
@@ -3465,6 +3651,143 @@ Qed.
         apply wf_cnf_of_op_minus;auto.
   Qed.
 
+  Lemma wf_is_clause_or :
+    forall f hf m l l'
+           (EQF : f = hf.(elt))
+           (HF : has_form m hf)
+           (HL : Forall (has_literal m) l)
+           (IC : is_clause_or l f hf = Some l'),
+           Forall (has_literal m) l'.
+  Proof.
+    induction f using form_ind.
+    -  simpl. intros.
+       inv IC.
+       repeat rewrite Forall_rew.
+       split ; auto.
+    - simpl.  intros.
+      inv IC. auto.
+    - simpl. intros.
+      inv IC. rewrite Forall_rew.
+      simpl. split ; auto.
+    - simpl.
+      destruct o ; try congruence.
+      intros.
+      inv HF;  inv EQF.
+      destruct (is_clause_or l (elt f0) f0) eqn:EQ ; try congruence.
+      apply IHf with (m:=m) in  EQ; auto.
+      apply IHf0 with (m:=m) in  IC; auto.
+  Qed.
+
+  Lemma wf_is_clause_and :
+    forall f hf m l l'
+           (EQF : f = hf.(elt))
+           (HF : has_form m hf)
+           (HL : Forall (has_literal m) l)
+           (IC : is_clause_and l f hf = Some l'),
+           Forall (has_literal m) l'.
+  Proof.
+    induction f using form_ind.
+    -  simpl. intros.
+       inv IC. auto.
+    - simpl.  intros.
+      inv IC.  repeat rewrite Forall_rew.
+       split ; auto.
+    - simpl. intros.
+      inv IC. rewrite Forall_rew.
+      simpl. split ; auto.
+    - simpl.
+      destruct o ; try congruence.
+      intros.
+      inv HF;  inv EQF.
+      destruct (is_clause_and l (elt f0) f0) eqn:EQ ; try congruence.
+      apply IHf with (m:=m) in  EQ; auto.
+      apply IHf0 with (m:=m) in  IC; auto.
+  Qed.
+
+
+
+  Lemma wf_is_clause :
+    forall f hf m l
+           (EQF : f = hf.(elt))
+           (HF : has_form m hf)
+           (IC : is_clause f hf = Some l),
+  Forall (has_literal m) l.
+  Proof.
+    induction f using form_ind.
+    -  simpl. intros.
+       inv IC.
+       repeat rewrite Forall_rew.
+       split ; auto.
+    - simpl.  intros.
+      inv IC.
+      constructor.
+    - simpl; intros.
+      inv IC.
+      repeat rewrite Forall_rew.
+      simpl. tauto.
+    - destruct o.
+      + simpl. congruence.
+      + intros.
+        unfold is_clause in IC.
+        apply wf_is_clause_or with (m:= m) in IC; auto.
+      + simpl. intros.
+        inv HF; simpl in EQF ; try congruence.
+        inv EQF.
+        destruct (is_clause_and nil (elt f0) f0) eqn:EQ1; try congruence.
+        apply wf_is_clause_and with (m:=m) in EQ1; auto.
+        destruct (is_clause (elt f3) f3) eqn:EQ2 ; try congruence.
+        inv IC.
+        apply IHf0 with (m:=m) in EQ2; auto.
+        rewrite Forall_app.
+        tauto.
+  Qed.
+
+  Lemma wf_cnF_minus_or_list :
+    forall m l hf acc w
+           (HF : has_form m hf)
+           (C1 : Forall (has_literal m) l)
+           (ACC : Forall (has_watched_clause m) acc)
+           (C2 : cnf_minus_or_list hf l acc = Some w),
+  Forall (has_watched_clause m) w.
+  Proof.
+    unfold cnf_minus_or_list.
+    intros. destruct l ; try congruence.
+    inv C2.
+    rewrite Forall_rew.
+    split ; auto.
+    unfold has_watched_clause.
+    simpl.
+    rewrite Forall_rew. simpl.
+    tauto.
+  Qed.
+
+
+  Lemma wf_cnf_opt :
+    forall m f b1 b2 cp cm ar acc  hf m' ar' w
+      (HA : Forall (has_literal m) ar)
+      (ACC: Forall (has_watched_clause m) acc)
+      (HF : has_form m hf)
+      (HFF: hf.(elt) = f)
+      (EQ : cnf_opt b1 b2 cp cm ar acc f hf = (m',ar',w)),
+      Forall (has_literal m) ar' /\ Forall (has_watched_clause m) w.
+  Proof.
+    unfold cnf_opt.
+    destruct b1.
+    - apply wf_cnf ; auto.
+    - intros.
+      destruct (is_clause f hf) eqn:C1.
+      apply wf_is_clause with (m:=m) in C1; auto.
+      destruct (cnf_minus_or_list hf l acc) eqn:C2.
+      inv EQ.
+      split; auto.
+      apply wf_cnF_minus_or_list with (m:=m) in C2 ; auto.
+      inv EQ.
+      split ; auto.
+      revert EQ.
+      apply wf_cnf; auto.
+  Qed.
+
+  
   Lemma wf_cnf_of_literal :
     forall m l b cp cm ar acc f hf m' ar' w
            (HA : Forall (has_literal m) ar)
@@ -3476,7 +3799,7 @@ Qed.
   Proof.
     unfold cnf_of_literal.
     intros.
-    apply wf_cnf with (m:=m) in EQ ; auto.
+    apply wf_cnf_opt with (m:=m) in EQ ; auto.
   Qed.
 
 
