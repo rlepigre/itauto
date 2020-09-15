@@ -16,8 +16,8 @@ TACTIC EXTEND CDCL
 | [ "cdcl_generalize" ]      -> { Cdcl.generalize_prop }
 | [ "cdcl_nnpp" ]     -> { Cdcl.nnpp }
 | [ "cdcl_change"  ] -> { Cdcl.change_goal     }
-| [ "cdcl_conflicts" tactic(t)] -> { Cdcl.assert_conflicts_clauses (Tacinterp.tactic_of_value ist t)}
-| [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }
+| [ "cdcl_conflicts" tactic(t)] -> { Cdcl.assert_conflict_clauses (Tacinterp.tactic_of_value ist t)}
+(*| [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }*)
 END
 
 TACTIC EXTEND NO

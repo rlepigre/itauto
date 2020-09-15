@@ -424,6 +424,7 @@ Module PTrie.
 
     Definition empty (A: Type): ptrie A := Empty.
 
+    (* Slow if key is not there *)
     Fixpoint get' {A: Type} (i: key) (t: ptrie A) :=
       match t with
       | Empty => None
@@ -433,6 +434,18 @@ Module PTrie.
           get' i l else
           get' i r
       end.
+
+    Fixpoint mem' {A: Type} (i: key) (t: ptrie A) :=
+      match t with
+      | Empty => false
+      | Leaf k v => eqb i k
+      | Branch prefix brbit l r =>
+        if zerobit i brbit then
+          mem' i l else
+          mem' i r
+      end.
+
+
 
     Definition join {A: Type} (k1: key) (t1: ptrie A) (k2: key) (t2: ptrie A) :=
       let m := branching_bit k1 k2 in
@@ -1169,6 +1182,7 @@ Module PTrie.
               rewrite negb_false_iff in H3. rewrite negb_false_iff in H4. congruence. }
     Qed.
 
+    
     Lemma get_not_same_lr:
       forall {A: Type} {t: ptrie A} {p brb brb' lr k},
         wf (Some (p, brb, brb', lr)) t ->
@@ -1369,7 +1383,8 @@ Module PTrie.
               - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
         + simpl. auto.
     Qed.
-    
+
+
     Fixpoint map' {A B: Type} (f: key -> A -> B) (m: ptrie A): ptrie B :=
       match m with
       | Empty => Empty

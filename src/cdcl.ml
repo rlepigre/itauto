@@ -378,9 +378,9 @@ let hcons i b f = P.HCons.{id = Uint63.of_int i; is_dec = b; elt = f}
 
 let reify_formula genv env k (f : EConstr.t) =
   let evd = env.Env.sigma in
-  let tt k = hcons 1 true (P.BForm.BTT k) in
-  let ff k = hcons 0 true (P.BForm.BFF k) in
-  let mkop k o f1 f2 = P.BForm.BOP (k, o, f1, f2) in
+  let tt k = hcons 1 true (P.BTT k) in
+  let ff k = hcons 0 true (P.BFF k) in
+  let mkop k o f1 f2 = P.BOP (k, o, f1, f2) in
   let eq_ind r i = GlobRef.equal r (GlobRef.IndRef i) in
   let eq_constructor r c = GlobRef.equal r (GlobRef.ConstructRef c) in
   let eq_const r c = GlobRef.equal r (GlobRef.ConstRef c) in
@@ -396,7 +396,7 @@ let reify_formula genv env k (f : EConstr.t) =
   let is_false = eq_constructor (Lazy.force coq_false) in
   let var env k f =
     let env', (atom, i) = Env.hcons_atom genv env k f in
-    (hcons i (Env.is_dec atom) (P.BForm.BAT (k, Uint63.of_int i)), env')
+    (hcons i (Env.is_dec atom) (P.BAT (k, Uint63.of_int i)), env')
   in
   let get_binop k t =
     match k with
@@ -452,8 +452,7 @@ let reify_formula genv env k (f : EConstr.t) =
         | Const (c, _) ->
           if is_is_True c then
             let f1, env = reify_formula env P.IsBool f1 in
-            ( hcons (Uint63.hash f1.P.HCons.id) true (P.BForm.BIT f1.P.HCons.elt)
-            , env )
+            (hcons (Uint63.hash f1.P.HCons.id) true (P.BIT f1.P.HCons.elt), env)
           else var env k f
         | _ -> var env k f ) )
     | _ -> var env k f
@@ -483,7 +482,7 @@ let make_formula env hyps hconcl =
       let hf2, env = make env hyps hconcl in
       let env, i = Env.hcons_op env P.IMPL hf1.P.HCons.id hf2.P.HCons.id in
       let is_dec = hf1.P.HCons.is_dec && hf2.P.HCons.is_dec in
-      (hcons i is_dec (P.BForm.BOP (P.IsProp, P.IMPL, hf1, hf2)), env)
+      (hcons i is_dec (P.BOP (P.IsProp, P.IMPL, hf1, hf2)), env)
   in
   make env hyps hconcl
 
@@ -567,7 +566,7 @@ let constr_of_bformula f =
   let mkop k o f1 f2 =
     EConstr.mkApp (mk_op, [|constr_of_kind k; constr_of_op o; f1; f2|])
   in
-  P.BForm.(
+  P.(
     let rec constr_of_op_formula f =
       match f with
       | BTT k -> tt k
@@ -873,6 +872,16 @@ let run_prover tac cc (genv, sigma) ep f =
 let fresh_id id gl =
   Tactics.fresh_id_in_env Id.Set.empty id (Proofview.Goal.env gl)
 
+let fresh_ids n id env =
+  let rec fresh n avoid acc =
+    if n = 0 then acc
+    else
+      let id = Names.Id.of_string (id ^ string_of_int n) in
+      let id = Tactics.fresh_id_in_env avoid id env in
+      fresh (n - 1) (Id.Set.add id avoid) (id :: acc)
+  in
+  fresh n Id.Set.empty []
+
 (* let clear_all_no_check =
   Proofview.Goal.enter (fun gl ->
       let concl = Tacmach.New.pf_concl gl in
@@ -900,44 +909,94 @@ let tclRETYPE c =
       let sigma, _ = Typing.type_of env sigma c in
       Unsafe.tclEVARS sigma)
 
-let assert_conflicts ep l gl =
-  let mk_goal c = Theory.constr_of_clause_dec ep c in
+let assert_conflicts l gl =
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC
-    | (_, (c, prf)) :: l ->
-      let id = fresh_id (Names.Id.of_string ("__cc" ^ string_of_int n)) gl in
+    | (id, (c, prf)) :: l ->
       Tacticals.New.tclTHENLIST
-        [ Tactics.assert_by (Names.Name id) (mk_goal c)
+        [ Tactics.assert_by (Names.Name id) c
             (Tacticals.New.tclTHENLIST
                [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_check prf])
-          (*    ; Tactics.generalize [EConstr.mkVar id] *)
         ; assert_conflicts (n + 1) l ]
   in
   assert_conflicts 0 l
 
-(** [assert_conflicts_clauses tac] runs the sat prover in ml 
+let rec output_list p o l =
+  match l with
+  | [] -> ()
+  | [e] -> p o e
+  | e :: l -> p o e; output_string o ";"; output_list p o l
+
+let output_pset o s =
+  ProverPatch.PSet.fold
+    (fun () k -> Printf.fprintf o "%i " (Uint63.hash k))
+    s ()
+
+let rec map_filter f l =
+  match l with
+  | [] -> []
+  | e :: l -> (
+    match f e with None -> map_filter f l | Some e' -> e' :: map_filter f l )
+
+(** [assert_conflict_clauses tac] runs the sat prover in ml 
     and asserts conflict_clauses *)
-let assert_conflicts_clauses tac =
+let collect_conflict_clauses tac gl =
+  let sigma = Tacmach.New.project gl in
+  let genv = Tacmach.New.pf_env gl in
+  let concl = Tacmach.New.pf_concl gl in
+  let hyps = Tacmach.New.pf_hyps_types gl in
+  let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
+  if debug then
+    output_list
+      (fun o (h, f) ->
+        Printf.fprintf o "%s : %a\n" (Names.Id.to_string h)
+          ProverPatch.output_hbformula f)
+      stdout hyps;
+  let bform, env = make_formula env (List.rev hyps) concl in
+  let has_bool i =
+    try
+      let d = Env.AMap.find (Uint63.hash i) env.Env.amap in
+      Env.has_bool d
+    with Not_found -> false
+  in
+  let form = P.BForm.to_hformula has_bool bform in
+  let cc = ref [] in
+  match run_prover tac cc (genv, sigma) env form with
+  | P.Success ((hm, _cc), d) ->
+    let cc =
+      List.map
+        (fun (_, (c, prf)) -> (Theory.constr_of_clause_dec env c, prf))
+        !cc
+    in
+    let hyps =
+      map_filter
+        (fun (h, f) -> if P.PSet.mem f.P.HCons.id d then Some h else None)
+        hyps
+    in
+    if debug then (
+      Printf.printf "Deps %a\n" output_pset d;
+      Printf.printf "Hyps %a\n"
+        (output_list (fun o h -> output_string o (Names.Id.to_string h)))
+        hyps );
+    Some (cc, hyps)
+  | _ -> None
+
+let assert_conflict_clauses tac =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
-      let sigma = Tacmach.New.project gl in
-      let genv = Tacmach.New.pf_env gl in
-      let concl = Tacmach.New.pf_concl gl in
-      let hyps = Tacmach.New.pf_hyps_types gl in
-      let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
-      let bform, env = make_formula env (List.rev hyps) concl in
-      let has_bool i =
-        try
-          let d = Env.AMap.find (Uint63.hash i) env.Env.amap in
-          Env.has_bool d
-        with Not_found -> false
-      in
-      let form = P.BForm.to_hformula has_bool bform in
-      let cc = ref [] in
-      match run_prover tac cc (genv, sigma) env form with
-      | P.HasProof _ -> assert_conflicts env !cc gl
-      | _ -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology"))
+      match collect_conflict_clauses tac gl with
+      | None -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology")
+      | Some (cc, d) ->
+        let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
+        let cc = List.combine ids cc in
+        Tacticals.New.tclTHENLIST
+          [ (* Assert the conflict clauses *)
+            assert_conflicts cc gl
+          ; (* Generalize the used hypotheses *)
+            Tactics.generalize (List.map EConstr.mkVar d)
+          ; (* Generalize the conflict clauses *)
+            Tactics.generalize (List.map EConstr.mkVar ids) ])
 
 let generalize_prop =
   Proofview.Goal.enter (fun gl ->
@@ -947,7 +1006,6 @@ let generalize_prop =
       let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
       Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
 
-(* I have no idea what [tclWITHHOLES] does but it fails (rightly) more often than [generalize] alone. *)
 let feedback msg =
   Proofview.Goal.enter (fun gl ->
       Feedback.msg_debug msg; Tacticals.New.tclIDTAC)
@@ -1014,7 +1072,3 @@ let nnpp =
       if is_loaded_library ["Coq"; "Logic"; "Classical_Prop"] then
         Tactics.apply (Lazy.force coq_nnpp)
       else Tacticals.New.tclIDTAC)
-
-let cdcl tac =
-  Tacticals.New.tclTHENLIST
-    [generalize_prop; assert_conflicts_clauses tac; change_goal]

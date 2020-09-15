@@ -137,6 +137,18 @@ Inductive op :=
    introduces IMPL.  Those are not sub-formulae and therefore this
    requires some ad'hoc specific treatment *)
 
+  Inductive kind : Type :=
+  |IsProp
+  |IsBool.
+
+  Inductive BFormula  : kind -> Type :=
+  | BTT   : forall (k: kind), BFormula k
+  | BFF   : forall (k: kind), BFormula k
+  | BAT   : forall (k: kind), int -> BFormula k
+  | BOP   : forall (k: kind), op -> HCons.t (BFormula k) ->
+                             HCons.t (BFormula k) -> (BFormula k)
+  | BIT   : (BFormula IsBool) -> BFormula IsProp.
+
 
 
   Inductive Formula  : Type :=
@@ -213,15 +225,66 @@ Inductive op :=
   | POS (f:HFormula)
   | NEG (f:HFormula).
 
+  Module PSet.
+
+    Definition t := IntMap.ptrie (key:= int) unit.
+
+    Definition empty : t := IntMap.empty unit.
+
+    Definition add (k:int) (s:t) : t := IntMap.set' k tt s.
+
+    Definition union (s s':t) := IntMap.combine' (fun x y => x) s s'.
+
+    Definition singleton (i:int) := IntMap.Leaf unit i tt.
+
+    Definition fold {A: Type} (f: A -> int -> A) (s: t) (a: A)  :=
+      IntMap.fold' (fun acc k e => f acc k) s a.
+
+    Definition mem (i:int) (s:t)  := IntMap.mem' i s.
+
+  End PSet.
+
+
   Module Annot.
 
-    Record t (A: Type) : Type :=
+    Record t (A: Type) : Type := mk
     {
       elt : A;
-      splits : IntMap.ptrie (key:= int) bool (* Set of literals that are obtained by a split *)
+      deps : PSet.t (* Set of formulae that are needed to deduce elt *)
     }.
 
+    Global Arguments mk {A}.
+    Global Arguments elt {A}.
+    Global Arguments deps {A}.
+
+    Definition set {A B: Type} (a : t A) (e: B) :=
+      mk e (deps  a).
+
+    Definition map {A B: Type} (f : A -> B) (a: t A) : t B :=
+      mk  (f (elt a)) (deps a).
+
+    Definition mk_elt {A: Type} (e:A) : t A := mk e PSet.empty.
+
+
+    Lemma map_map : forall {A B C: Type} (f: B -> C) (g: A -> B) (a: t A),
+        map f (map g a) = map (fun x => f (g x)) a.
+    Proof.
+      destruct a. reflexivity.
+    Qed.
+
+    Lemma map_id : forall {A: Type} (f:A -> A) x,
+        (forall x, (f x = x)) ->
+      map f x = x.
+    Proof.
+      destruct x; unfold map ; simpl.
+      intros. congruence.
+    Qed.
+
+    Definition lift {A B: Type} (f: A -> B) (e : t A): B :=
+      f (Annot.elt e).
+
   End Annot.
+
 
 
   Module Prf.
@@ -486,9 +549,9 @@ Inductive op :=
     | l::ls => eval_literal_rec l (eval_literal_list ls)
     end.
 
+
   Definition eval_watched_clause (cl: watched_clause) :=
     eval_literal_list (watch1 cl :: watch2 cl :: (unwatched cl)).
-
 
   Definition eval_clause  (cl:clause) :=
     match cl with
@@ -515,7 +578,7 @@ Inductive op :=
       }.
 
 
-  Definition watch_map_elt := (IntMap.ptrie (key:=int) watched_clause * IntMap.ptrie (key:=int) watched_clause )%type.
+  Definition watch_map_elt := (IntMap.ptrie (key:=int) (Annot.t watched_clause) * IntMap.ptrie (key:=int) (Annot.t watched_clause) )%type.
 
   Definition watch_map := IntMap.ptrie (key:=int) watch_map_elt.
 
@@ -529,13 +592,13 @@ Inductive op :=
         hconsmap : hmap;
         (* [arrows] :
            Formulae of the form a -> b need a special processing and are stored in arrows *)
-        arrows : list literal;
+        arrows : list  literal;
         (* [wneg] : watched negative litterals - are needed to generate complete conflict clauses*)
         wneg : iset;
         (* Formulae which cnf has been already unfolded *)
         defs : iset * iset ;
-        units : IntMap.ptrie (key:=int) bool;
-        unit_stack : list literal;
+        units : IntMap.ptrie (key:=int) (Annot.t bool);
+        unit_stack : list (Annot.t literal);
         (* unit_list is a stack of unit clauses to be processed *)
         clauses : watch_map
        (* An entry clause(v) returns the set of clauses starting by v.
@@ -549,7 +612,7 @@ Inductive op :=
     arrows := nil;
     wneg := IntMap.empty unit;
     defs := (IntMap.empty unit , IntMap.empty unit);
-    units := IntMap.empty bool;
+    units := IntMap.empty (Annot.t bool);
     unit_stack := nil;
     clauses := empty_watch_map
     |}.
@@ -557,7 +620,7 @@ Inductive op :=
 
   Definition find_clauses (v:int) (cls : watch_map) :=
     match IntMap.get' v cls with
-    | None => (IntMap.empty watched_clause,IntMap.empty watched_clause)
+    | None => (IntMap.empty (Annot.t watched_clause),IntMap.empty (Annot.t watched_clause))
     | Some r => r
     end.
 
@@ -577,7 +640,7 @@ Inductive op :=
     | NEG _ => false
     end.
 
-  Definition add_clause (l:literal) (clause_id: int) (cl: watched_clause) (cls : watch_map) :=
+  Definition add_clause (l:literal) (clause_id: int) (cl: Annot.t watched_clause) (cls : watch_map) :=
     let lid := id_of_literal l in
     let (ln,lp) := find_clauses (id_of_literal l) cls in
     if is_positive_literal l
@@ -605,7 +668,7 @@ Inductive op :=
     end.
 
 
-  Definition insert_unit (l:literal) (st:state) : state :=
+  Definition insert_unit (l:Annot.t literal) (st:state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
@@ -626,12 +689,12 @@ Inductive op :=
   Definition add_wneg_wcl (wn : iset) (cl:watched_clause) : iset :=
     add_wneg_lit (watch2 cl) (add_wneg_lit  (watch1 cl) wn) .
 
-  Definition insert_lit_clause (l:literal) (clause_id: int) (cl: watched_clause) (st : state) : state :=
+  Definition insert_lit_clause (l:literal) (clause_id: int) (cl: Annot.t watched_clause) (st : state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs   := defs st;
-    wneg   := add_wneg_wcl (wneg st) cl;
+    wneg   := add_wneg_wcl (wneg st) cl.(Annot.elt);
     arrows := arrows st ;
     units := units st;
     unit_stack := unit_stack st;
@@ -1090,7 +1153,7 @@ Inductive op :=
     clauses := clauses st
     |}.
 
-  Definition reset_arrows (ar : list literal) (st: state) :=
+  Definition reset_arrows (ar : list  literal) (st: state) :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
@@ -1103,19 +1166,19 @@ Inductive op :=
     |}.
 
 
-  Definition neg_bool (o : option bool) : option bool :=
+  Definition neg_bool (o : option (Annot.t bool)) : option (Annot.t bool) :=
     match o with
     | None => None
-    | Some b => Some (negb b)
+    | Some b => Some (Annot.map negb b)
     end.
 
-  Definition find_lit (l: literal) (lit: IntMap.ptrie bool) : option bool :=
+  Definition find_lit (l: literal) (lit: IntMap.ptrie (Annot.t bool)) : option (Annot.t bool) :=
     match l with
     | POS l => IntMap.get' l.(id) lit
     | NEG l => neg_bool (IntMap.get' l.(id) lit)
     end.
 
-  Definition find_lit' (l: literal) (lit : IntMap.ptrie bool)  : option bool :=
+  Definition find_lit' (l: literal) (lit : IntMap.ptrie (Annot.t bool))  : option (Annot.t bool) :=
     (if is_positive_literal l then (fun x => x) else neg_bool)
       (IntMap.get' (id_of_literal l) lit).
 
@@ -1128,48 +1191,50 @@ Inductive op :=
     - reflexivity.
   Qed.
 
-  Fixpoint make_watched (lit: IntMap.ptrie bool) (w:literal)  (cl : list literal) :=
+  Fixpoint make_watched (lit: IntMap.ptrie (Annot.t bool)) (ann: PSet.t) (w:literal)  (cl : list literal) :=
     match cl with
-    | nil => UNIT w
+    | nil => Annot.mk (UNIT w) ann
     | e::l => match find_lit e lit with
-              | None => CLAUSE {| watch1 := w ; watch2 := e ; unwatched := l |}
-              | Some true => TRUE
-              | Some false => make_watched lit w l
+              | None => Annot.mk (CLAUSE {| watch1 := w ; watch2 := e ; unwatched := l |}) ann
+              | Some b => if Annot.elt b then Annot.mk_elt TRUE
+                          else make_watched lit (PSet.union (Annot.deps b) ann) w l
               end
     end.
 
-  Fixpoint reduce (lit: IntMap.ptrie bool) (cl : list literal) :=
+  Fixpoint reduce (lit: IntMap.ptrie (Annot.t bool)) (ann: PSet.t) (cl : list literal) :=
     match cl with
-    | nil => Some nil
+    | nil => Some (Annot.mk nil ann)
     | e::cl => match find_lit e lit with
-              | None => match reduce lit cl with
+              | None => match reduce lit ann cl with
                         | None => None
-                        | Some l' => Some (e::l')
+                        | Some l' => Some (Annot.map (fun x => e::x) l')
                         end
-              | Some true => None
-              | Some false => reduce lit cl
+              | Some b => if Annot.elt b then None
+                          else reduce lit (PSet.union (Annot.deps b) ann) cl
               end
     end.
 
   
   (** Either one or the other watched literal is set (not both) *)
-  Definition shorten_clause (lit : IntMap.ptrie bool) (cl : watched_clause) :=
+
+  Definition shorten_clause (lit : IntMap.ptrie (Annot.t bool)) (ann : PSet.t) (cl : watched_clause) :=
     match find_lit (watch1 cl) lit with
     | None => match find_lit (watch2 cl) lit with
-              | None => (* Should not happen *) CLAUSE cl
-              | Some true  => TRUE
-              | Some false => make_watched lit (watch1 cl) (unwatched cl)
+              | None => (* Should not happen *) Annot.mk (CLAUSE cl) ann
+              | Some b  => if Annot.elt b then (Annot.mk TRUE PSet.empty)
+                           else make_watched lit (PSet.union (Annot.deps b) ann) (watch1 cl) (unwatched cl)
               end
-    | Some true => TRUE
-    | Some false => make_watched lit (watch2 cl) (unwatched cl)
+    | Some b => if Annot.elt b then Annot.mk TRUE PSet.empty
+                else make_watched lit (PSet.union (Annot.deps b) ann) (watch2 cl) (unwatched cl)
     end.
 
-  Definition add_watched_clause  (st : state) (id: int) (cl: watched_clause) : state :=
+  Definition add_watched_clause  (st : state) (id: int) (acl: Annot.t watched_clause) : state :=
+    let cl := Annot.elt acl in
     let w1 := watch1 cl in
     let w2 := watch2 cl in
     let mcl := clauses st in
-    let mcl := add_clause w1 id cl mcl in
-    let mcl := add_clause w2 id cl mcl in
+    let mcl := add_clause w1 id acl mcl in
+    let mcl := add_clause w2 id acl mcl in
     {|
       fresh_clause_id := fresh_clause_id st;
       hconsmap := hconsmap st;
@@ -1194,41 +1259,56 @@ Inductive op :=
       clauses := clauses st
     |}).
 
-  Definition insert_normalised_clause (id: int) (cl:clause) (st: state)  : option state :=
-    match  cl with
-    | EMPTY => None
-    | UNIT l => Some (insert_unit l st)
-    | TRUE   => Some st
-    | CLAUSE cl =>Some (add_watched_clause st id cl)
+  Inductive failure := OutOfFuel | HasModel.
+
+
+  Inductive result (A B: Type):=
+  | Fail (f: failure)
+  | Success (r : B)
+  | Progress (st : A).
+
+  Arguments Fail {A B}.
+  Arguments Success {A B}.
+  Arguments Progress {A B}.
+
+
+  Definition dresult := result state PSet.t.
+
+  Definition insert_normalised_clause (id: int) (cl:Annot.t clause) (st: state)  : dresult :=
+    match  cl.(Annot.elt) with
+    | EMPTY => Success (Annot.deps cl)
+    | UNIT l => Progress (insert_unit (Annot.set cl l)  st)
+    | TRUE   => Progress st
+    | CLAUSE cl' => Progress (add_watched_clause st id (Annot.set cl cl'))
     end.
 
-  Definition insert_watched_clause (id: int) (cl: watched_clause) (st: state)  : option state :=
-    insert_normalised_clause id (shorten_clause (units st) cl) st .
+  Definition insert_watched_clause (id: int) (cl: Annot.t watched_clause) (st: state)  : dresult :=
+    insert_normalised_clause id (shorten_clause (units st) (Annot.deps cl) (Annot.elt cl)) st .
 
-  Definition insert_fresh_watched_clause (cl:watched_clause) (st: state) :=
+  Definition insert_fresh_watched_clause (cl: watched_clause) (st: state) :=
     let (fr,st') := get_fresh_clause_id st in
-    insert_watched_clause fr cl st'.
+    insert_watched_clause fr (Annot.mk cl PSet.empty) st'.
 
-
-  Definition insert_clause (id: int) (cl:clause) (st: state)  : option state :=
-    match cl with
-    | EMPTY => None
-    | UNIT l => Some (insert_unit l st)
-    | CLAUSE cl => insert_watched_clause id  cl st
-    | TRUE => Some st
+  Definition insert_clause (id: int) (cl:Annot.t clause) (st: state)  : dresult :=
+    match Annot.elt cl with
+    | EMPTY => Success (Annot.deps cl)
+    | UNIT l => Progress (insert_unit (Annot.set cl l) st)
+    | CLAUSE cl' => insert_watched_clause id  (Annot.set cl cl') st
+    | TRUE => Progress st
     end.
 
-  Definition insert_fresh_clause (cl:clause) (st: state) :=
+  Definition insert_fresh_clause (cl:Annot.t clause) (st: state) :=
     let (fr,st') := get_fresh_clause_id st in
     insert_clause fr cl st'.
 
 
-  Fixpoint fold_update {A: Type} (F : A -> state -> option state) (l: list A) (st:state)  : option state :=
+  Fixpoint fold_update {A : Type} (F : A -> state -> dresult) (l: list A) (st:state)  : dresult :=
     match l with
-    | nil => Some st
+    | nil => Progress st
     | e::l => match F e st with
-              | None => None
-              | Some st' => fold_update F  l st'
+              | Success p => Success p
+              | Progress st' => fold_update F  l st'
+              | Fail s => Fail s
               end
     end.
 
@@ -1252,7 +1332,6 @@ Inductive op :=
                          else (acc, Some hf)
     end.
 
-
   Definition cnf_opt (pol: bool) (is_classic:bool) (cp cm: IntMap.ptrie unit)
              (ar:list literal) (acc: list watched_clause) (f: Formula) (hf: HFormula) :=
     if pol
@@ -1273,23 +1352,28 @@ Inductive op :=
       let '(cp,cm,ar,acc) := (cnf_of_literal h) is_classic (fst (defs st)) (snd (defs st)) (arrows st) nil f.(elt) f in
       fold_update insert_fresh_watched_clause  acc (insert_defs (cp,cm) ar  st).
 
-  Definition augment_hyp (is_classic: bool) (h: literal) (st:state) :=
-    augment_cnf is_classic h (insert_unit h st).
+  Definition annot_hyp (h: literal) :=
+    Annot.mk h (PSet.singleton (id_of_literal h)).
 
-  Definition cnf_hyps (is_classic: bool) (l: list literal) (st: state) :=
+  Definition augment_hyp (is_classic: bool) (h:  literal) (st:state) :=
+    augment_cnf is_classic h (insert_unit (annot_hyp h) st).
+
+  Definition cnf_hyps (is_classic: bool) (l: list  literal) (st: state) :=
     fold_update (augment_hyp is_classic) l st.
 
 
   Definition intro_state (st:state) (f: Formula) (hf: HFormula) :=
     let (hs,c) := intro_impl nil f hf in
     match cnf_hyps (is_classic c) hs st with
-    | None => None
-    | Some st =>
+    | Fail f => Fail f
+    | Success p => Success p
+    | Progress st =>
       match c with
-      | None => Some(st,None)
+      | None => Progress(st,None)
       | Some g => match augment_cnf false (NEG g) st with
-                  | None => None
-                  | Some st' => Some(st',Some g)
+                  | Fail f => Fail f
+                  | Success p => Success p
+                  | Progress st' => Progress(st',Some g)
                   end
       end
     end.
@@ -1297,11 +1381,14 @@ Inductive op :=
 
   Lemma neg_bool_some : forall o b,
       neg_bool o = Some b ->
-      o = Some (negb b).
+      o = Some (Annot.map negb b).
   Proof.
     destruct o ; simpl ; try congruence.
     intros. inv H.
-    rewrite negb_involutive. reflexivity.
+    rewrite Annot.map_map.
+    rewrite Annot.map_id.
+    reflexivity.
+    apply negb_involutive.
   Qed.
 
 
@@ -1318,8 +1405,8 @@ Inductive op :=
     |}.
 
 
-  Definition add_literal (l:literal) (lit : IntMap.ptrie bool) :=
-    IntMap.set' (id_of_literal l) (is_positive_literal l) lit.
+  Definition add_literal (l:Annot.t literal) (lit : IntMap.ptrie (Annot.t bool)) :=
+    IntMap.set' (id_of_literal (Annot.elt l)) (Annot.map is_positive_literal l) lit.
 
 
   Definition is_neg_arrow (l:literal) : bool :=
@@ -1331,13 +1418,13 @@ Inductive op :=
   Definition remove_wneg (l:literal) (s:iset) :=
     IntMap.remove' (id_of_literal l) s.
 
-  Definition insert_literal (l:literal) (st: state) : state :=
+  Definition insert_literal (l:Annot.t literal) (st: state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
     defs := defs st;
-    wneg := remove_wneg l (wneg st);
-    arrows := if is_neg_arrow l then (l::arrows st) else arrows st;
+    wneg := remove_wneg (Annot.elt l) (wneg st);
+    arrows := if is_neg_arrow (Annot.elt l) then (Annot.elt l::arrows st) else arrows st;
     units := add_literal l (units st);
     unit_stack := unit_stack st;
     clauses := clauses st
@@ -1361,36 +1448,40 @@ Inductive op :=
   Definition is_hFF (g: HFormula) :=
     (g.(id) =? 0) && Bool.eqb g.(is_dec) true && is_FF g.(elt).
 
-
-  Definition is_unsat (lit: IntMap.ptrie bool) (l:literal) : bool  :=
-    match l with
-    | POS l => if is_hFF l then true
+  Definition is_unsat (lit: IntMap.ptrie (Annot.t bool)) (l:Annot.t literal) : option PSet.t  :=
+    match Annot.elt l with
+    | POS l' => if is_hFF l' then Some (Annot.deps l)
                else
-                 match IntMap.get' l.(id) lit with
-                 | Some false => true
-                 |  _         => false
+                 match IntMap.get' l'.(id) lit with
+                 | Some b => if  Annot.lift negb  b
+                             then Some (PSet.union (Annot.deps b) (Annot.deps l))
+                             else None
+                 | None  => None
                  end
-    | NEG l => match IntMap.get' l.(id) lit with
-               | Some true => true
-               | _         => false
-               end
+    | NEG l' => match IntMap.get' l'.(id) lit with
+                | Some b => if Annot.elt b then Some (PSet.union (Annot.deps b) (Annot.deps l))
+                            else None
+               | None         => None
+                end
     end.
 
-  Definition is_goal (goal : HFormula) (l:literal) : bool :=
+  Definition is_goal (goal : HFormula) (l:literal) : option int :=
     match l with
-    | POS f => f.(id) =? goal.(id)
-    | NEG _ => false
+    | POS f => if f.(id) =? goal.(id) then Some f.(id) else None
+    | NEG _ => None
     end.
 
-  Definition success (goal: option HFormula) (lit: IntMap.ptrie bool) (l:literal) :=
+  Definition success (goal: option HFormula) (lit: IntMap.ptrie (Annot.t bool)) (l:Annot.t literal) :=
     match goal with
     | None => is_unsat lit l
-    | Some g => if is_goal g l
-                then true else is_unsat lit l
+    | Some g =>
+      match is_goal  g (Annot.elt l) with
+      | Some i => Some (PSet.add i (Annot.deps l))
+      | None   =>  is_unsat lit  l
+      end
     end.
 
-
-  Definition set_unit_stack (l : list literal) (st : state) :=
+  Definition set_unit_stack (l : list (Annot.t literal)) (st : state) :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
@@ -1419,21 +1510,8 @@ Inductive op :=
     | e::us => Some(e , set_unit_stack us st)
     end.
 
-  Inductive status (A:Type):=
-  | HasProof (p: A)
-  | HasModel (f: A)
-  | Timeout (p:  A)
-  | Done    (st: state).
 
-  Arguments HasProof {A}.
-  Arguments HasModel {A}.
-  Arguments Timeout {A}.
-  Arguments Done {A}.
 
-  Inductive result :=
-  | OutOfFuel
-  | Success
-  | Progress (st : state).
 
   Definition remove_watched_id (l:literal) (id:int) (cl: watch_map) :=
     let lid := id_of_literal l in
@@ -1456,71 +1534,77 @@ Inductive op :=
     |}.
 
 
-  Definition update_watched_clause (st:option state) (id : int) (cl: watched_clause)  : option state :=
+  Definition update_watched_clause (st: dresult) (id : int) (cl: Annot.t watched_clause)  : dresult :=
     match st with
-    | None => None
-    | Some st => insert_watched_clause id cl (remove_watched_clause id cl st)
+    | Fail f  => Fail f
+    | Success p => Success p
+    | Progress st => insert_watched_clause id cl (remove_watched_clause id (Annot.elt cl) st)
     end.
 
-  Definition shorten_clauses (cl : IntMap.ptrie watched_clause) (st:state) :=
-    IntMap.fold' update_watched_clause cl (Some st).
+  Definition shorten_clauses (cl : IntMap.ptrie (Annot.t watched_clause)) (st:state) :=
+    IntMap.fold' update_watched_clause cl (Progress st).
 
-  
-  Fixpoint unit_propagation (n:nat) (st: state) (concl: option HFormula) : result :=
+  Fixpoint unit_propagation (n:nat) (st: state) (concl: option HFormula) : dresult :=
     match n with
-    | O => OutOfFuel
+    | O => Fail OutOfFuel
     | S n =>
       match extract_unit st with
       | None => Progress st
       | Some(l,st) =>
-        if success concl (units st) l
-        then Success
-        else
+        match success concl (units st) l with
+        | Some deps => Success deps
+        | None =>
           let st := insert_literal l st in
-          let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
-          let lc := match l with
+          let lelt := Annot.elt l in
+          let (ln,lp) := find_clauses (id_of_literal lelt) (clauses st) in
+          let lc := match lelt with
                     | POS _ => ln
                     | NEG _ => lp end in
           match shorten_clauses lc st with
-          | None => Success
-          | Some st => unit_propagation n st concl
+          | Success d => Success d
+          | Progress st => unit_propagation n st concl
+          | Fail f   => Fail f
           end
+        end
       end
     end.
 
-  Lemma unit_propagation_rew : forall (n:nat) (st: state) (concl: option HFormula),
+  Lemma unit_propagation_rew : forall (n:nat) (st: state) (concl: option  HFormula),
       unit_propagation n st concl =
     match n with
-    | O => OutOfFuel
+    | O => Fail OutOfFuel
     | S n =>
       match extract_unit st with
       | None => Progress st
       | Some(l,st) =>
-        if success concl (units st) l
-        then Success
-        else
+        match success concl (units st) l with
+        | Some deps => Success deps
+        | None =>
           let st := insert_literal l st in
-          let (ln,lp) := find_clauses (id_of_literal l) (clauses st) in
-          let lc := match l with
+          let lelt := Annot.elt l in
+          let (ln,lp) := find_clauses (id_of_literal lelt) (clauses st) in
+          let lc := match lelt with
                     | POS _ => ln
                     | NEG _ => lp end in
           match shorten_clauses lc st with
-          | None => Success
-          | Some st => unit_propagation n st concl
+          | Success d => Success d
+          | Progress st => unit_propagation n st concl
+          | Fail f   => Fail f
           end
+        end
       end
     end.
   Proof. destruct n ; reflexivity. Qed.
 
 
-  Definition eval_units (m : hmap) (u : IntMap.ptrie bool) :=
+  Definition eval_units (m : hmap) (u : IntMap.ptrie (Annot.t bool)) :=
     forall b f,
       IntMap.get' (f.(id)) u = Some b ->
       has_form m f ->
-      eval_literal (literal_of_bool b f).
+      eval_literal (Annot.lift literal_of_bool b f).
 
-  Definition eval_stack (lst : list literal) : Prop :=
-    List.Forall eval_literal lst.
+  Definition eval_stack (lst : list (Annot.t literal)) : Prop :=
+    List.Forall (Annot.lift eval_literal) lst.
 
   Definition IntMapForall {A:Type} (P: A -> Prop) (m: IntMap.ptrie A) :=
     forall k r, IntMap.get' k m = Some r -> P r.
@@ -1619,7 +1703,7 @@ Inductive op :=
   Hint Resolve wf_map_remove : wf.
 
   Definition eval_clauses  (h : watch_map) :=
-    IntMapForall (IntMapForall2 eval_watched_clause) h.
+    IntMapForall (IntMapForall2 (Annot.lift eval_watched_clause)) h.
 
   Definition order_map ( m m' : IntMap.ptrie Formula) : Prop :=
     forall i f, IntMap.get' i m = Some f -> IntMap.get' i m' = Some f.
@@ -1628,7 +1712,7 @@ Inductive op :=
     forall i, IntMap.get' i m <> None -> IntMap.get' i m' <> None.
 
   Definition has_clauses (m : hmap) (cl : watch_map) :=
-    IntMapForall (IntMapForall2 (has_watched_clause m)) cl.
+    IntMapForall (IntMapForall2 (Annot.lift (has_watched_clause m))) cl.
 
   Definition wf_watch_map (m : watch_map) :=
     IntMapForall (fun x => wf_map (fst x) /\ wf_map (snd x)) m.
@@ -1644,7 +1728,7 @@ Inductive op :=
     wf_wn_m    : wf_map (wneg st);
     wf_wneg    : wf_units_def (wneg st) (hconsmap st);
     wf_units   : wf_units_def (units st) (hconsmap st);
-    wf_stack   : List.Forall (has_literal  (hconsmap st)) (unit_stack st);
+    wf_stack   : List.Forall (Annot.lift (has_literal  (hconsmap st))) (unit_stack st);
     wf_clauses : has_clauses  (hconsmap st) (clauses st);
     wf_units_m : wf_map (units st);
     wf_clauses_m1 :  wf_map (clauses st);
@@ -1665,12 +1749,11 @@ Inductive op :=
     | Some f => has_form m f
     end.
 
-
   Lemma get_unit_eval_state :
     forall st l st',
       eval_state st ->
       extract_unit st = Some (l,st') ->
-      eval_literal l /\ eval_state st'.
+      Annot.lift eval_literal l /\ eval_state st'.
   Proof.
     unfold extract_unit.
     intros.
@@ -1690,7 +1773,7 @@ Inductive op :=
            (EU : eval_units m lit),
       match IntMap.get' (id f) lit with
       | None => True
-      | Some b => eval_literal (literal_of_bool b f)
+      | Some b => eval_literal (Annot.lift literal_of_bool b f)
       end.
   Proof.
     intros.
@@ -1712,50 +1795,71 @@ Inductive op :=
   Qed.
 
 
+  Ltac destruct_in_goal eqn :=
+    match goal with
+    | |- context[match ?X with
+                 | _ => _
+                 end] => destruct X eqn: eqn
+    end.
+
+  Ltac destruct_in_hyp H eqn :=
+    match type of H with
+      | context[match ?X with
+                | _ => _
+                end]  => destruct X eqn: eqn
+    end.
+
+
+
+
   Lemma is_unsat_correct :
-    forall m lit l
-           (HL : has_literal m l)
-           (EL : eval_literal l)
+    forall m lit (l:Annot.t literal) d
+           (HL : Annot.lift (has_literal m) l)
+           (EL : Annot.lift eval_literal l)
            (EU : eval_units m lit)
-           (US : is_unsat lit l = true),
+           (US : is_unsat lit l = Some d),
       False.
   Proof.
     unfold is_unsat.
-    destruct l.
-    - simpl.
-      intros.
-      destruct (is_hFF f) eqn:FF.
-      apply is_hFF_true in FF. subst.
+    unfold Annot.lift. intros.
+    destruct (Annot.elt l).
+    - destruct (is_hFF f) eqn:FF.
+      + apply is_hFF_true in FF. subst.
       simpl in EL ; auto.
+      +
       generalize (has_form_find_lit _ _ _ HL EU).
-      destruct (IntMap.get'  (id f) lit); auto.
-      destruct b ; try congruence.
-      congruence.
+      destruct (IntMap.get'  (id f) lit); try congruence.
+      unfold Annot.lift in *.
+      destruct_in_hyp US b; try discriminate.
+      rewrite negb_true_iff in b.
+      rewrite b. simpl. tauto.
     - simpl; intros.
       generalize (has_form_find_lit _ _ _ HL EU).
-      destruct (IntMap.get' (id f) lit); auto.
-      destruct b ; try congruence.
+      destruct (IntMap.get' (id f) lit); try congruence.
+      unfold Annot.lift.
+      destruct_in_hyp US b; try discriminate.
       simpl. auto.
-      congruence.
   Qed.
 
   Lemma success_correct :
-    forall m g u l
+    forall m g u l d
            (HASG : has_oform m g)
-           (WFL  : has_literal m l)
-           (SUC  : success g u l = true)
+           (WFL  : Annot.lift (has_literal m) l)
+           (SUC  : success g u l = Some d)
            (EU   : eval_units m u)
-           (EL   : eval_literal l),
+           (EL   : Annot.lift eval_literal l),
       eval_ohformula g.
   Proof.
     intros.
     unfold success in *.
     destruct g; simpl.
-    destruct (is_goal h l) eqn:G.
+    destruct (is_goal h (Annot.elt l)) eqn:G.
     - simpl in HASG.
-      destruct l ; simpl in G ; try discriminate.
-      assert (G' : id f = id h) by lia.
-      apply has_form_eq with (m:=m) in G';auto.
+      unfold Annot.lift in *.
+      destruct (Annot.elt l) ; simpl in G ; try discriminate.
+      destruct_in_hyp G G' ; try discriminate.
+      assert (G2 : id f = id h) by lia.
+      apply has_form_eq with (m:=m) in G2;auto.
       subst; auto.
     - exfalso ; eapply is_unsat_correct ; eauto.
     - exfalso ; eapply is_unsat_correct ; eauto.
@@ -1764,7 +1868,7 @@ Inductive op :=
   Lemma wf_extract_unit : forall st l st',
       wf_state st ->
       extract_unit st = Some (l, st') ->
-      wf_state st' /\ has_literal (hconsmap st') l.
+      wf_state st' /\ Annot.lift (has_literal (hconsmap st')) l.
   Proof.
     intros.
     unfold extract_unit in H0.
@@ -1778,7 +1882,7 @@ Inductive op :=
   Lemma wf_insert_unit :
     forall l st
            (WF : wf_state st)
-           (WFL: has_literal (hconsmap st) l),
+           (WFL: Annot.lift (has_literal (hconsmap st)) l),
       wf_state (insert_unit l st).
   Proof.
     unfold insert_unit.
@@ -1790,7 +1894,7 @@ Inductive op :=
     forall l st
            (WF : wf_state st)
            (ES : eval_state st)
-           (EL : eval_literal l),
+           (EL : Annot.lift eval_literal l),
       eval_state (insert_unit l st).
   Proof.
     unfold insert_unit.
@@ -1834,8 +1938,8 @@ Inductive op :=
     forall i cl ln lp
            (EC : eval_clauses  cl)
            (FD : find_clauses i cl = (ln, lp)),
-      IntMapForall eval_watched_clause ln /\
-      IntMapForall eval_watched_clause lp.
+      IntMapForall (Annot.lift eval_watched_clause) ln /\
+      IntMapForall (Annot.lift eval_watched_clause) lp.
   Proof.
     unfold eval_clauses, find_clauses.
     intros.
@@ -1847,7 +1951,7 @@ Inductive op :=
   Qed.
 
 
-    Lemma literal_eq : forall l,
+  Lemma literal_eq : forall l,
       literal_of_bool (is_positive_literal l) (form_of_literal l) = l.
   Proof.
     destruct l ; simpl ; auto.
@@ -1865,7 +1969,7 @@ Inductive op :=
            (EV : eval_units m u)
            (HAS : has_literal m h)
            (FD : find_lit h u = Some b),
-      (if b then eval_literal h else
+      (if Annot.elt b then eval_literal h else
          eval_literal (neg_literal h)).
   Proof.
     unfold eval_units ; intros.
@@ -1874,12 +1978,15 @@ Inductive op :=
     assert (FL := has_form_of_literal m h HAS).
     destruct (is_positive_literal h) eqn:POS.
     - apply EV in FD ; auto.
-      destruct b ; simpl in * ; auto.
+      unfold Annot.lift in *.
+      destruct (Annot.elt b) ; simpl in * ; auto.
       destruct h ; simpl in * ; try congruence.
       destruct h ; simpl in * ; try congruence.
     - apply neg_bool_some in FD.
       apply EV in FD ; auto.
-      destruct b ; simpl in * ; auto.
+      unfold Annot.lift, Annot.map in FD.
+      simpl in FD.
+      destruct (Annot.elt b) ; simpl in * ; auto.
       destruct h ; simpl in * ; try congruence.
       destruct h ; simpl in * ; try congruence.
   Qed.
@@ -1893,35 +2000,43 @@ Inductive op :=
 
 
   Lemma has_clause_make_watched :
-    forall m u w cl
+    forall m u w cl an
            (HASL : has_literal m w)
            (HASL : Forall (has_literal m) cl),
-           has_clause m (make_watched u w cl).
+           Annot.lift (has_clause m) (make_watched u an w cl).
   Proof.
     induction cl; simpl.
     - auto.
     - intros.
       inv HASL0.
       destruct (find_lit a u).
-      destruct b ; auto.
-      simpl ; auto.
-      simpl. unfold has_watched_clause ; auto.
+      destruct (Annot.elt t0) ; auto.
+      +  unfold Annot.lift.
+         simpl ; auto.
+      + simpl.
+        unfold Annot.lift.
+        simpl.
+        unfold has_watched_clause ; auto.
   Qed.
 
   Lemma wf_shorten_clause :
-    forall m u cl
+    forall m u cl an
            (WFC : has_watched_clause m cl),
-      has_clause m (shorten_clause u cl).
+      Annot.lift (has_clause m) (shorten_clause u an cl).
   Proof.
     intros.
     unfold shorten_clause.
     unfold has_watched_clause in WFC.
     inv WFC. inv H2.
     destruct (find_lit (watch1 cl) u).
-    - destruct b ; simpl ; auto.
-      apply has_clause_make_watched; auto.
-    -  destruct (find_lit (watch2 cl) u).
-       destruct b ; simpl ; auto.
+    - destruct (Annot.elt t0).
+      + unfold Annot.lift. simpl. trivial.
+      + unfold Annot.lift.
+        apply has_clause_make_watched; auto.
+    -
+      unfold Annot.lift.
+      destruct (find_lit (watch2 cl) u).
+      destruct (Annot.elt t0) ; simpl ; auto.
        apply has_clause_make_watched; auto.
        simpl.
        unfold has_watched_clause.
@@ -1936,15 +2051,18 @@ Inductive op :=
 
   Lemma wf_reduce :
     forall m u cl
-           (WFC : Forall (has_literal m) cl),
-      ohold (Forall (has_literal m)) (reduce u cl).
+           (WFC : Forall (has_literal m) cl) an,
+      ohold (Annot.lift (Forall (has_literal m))) (reduce u an cl).
   Proof.
-    intros.
+    intros m u cl WFC.
     induction WFC ; simpl.
     -  constructor.
     - destruct (find_lit x  u) eqn:FIND.
-      destruct b ; simpl ; auto.
-      destruct (reduce u l).
+      destruct (Annot.elt t0) ; simpl ; auto.
+      intros.
+      specialize (IHWFC an).
+      destruct (reduce u an l).
+      unfold Annot.lift, Annot.map in *.
       simpl in *. constructor ; auto.
       simpl ; auto.
   Qed.
@@ -1971,11 +2089,11 @@ Inductive op :=
 
 
     Lemma eval_make_watched :
-    forall m u cl w
+    forall m u cl w an
            (EV : eval_units m u)
            (HL : Forall (has_literal m) cl)
            (EC : eval_literal_rec w (eval_literal_list cl)),
-      eval_clause (make_watched u w cl).
+      Annot.lift eval_clause (make_watched u an w cl).
   Proof.
     induction cl; simpl.
     - destruct w ; simpl; tauto.
@@ -1983,7 +2101,8 @@ Inductive op :=
       destruct (find_lit a u) eqn:FD.
       + inv HL.
         apply eval_units_find_lit with (m:=m) in FD; auto.
-        destruct b; simpl ; auto.
+        destruct (Annot.elt t0).
+        exact I.
         apply IHcl; auto.
         apply eval_literal_rec_swap in EC ; auto.
       + simpl.
@@ -1993,11 +2112,11 @@ Inductive op :=
   Qed.
 
   Lemma shorten_clause_correct :
-    forall m u cl
+    forall m u cl an
            (EV : eval_units m u)
            (WFC : has_watched_clause m cl)
            (EC : eval_watched_clause cl),
-      eval_clause (shorten_clause u cl).
+      Annot.lift eval_clause (shorten_clause u an cl).
   Proof.
     unfold shorten_clause;intros.
     assert (HW1 : has_literal m (watch1 cl)).
@@ -2007,15 +2126,17 @@ Inductive op :=
     assert (HUW : Forall (has_literal m) (unwatched cl)).
     { inv WFC. inv H2; auto. }
     destruct (find_lit (watch1 cl) u) eqn:FD1.
-    destruct b ; simpl ; auto.
     apply eval_units_find_lit with (m:=m) in FD1; auto.
+    destruct (Annot.elt t0) ; simpl ; auto.
+    exact I.
     - unfold eval_watched_clause in EC.
       simpl in EC.
       apply eval_neg_literal_rec in EC; auto.
       apply  eval_make_watched with (m:=m); auto.
     - destruct (find_lit (watch2 cl) u) eqn:FD2; simpl; auto.
-      destruct b ; simpl ; auto.
       apply eval_units_find_lit with (m:=m) in FD2; auto.
+      destruct (Annot.elt t0) ; simpl ; auto.
+      exact I.
       apply  eval_make_watched with (m:=m); auto.
       unfold eval_watched_clause in EC.
       simpl in EC.
@@ -2026,18 +2147,22 @@ Inductive op :=
     forall m u
            (EV : eval_units m u)
            cl
-           (WFC : Forall (has_literal m) cl)
+           (WFC : Forall (has_literal m) cl) an
            (EC : eval_literal_list cl),
-      ohold eval_literal_list (reduce u cl).
+      ohold (Annot.lift eval_literal_list) (reduce u an cl).
   Proof.
-    intros. induction WFC.
+    intros m u EV cl WFC. induction WFC.
     - simpl in *. auto.
     - simpl in *.
       destruct (find_lit x u) eqn:EQ.
       apply eval_units_find_lit with (m:=m) in EQ; auto.
-      destruct b ; simpl ; auto.
+      destruct (Annot.elt t0) ; simpl ; auto.
+      intros.
       apply eval_neg_literal_rec in EC; auto.
-      destruct (reduce u l); simpl in * ; auto.
+      intros. generalize (IHWFC an).
+      destruct (reduce u an l); simpl in * ; auto.
+      unfold Annot.map, Annot.lift.
+      simpl.
       destruct x ; simpl in *.
       + tauto.
       + tauto.
@@ -2071,7 +2196,7 @@ Inductive op :=
            (WF   : wf_watch_map cls)
            (WFCL : has_clauses m cls)
            (FD : find_clauses i cls = (ln, lp)),
-      IntMapForall2 (has_watched_clause m) (ln,lp) /\
+      IntMapForall2 (Annot.lift (has_watched_clause m)) (ln,lp) /\
       wf_map ln /\ wf_map lp.
   Proof.
     intros.
@@ -2133,7 +2258,7 @@ Inductive op :=
            (WF: wf_map cls)
            (WFW : wf_watch_map cls)
            (WF : has_clauses m cls)
-           (WCL : has_watched_clause m wc),
+           (WCL : Annot.lift (has_watched_clause m) wc),
       has_clauses m (add_clause l i wc cls).
   Proof.
     unfold add_clause. intros.
@@ -2155,7 +2280,7 @@ Inductive op :=
            (WFM : wf_map cls)
            (WF: wf_watch_map cls)
            (EC: eval_clauses cls)
-           (EW: eval_watched_clause wc),
+           (EW: Annot.lift eval_watched_clause wc),
       eval_clauses (add_clause l i wc cls).
   Proof.
     unfold add_clause. intros.
@@ -2232,7 +2357,7 @@ Inductive op :=
     forall l id cl st
            (WFS : wf_state st)
            (WFL : has_literal (hconsmap st) l)
-           (WFC : has_watched_clause (hconsmap st) cl),
+           (WFC : Annot.lift (has_watched_clause (hconsmap st)) cl),
            wf_state (insert_lit_clause l id cl st).
   Proof.
     intros.
@@ -2248,7 +2373,7 @@ Inductive op :=
     forall u id cl st
            (WF : wf_state st)
            (ES : eval_state st)
-           (ECL : eval_watched_clause cl),
+           (ECL : Annot.lift eval_watched_clause cl),
       eval_state (insert_lit_clause u id cl st).
   Proof.
     unfold insert_lit_clause.
@@ -2271,21 +2396,23 @@ Inductive op :=
     forall m l u
            (WF : wf_map u)
            (EU : eval_units m u)
-           (EL :eval_literal l)
-           (HL : has_literal m l),
+           (EL : Annot.lift eval_literal l)
+           (HL : Annot.lift (has_literal m) l),
       eval_units m (add_literal l u).
   Proof.
     intros.
     unfold add_literal.
     repeat intro.
     rewrite gsspec  in H ; auto.
-    destruct (eqs (id f) (id_of_literal l) ).
+    destruct (eqs (id f) (id_of_literal (Annot.elt l)) ).
     + inv H.
-      assert (form_of_literal l =  f).
+      assert (form_of_literal (Annot.elt l) =  f).
       { eapply has_form_eq ; eauto.
         apply has_form_of_literal; auto.
       }
       rewrite <- H.
+      unfold Annot.lift, Annot.map.
+      simpl.
       rewrite literal_eq. auto.
     + eapply EU ; eauto.
   Qed.
@@ -2318,14 +2445,14 @@ Inductive op :=
 
   Lemma wf_insert_literal : forall l st
            (WF : wf_state st)
-           (HF : has_literal (hconsmap st) l),
+           (HF : Annot.lift (has_literal (hconsmap st)) l),
       wf_state (insert_literal l st).
   Proof.
     unfold insert_literal.
     intros.
     destruct WF ; constructor ; simpl ; auto with wf.
     {
-      destruct (is_neg_arrow l). constructor ; auto.
+      destruct (is_neg_arrow (Annot.elt l)). constructor ; auto.
       auto.
     }
     -
@@ -2336,8 +2463,8 @@ Inductive op :=
       unfold wf_units_def.
       intros.
       rewrite gsspec  in H;auto.
-      destruct (eqs i (id_of_literal l) ); auto.
-      exists (form_of_literal l).
+      destruct (eqs i (id_of_literal (Annot.elt l)) ); auto.
+      exists (form_of_literal (Annot.elt l)).
       split.
       apply has_form_of_literal; auto.
       auto.
@@ -2345,9 +2472,9 @@ Inductive op :=
 
   Lemma eval_insert_literal : forall l st
            (WF : wf_state st)
-           (HF : has_literal (hconsmap st) l)
+           (HF : Annot.lift (has_literal (hconsmap st)) l)
            (EV : eval_state st)
-           (EL : eval_literal l),
+           (EL : Annot.lift eval_literal l),
       eval_state (insert_literal l st) /\ wf_state (insert_literal l st).
   Proof.
     split.
@@ -2361,39 +2488,40 @@ Inductive op :=
 
 
 
-  Definition wf_state_option  (st: option state) :=
+  Definition wf_result_state  (st: dresult) :=
     match st with
-    | None => True
-    | Some st => wf_state  st
+    | Progress st => wf_state  st
+    | Success _   => True
+    | Fail _   => False
     end.
 
 
-  Definition eval_option  (st: option state) :=
+  Definition eval_result_state  (st: dresult) :=
     match st with
-    | None => False
-    | Some st => eval_state st
+    | Success _ => False
+    | Progress st => eval_state st
+    | Fail _   => True
     end.
 
-
-  Definition incr_hconsmap (st st': option state) :=
+  Definition incr_hconsmap (st st': dresult) :=
     match st, st' with
-    | Some st , Some st' => hmap_order (hconsmap st) (hconsmap st')
-    | Some st , None => True
+    | Progress st , Progress st' => hmap_order (hconsmap st) (hconsmap st')
+    | Progress _ , Success _ => True
     | _ , _ => True
     end.
 
-
   Lemma fold_update_rel_correct :
-    forall {A: Type} (F: A -> state -> option state)
-           (R : state -> option state -> Prop)
-           (RNone : forall st, R st None)
-           (REFL : forall st : state, R st (Some st))
+    forall {A: Type} (F: A -> state -> dresult)
+           (R : state -> dresult -> Prop)
+           (RSucc : forall st d, R st (Success d))
+           (REFL : forall st : state, R st (Progress st))
+           (FOUT : forall a st f, F a st = Fail f -> False)
            (RTrans : forall s1 s2 s3,
-               R s1 (Some s2) ->
-               R s2 (Some s3) ->
-               R s1 (Some s3))
+               R s1 (Progress s2) ->
+               R s2 (Progress s3) ->
+               R s1 (Progress s3))
            (ROK : forall a st st',
-               F a st = Some st' -> R st (Some st'))
+               F a st =  Progress st' -> R st (Progress st'))
            l st,
       R st (fold_update F  l st).
   Proof.
@@ -2401,43 +2529,68 @@ Inductive op :=
     - auto.
     - intros.
       destruct (F a st) eqn:EQ; simpl; auto.
-      apply ROK in EQ.
-      specialize (IHl s).
-      destruct (fold_update F l s); auto.
-      eapply RTrans; eauto.
+      + apply FOUT in EQ. tauto.
+      + apply ROK in EQ.
+        specialize (IHl st0).
+        assert (forall f, fold_update F l st0 <> Fail f).
+        {
+          clear - FOUT.
+          revert st0.
+          induction l ; simpl.
+          congruence.
+          intros. specialize (FOUT a st0).
+          destruct (F a st0) ; try congruence.
+          apply IHl.
+        }
+        destruct (fold_update F l st0); try congruence.
+        apply RSucc.
+        eapply RTrans; eauto.
+  Qed.
+
+  Lemma fold_update_not_OutOfFuel :
+    forall {A: Type} (F: A -> state -> dresult)
+           (FOUT : forall a st f, F a st = Fail f -> False),
+      forall l st f, fold_update F  l st = Fail f -> False.
+  Proof.
+    induction l; simpl.
+    - congruence.
+    - intros.
+      destruct (F a st) eqn:EQ; try congruence.
+      apply FOUT in EQ. assumption.
+      apply IHl in H. assumption.
   Qed.
 
 
+
   Lemma fold_update_correct :
-    forall {A: Type} (F: A -> state -> option state)
+    forall {A: Type} (F: A -> state -> dresult)
            (Q: state -> A -> Prop)
-           (P: state -> Prop) l
+            l
            (QOK : forall a st st',
-               F a st = Some st' -> forall x, Q st x -> Q st' x)
+               F a st = Progress st' -> forall x, Q st x -> Q st' x)
+           (FOUT : forall a st f, F a st = Fail f -> False)
            (FOK : forall a st st',
                Q st a  ->
-               P st ->
-               F a st = Some st' ->
-               P st')
+               wf_state st ->
+               F a st = Progress st' ->
+               wf_state st')
            st
            (QALL : Forall (Q st) l)
-           (Acc : P st),
-      ohold P (fold_update F  l st).
+           (Acc : wf_state st),
+      wf_result_state (fold_update F  l st).
   Proof.
     induction l; simpl.
     - auto.
     - intros.
       destruct (F a st) eqn:EQ; simpl; auto.
-      inv QALL.
-      apply IHl.
-      + intros.
-        eapply QOK ; eauto.
-      + eapply FOK ; eauto.
-      + revert H2.
+      + apply FOUT in EQ ; assumption.
+      + inv QALL.
+        apply IHl; auto.
+      * revert H2.
         apply Forall_Forall.
         intros.
         eapply QOK ; eauto.
-      +  eapply FOK; eauto.
+      *  eapply FOK; eauto.
   Qed.
 
 
@@ -2448,14 +2601,14 @@ Inductive op :=
            (FO :
               Forall (fun cl => forall st,wf_state st ->
                             eval_state st ->WP (hconsmap st) cl ->
-                            incr_hconsmap (Some st) (F cl st) /\
-                            wf_state_option (F cl st) /\ eval_option (F cl st)) l)
+                            incr_hconsmap (Progress st) (F cl st) /\
+                            wf_result_state (F cl st) /\ eval_result_state (F cl st)) l)
            st
            (WF : wf_state st)
            (ES : eval_state  st)
            (ALL : Forall (WP (hconsmap st)) l)
            (CLS : Forall EVAL l),
-      eval_option  (fold_update F  l st).
+      eval_result_state  (fold_update F  l st).
   Proof.
     induction l ; simpl; auto.
     intros. inv CLS. inv ALL.
@@ -2469,6 +2622,7 @@ Inductive op :=
     apply WPI.
     tauto.
   Qed.
+
 
   Lemma has_form_mono : forall m m',
       hmap_order m m' ->
@@ -2514,16 +2668,17 @@ Inductive op :=
     apply has_literal_mono;auto.
   Qed.
 
+  (*
   Lemma wf_fold_watched_update :
     forall F l
            (FO :
               Forall (fun cl => forall st, wf_state  st ->
                                           has_watched_clause (hconsmap st) cl ->
-                            incr_hconsmap (Some st) (F cl st) /\  wf_state_option (F cl st)) l)
+                            incr_hconsmap (Some st) (F cl st) /\  wf_result_state (F cl st)) l)
            st
            (WF : wf_state  st)
            (ALL : Forall (has_watched_clause (hconsmap st)) l),
-      wf_state_option (fold_update F  l st).
+      wf_result_state (fold_update F  l st).
   Proof.
     induction l ; simpl; auto.
     intros. inv ALL.
@@ -2537,10 +2692,11 @@ Inductive op :=
     apply has_watched_clause_mono;auto.
     tauto.
   Qed.
+   *)
 
   Lemma wf_add_watched_clause :
   forall i wc st
-         (WFC: has_watched_clause (hconsmap st) wc)
+         (WFC: Annot.lift (has_watched_clause (hconsmap st)) wc)
          (WFS: wf_state st),
   wf_state  (add_watched_clause st i wc).
   Proof.
@@ -2568,7 +2724,7 @@ Inductive op :=
   forall i wc st
          (WF : wf_state st)
          (ES : eval_state  st)
-         (EC : eval_watched_clause wc),
+         (EC : Annot.lift eval_watched_clause wc),
     eval_state (add_watched_clause st i wc).
   Proof.
     unfold add_watched_clause. intros.
@@ -2581,26 +2737,30 @@ Inductive op :=
 
   Lemma wf_insert_normalised_clause :
     forall i cl st
-           (HCL : has_clause (hconsmap st) cl)
+           (HCL : Annot.lift (has_clause (hconsmap st)) cl)
            (WF : wf_state st),
-  wf_state_option (insert_normalised_clause i cl st).
+  wf_result_state (insert_normalised_clause i cl st).
   Proof.
     unfold insert_normalised_clause.
-    destruct cl ; simpl ; auto.
-    intros. apply wf_insert_unit;auto.
-    intros. apply wf_add_watched_clause; auto.
+    intros.
+    unfold Annot.lift in HCL.
+    destruct (Annot.elt cl) ; simpl ; auto.
+    apply wf_insert_unit;auto.
+    apply wf_add_watched_clause; auto.
   Qed.
 
   Lemma eval_insert_normalised_clause :
     forall i cl st
-           (HCL : has_clause (hconsmap st) cl)
+           (HCL : Annot.lift (has_clause (hconsmap st)) cl)
            (WF : wf_state st)
            (ES : eval_state st)
-           (EC : eval_clause cl),
-  eval_option  (insert_normalised_clause i cl st).
+           (EC : Annot.lift eval_clause cl),
+  eval_result_state  (insert_normalised_clause i cl st).
   Proof.
     unfold insert_normalised_clause.
-    destruct cl ; simpl ; auto.
+    intros.
+    unfold Annot.lift in *.
+    destruct (Annot.elt cl) ; simpl ; auto.
     - intros; apply eval_insert_unit;auto.
     - intros.
       apply eval_add_watched_clause; auto.
@@ -2608,12 +2768,14 @@ Inductive op :=
 
   Lemma wf_insert_clause :
         forall i cl st
-               (HCL : has_clause (hconsmap st) cl)
+               (HCL : Annot.lift (has_clause (hconsmap st)) cl)
                (WF  : wf_state  st),
-          wf_state_option (insert_clause i cl st).
+          wf_result_state (insert_clause i cl st).
   Proof.
     unfold insert_clause.
-    destruct cl ; simpl.
+    unfold Annot.lift.
+    intros.
+    destruct (Annot.elt cl) ; simpl.
     - tauto.
     - tauto.
     - intros; apply wf_insert_unit; auto.
@@ -2626,14 +2788,15 @@ Inductive op :=
 
   Lemma eval_insert_clause :
         forall i cl st
-               (HCL : has_clause (hconsmap st) cl)
+               (HCL : Annot.lift (has_clause (hconsmap st)) cl)
                (WF  : wf_state  st)
                (ES : eval_state  st)
-               (EC : eval_clause cl),
-          eval_option (insert_clause i cl st).
+               (EC : Annot.lift eval_clause cl),
+          eval_result_state (insert_clause i cl st).
   Proof.
     unfold insert_clause.
-    destruct cl ; simpl.
+    unfold Annot.lift;intros.
+    destruct (Annot.elt cl) ; simpl.
     - tauto.
     - tauto.
     - intros.
@@ -2661,10 +2824,10 @@ Inductive op :=
   Qed.
 
   Lemma wf_insert_fresh_clause :
-  forall (cl : clause) (st : state)
-         (WFCL : has_clause (hconsmap st) cl)
+  forall (cl : Annot.t clause) (st : state)
+         (WFCL : Annot.lift (has_clause (hconsmap st)) cl)
          (WFST : wf_state st),
-  wf_state_option (insert_fresh_clause cl st).
+  wf_result_state (insert_fresh_clause cl st).
   Proof.
     unfold insert_fresh_clause.
     intros.
@@ -2677,12 +2840,12 @@ Inductive op :=
 
 
   Lemma eval_insert_fresh_clause :
-  forall (cl : clause) (st : state)
-         (WFCL : has_clause (hconsmap st) cl)
+  forall (cl : Annot.t clause) (st : state)
+         (WFCL : Annot.lift (has_clause (hconsmap st)) cl)
          (WFST : wf_state st)
-         (EC   : eval_clause cl)
+         (EC   : Annot.lift eval_clause cl)
          (ES   : eval_state st),
-  eval_option (insert_fresh_clause cl st).
+  eval_result_state (insert_fresh_clause cl st).
   Proof.
     unfold insert_fresh_clause.
     intros.
@@ -2694,10 +2857,10 @@ Inductive op :=
     apply eval_get_fresh_clause;auto.
   Qed.
 
-  Definition hconsmap_option (o: option state) :=
+  Definition hconsmap_result (o: dresult) :=
     match o with
-    | None => IntMap.empty _
-    | Some st => hconsmap st
+    | Success _ | Fail _  => IntMap.empty _
+    | Progress st => hconsmap st
     end.
 
   Definition ohold2 {A B:Type} (P : A -> B -> Prop) (o: option A) (b:B) :=
@@ -2770,44 +2933,45 @@ Proof.
     eapply PUP; eauto.
 Qed.
 
-Lemma fold_up : forall {A: Type} (P: hmap -> A -> Prop) (Q:  option state -> Prop)
+Lemma fold_up : forall {A: Type} (P: hmap -> A -> Prop) (Q:  dresult -> Prop)
                          (WPI : forall m m', hmap_order m m' -> forall x,
                                P  m x -> P  m' x)
-                         (UP : option state -> int -> A -> option state)
-                         (UPNone : forall i x, UP None i x = None)
+                         (UP : dresult -> int -> A -> dresult)
+                         (QOUT : forall f, Q (Fail f) -> False)
+                         (UPSuccess : forall i x d, UP (Success d) i x = Success d)
                          (UPOK :  forall i  cl st ,
-                             Q (Some st) ->  P (hconsmap st) cl  ->
-                             incr_hconsmap (Some st) (UP (Some st) i cl) /\
-                             Q (UP (Some st) i cl))
+                             Q (Progress st) ->  P (hconsmap st) cl  ->
+                             incr_hconsmap (Progress st) (UP (Progress st) i cl) /\
+                             Q (UP (Progress st) i cl))
                          (cl: IntMap.ptrie A)
     (st: state)
     (WF: wf_map cl)
     (CL : IntMapForall (P (hconsmap st)) cl)
-    (ES : Q (Some st)),
-      Q (IntMap.fold' UP cl (Some st)).
+    (ES : Q (Progress st)),
+      Q (IntMap.fold' UP cl (Progress st)).
 Proof.
   intros.
-  set (P':= fun o cl => match o with None => True | Some st => P (hconsmap st) cl end).
+  set (P':= fun (o:dresult) cl => match o with Progress st => P (hconsmap st) cl | _ => True end).
   apply fold_lemma with (P0:= P'); eauto.
   unfold P'. intros.
   destruct acc ; auto.
+  - apply QOUT in H1. tauto.
+  - rewrite UPSuccess. auto.
   - clear P'.
-    destruct (UP (Some s) i e) eqn:EQ; auto.
+    destruct (UP (Progress st0) i e) eqn:EQ; auto.
     revert H0. apply WPI.
     specialize (UPOK i _ _ H1 H).
     rewrite EQ in UPOK.
     simpl in UPOK.
     tauto.
-  - rewrite UPNone.
-    auto.
   - intros.
     destruct acc.
+    apply QOUT in H. tauto.
+    rewrite UPSuccess. auto.
     apply UPOK; auto.
-    rewrite UPNone.
-    auto.
 Qed.
 
-  Lemma fold_slemma :
+Lemma fold_slemma :
     forall {A E: Type} (UP: A -> int -> E -> A) (P: E -> Prop) Q m acc
            (UPOK : forall acc i v,
                Q acc ->
@@ -2939,9 +3103,9 @@ Qed.
 
 
 Lemma wf_update_watched_clause : forall i cl st,
-    wf_state_option  st ->
-    has_watched_clause (hconsmap_option st) cl ->
-    wf_state_option (update_watched_clause  st i cl).
+    wf_result_state  st ->
+    Annot.lift (has_watched_clause (hconsmap_result st)) cl ->
+    wf_result_state (update_watched_clause  st i cl).
 Proof.
   intros. unfold update_watched_clause.
   destruct st ; simpl in * ; auto.
@@ -2961,15 +3125,16 @@ Hint Resolve hmap_order_refl : wf.
 
 Lemma insert_normalised_clause_mono : forall i cl st st',
     hmap_order (hconsmap st) (hconsmap st') ->
-    incr_hconsmap (Some st) (insert_normalised_clause i cl st').
+    incr_hconsmap (Progress st) (insert_normalised_clause i cl st').
 Proof.
   unfold insert_normalised_clause.
-  destruct cl ; simpl ; auto with wf.
+  intros.
+  destruct (Annot.elt cl) ; simpl ; auto with wf.
 Qed.
 
 Lemma insert_watched_clause_mono : forall i cl s s',
     hmap_order (hconsmap s) (hconsmap s') ->
-    incr_hconsmap (Some s) (insert_watched_clause i cl s').
+    incr_hconsmap (Progress s) (insert_watched_clause i cl s').
 Proof.
   unfold insert_watched_clause; intros.
   apply insert_normalised_clause_mono;auto.
@@ -2989,8 +3154,8 @@ Proof.
   intros.
   unfold update_watched_clause.
   destruct st; simpl; auto with wf.
-  destruct (insert_watched_clause i cl (remove_watched_clause i cl s)) eqn:EQ; auto.
-  change (incr_hconsmap (Some s) (Some s0)).
+  destruct (insert_watched_clause i cl (remove_watched_clause i (Annot.elt cl) st)) eqn:EQ; auto.
+  change (incr_hconsmap (Progress st) (Progress st0 )).
   rewrite <- EQ.
   apply insert_watched_clause_mono.
   apply hmap_order_remove_watched_clause; auto.
@@ -3000,15 +3165,20 @@ Qed.
 Lemma wf_shorten_clauses :
   forall l st
          (WFM: wf_map l)
-         (ALL: IntMapForall (has_watched_clause (hconsmap st)) l)
+         (ALL: IntMapForall (Annot.lift (has_watched_clause (hconsmap st))) l)
          (WF: wf_state st),
-        wf_state_option (shorten_clauses l st).
+        wf_result_state (shorten_clauses l st).
 Proof.
   unfold shorten_clauses.
   intros.
-  change (wf_state_option (Some st)) in WF.
+  change (wf_result_state (Progress st)) in WF.
   revert WF.
-  revert ALL.
+  set (P:= fun hm cl => has_watched_clause hm (Annot.elt cl)).
+  assert (ALL' : IntMapForall (P (hconsmap st)) l).
+  {
+    apply ALL.
+  }
+  revert ALL'.
   apply fold_up; auto.
   - intros.
     eapply has_watched_clause_mono ; eauto.
@@ -3042,7 +3212,7 @@ Qed.
 
 Lemma shorten_clauses_mono : forall l st,
     wf_map l ->
-    incr_hconsmap (Some st) (shorten_clauses l st).
+    incr_hconsmap (Progress st) (shorten_clauses l st).
 Proof.
   unfold shorten_clauses.
   intros.
@@ -3052,8 +3222,7 @@ Proof.
     generalize (update_watched_clause_mono acc (fst a) (snd a)).
     unfold update_watched_clause.
     destruct acc ; simpl in * ; auto.
-    destruct (insert_watched_clause
-                (fst a) (snd a) (remove_watched_clause (fst a) (snd a) s)); auto.
+    destruct_in_goal D;auto.
     eapply hmap_order_trans ; eauto.
   - simpl. apply hmap_order_refl.
 Qed.
@@ -3070,8 +3239,8 @@ Lemma wf_unit_propagation :
            (WF  : wf_state st)
            (WFG : has_oform (hconsmap st) g),
            match unit_propagation n st g with
-           | Success => True
-           | OutOfFuel => True
+           | Success d => True
+           | Fail _ => True
            | Progress st' => wf_state st' /\ hmap_order (hconsmap st) (hconsmap st')
            end.
   Proof.
@@ -3088,30 +3257,30 @@ Lemma wf_unit_propagation :
       +
         auto.
       +
-        destruct (find_clauses (id_of_literal l) (clauses st')) as (ln,lp) eqn:FD.
-        set (L := match l with
+        destruct (find_clauses (id_of_literal (Annot.elt l)) (clauses st')) as (ln,lp) eqn:FD.
+        set (L := match Annot.elt l with
                           | POS _ => ln
                           | NEG _ => lp
                           end) in *.
-        assert (WFLL: IntMapForall (has_watched_clause (hconsmap st')) L /\ wf_map L).
+        assert (WFLL: IntMapForall (Annot.lift (has_watched_clause (hconsmap st'))) L /\ wf_map L).
         {
           apply wf_find_clauses with (m:=(hconsmap st')) in FD; auto.
           destruct FD as ((FD1 & FD2) & (WF1 & WF2)).
-          destruct l ; tauto.
+          destruct (Annot.elt l) ; tauto.
           destruct WFST' ; auto.
           destruct WFST' ; auto.
         }
         destruct WFLL as (WFL1 & WFL2).
-        assert (WFS : wf_state_option  (shorten_clauses L (insert_literal l st'))).
+        assert (WFS : wf_result_state  (shorten_clauses L (insert_literal l st'))).
         { apply wf_shorten_clauses ; auto.
           apply wf_insert_literal; auto.
         }
         assert (MONO := shorten_clauses_mono L (insert_literal l st') WFL2).
         destruct (shorten_clauses L  (insert_literal l st'))eqn:RES ; try tauto.
-        generalize (IHn g s WFS); auto.
-        destruct (unit_propagation n s g) ; auto.
+        generalize (IHn g st0 WFS); auto.
+        destruct (unit_propagation n st0 g) ; auto.
         simpl in MONO.
-        assert (MONOG: has_oform (hconsmap s) g).
+        assert (MONOG: has_oform (hconsmap st0) g).
         {
           revert WFG.
           apply has_oform_mono.
@@ -3173,8 +3342,8 @@ Lemma wf_unit_propagation :
   Lemma wf_insert_watched_clause :
     forall i cl st
            (WF: wf_state st)
-           (WFC: has_watched_clause (hconsmap st) cl),
-           wf_state_option  (insert_watched_clause i cl st).
+           (WFC: Annot.lift (has_watched_clause (hconsmap st)) cl),
+           wf_result_state  (insert_watched_clause i cl st).
   Proof.
     unfold insert_watched_clause.
     intros.
@@ -3185,51 +3354,73 @@ Lemma wf_unit_propagation :
   Lemma eval_insert_watched_clause :
     forall i cl st
            (WF : wf_state st)
-           (WFC : has_watched_clause (hconsmap st) cl)
+           (WFC : Annot.lift (has_watched_clause (hconsmap st)) cl)
            (ES  : eval_state st)
-           (EW  : eval_watched_clause cl)
+           (EW  : Annot.lift eval_watched_clause cl)
     ,
-      eval_option (insert_watched_clause i cl st).
+      eval_result_state (insert_watched_clause i cl st).
   Proof.
     unfold insert_watched_clause.
     intros. unfold insert_normalised_clause.
     generalize (shorten_clause_correct
-                  (hconsmap st) (units st) cl (ev_units st ES) WFC EW).
-    destruct (shorten_clause (units st) cl);simpl;auto.
+                  (hconsmap st) (units st) (Annot.elt cl) (Annot.deps cl) (ev_units st ES) WFC EW).
+    destruct (shorten_clause (units st) (Annot.deps cl) (Annot.elt cl));simpl;auto.
+    destruct elt0 ; simpl ; auto.
+    unfold Annot.lift, Annot.set. simpl.
+    intros.
     apply eval_insert_unit; auto.
-    apply eval_add_watched_clause; auto.
+    intros. apply eval_add_watched_clause; auto.
   Qed.
 
+  Lemma insert_normalised_clause_not_OutOfFuel : forall i cl st f,
+      insert_normalised_clause i cl st = Fail f -> False.
+  Proof.
+    unfold insert_normalised_clause.
+    intros. destruct (Annot.elt cl) ; try congruence.
+  Qed.
 
+  Lemma insert_watched_clause_not_OutOfFuel : forall i e st f,
+      insert_watched_clause i e st = Fail f -> False.
+  Proof.
+    unfold insert_watched_clause.
+    intros ; eapply insert_normalised_clause_not_OutOfFuel ; eauto.
+  Qed.
+
+  
   Lemma eval_shorten_clauses :
   forall l st
          (WFL: wf_map l)
-         (ALL: IntMapForall eval_watched_clause l)
-         (ALL: IntMapForall (has_watched_clause (hconsmap st)) l)
+         (ALL: IntMapForall (Annot.lift eval_watched_clause) l)
+         (ALL: IntMapForall (Annot.lift (has_watched_clause (hconsmap st))) l)
          (WF: wf_state st /\ eval_state  st),
-    wf_state_option  (shorten_clauses l st) /\ eval_option  (shorten_clauses l st).
+    wf_result_state  (shorten_clauses l st) /\ eval_result_state  (shorten_clauses l st).
 Proof.
   unfold shorten_clauses.
   intros.
-  apply fold_lemma
-    with (P:= fun o cl =>
+  set (Q := fun x =>   wf_result_state x /\
+                       eval_result_state x).
+  change (Q (IntMap.fold' update_watched_clause l (Progress st))).
+  eapply fold_lemma
+    with (P:= fun (o: dresult) cl =>
                 match o with
-                  None => True
-                | Some st => eval_watched_clause  cl /\ has_watched_clause (hconsmap st) cl end);auto.
+                  Success _ => True
+                | Fail _ => False
+                | Progress st => Annot.lift eval_watched_clause  cl /\ Annot.lift (has_watched_clause (hconsmap st)) cl end);auto.
   - apply IntMapForallAnd;auto.
   - destruct acc ; simpl ; auto.
     intros.
-    destruct (insert_watched_clause i e (remove_watched_clause i e s)) eqn:EQ; auto.
-    intuition.
+    destruct_in_goal EQ; auto.
+    + apply insert_watched_clause_not_OutOfFuel in EQ ; assumption.
+    + intuition.
     revert H6.
     apply has_watched_clause_mono.
-    change (incr_hconsmap (Some s) (Some s0)).
+    change (incr_hconsmap (Progress st0) (Progress st1)).
     rewrite <- EQ.
     apply insert_watched_clause_mono; auto.
     apply hmap_order_remove_watched_clause; auto.
   - destruct acc ; simpl ; auto.
     intros. destruct H, H1.
-    generalize (wf_remove_watched_clause (fst a) (snd a) s H H3).
+    generalize (wf_remove_watched_clause (fst a) (Annot.elt (snd a)) st0 H H3).
     intro.
     split.
     apply wf_insert_normalised_clause;auto.
@@ -3240,8 +3431,8 @@ Qed.
 
 Lemma incr_hconsmap_trans : forall st1 st2 st3,
     hmap_order (hconsmap st1) (hconsmap st2) ->
-    incr_hconsmap (Some st2) st3 ->
-    incr_hconsmap (Some st1) st3.
+    incr_hconsmap (Progress st2) st3 ->
+    incr_hconsmap (Progress st1) st3.
 Proof.
   destruct st3 ; simpl; auto.
   intros.
@@ -3256,8 +3447,8 @@ Qed.
            (WFG : has_oform (hconsmap st)  g)
            (EST  : eval_state st),
            match unit_propagation n st g with
-           | Success => True
-           | OutOfFuel => False
+           | Success _ => True
+           | Fail _ => False
            | Progress st' =>
                            (eval_state st' -> eval_ohformula g)
            end ->  eval_ohformula g.
@@ -3279,40 +3470,41 @@ Qed.
         apply success_correct with (m:=hconsmap st')  in SUC; auto.
         eapply has_oform_mono;eauto.
       +
-        destruct (find_clauses (id_of_literal l) (clauses st')) as (ln,lp) eqn:FD.
-        set (L := match l with
+        destruct (find_clauses (id_of_literal (Annot.elt l)) (clauses st')) as (ln,lp) eqn:FD.
+        set (L := match Annot.elt l with
                           | POS _ => ln
                           | NEG _ => lp
                           end) in *.
-        assert (WFLL: IntMapForall (has_watched_clause (hconsmap st')) L /\  wf_map L).
+        assert (WFLL: IntMapForall (Annot.lift (has_watched_clause (hconsmap st'))) L /\  wf_map L).
         {
           apply wf_find_clauses with (m:= hconsmap st') in FD; auto.
           destruct FD as ((FD1 & FD2)& WF1 & WF2).
-          destruct l ; tauto.
+          destruct (Annot.elt l) ; tauto.
           destruct WFST';auto.
           destruct WFST';auto.
         }
         destruct WFLL as (WFL1 & WFL2).
-        assert (EVALL : IntMapForall eval_watched_clause L).
+        assert (EVALL : IntMapForall (Annot.lift eval_watched_clause) L).
         {
           apply eval_find_clauses
             in FD.
-          destruct l ; unfold L ; simpl in *.
+          destruct (Annot.elt l) ; unfold L ; simpl in *.
           tauto. tauto.
           destruct EST' ; auto.
         }
-        assert (eval_option  (shorten_clauses L (insert_literal l st'))).
+        assert (eval_result_state  (shorten_clauses L (insert_literal l st'))).
         { apply  eval_shorten_clauses; auto.
           split. apply wf_insert_literal; auto.
           apply eval_insert_literal ; auto.
         }
-        assert (wf_state_option (shorten_clauses L (insert_literal l st'))).
+        assert (wf_result_state (shorten_clauses L (insert_literal l st'))).
         { apply wf_shorten_clauses;auto.
           apply wf_insert_literal;auto.
         }
         destruct (shorten_clauses L (insert_literal l st'))
         eqn:RES ; try tauto.
-        assert (INCR: incr_hconsmap (Some st') (Some s)).
+        simpl in H0. tauto.
+        assert (INCR: incr_hconsmap (Progress st') (Progress st0)).
         {
           eapply incr_hconsmap_trans.
           apply hmap_order_insert_literal.
@@ -3323,11 +3515,9 @@ Qed.
         apply IHn; auto.
         eapply has_oform_mono; eauto.
         eapply has_oform_mono; eauto.
-        simpl in *. tauto.
       +  auto.
       +  auto.
   Qed.
-
 
   Lemma eval_insert_defs : forall m' a st,
       eval_state st ->
@@ -3343,7 +3533,7 @@ Qed.
     forall cl st
            (ES : wf_state st)
            (HS : has_watched_clause (hconsmap st) cl),
-           wf_state_option (insert_fresh_watched_clause cl st).
+           wf_result_state (insert_fresh_watched_clause cl st).
   Proof.
     unfold insert_fresh_watched_clause.
     intros.
@@ -3363,7 +3553,7 @@ Qed.
            (EC : eval_watched_clause  cl)
            (HS : has_watched_clause (hconsmap st) cl)
     ,
-      eval_option (insert_fresh_watched_clause cl st).
+      eval_result_state (insert_fresh_watched_clause cl st).
   Proof.
     unfold insert_fresh_watched_clause.
     intros.
@@ -3380,25 +3570,20 @@ Qed.
     destruct st ; simpl in * ; auto.
   Qed.
 
-  Definition eval_unsat (m: hmap) (st: option state) :=
-    match st with
-    | None => False
-    | Some st' => eval_state  st'
-    end.
 
   Lemma eval_fold_update_correct :
     forall m  concl F
            (FOK : forall st cl, has_watched_clause m cl ->
                                 eval_watched_clause cl ->
                                 wf_state st  ->eval_state  st ->
-                                wf_state_option  (F cl st) /\
-                                eval_unsat m (F cl st))
+                                wf_result_state  (F cl st) /\
+                                eval_result_state (F cl st))
            acc st
            (WF: Forall (has_watched_clause m) acc)
            (EC: Forall eval_watched_clause acc)
            (WS: wf_state  st)
            (ES: eval_state  st),
-      (eval_option  (fold_update F acc st) -> eval_formula concl) ->
+      (eval_result_state  (fold_update F acc st) -> eval_formula concl) ->
       eval_formula concl.
   Proof.
     induction acc; simpl.
@@ -3407,7 +3592,7 @@ Qed.
       specialize (FOK _ _ H2 H4 WS ES).
       destruct (F a st) ; simpl in *; try tauto.
       destruct FOK.
-      eapply IHacc with (st:=s); eauto.
+      eapply IHacc with (st:=st0); eauto.
   Qed.
 
   Lemma intro_impl_aux :
@@ -3821,7 +4006,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
   Lemma insert_fresh_watched_clause_mono : forall st a,
-      incr_hconsmap (Some st) (insert_fresh_watched_clause a st).
+      incr_hconsmap (Progress st) (insert_fresh_watched_clause a st).
   Proof.
     unfold insert_fresh_watched_clause.
     intros.
@@ -3832,26 +4017,39 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     apply get_fresh_clause_id_mono.
   Qed.
 
+  Lemma insert_fresh_watched_clause_not_OutOfFuel : forall a st f,
+      insert_fresh_watched_clause a st = Fail f -> False.
+  Proof.
+    unfold insert_fresh_watched_clause.
+    intros.
+    destruct_in_hyp H F.
+    apply insert_watched_clause_not_OutOfFuel in H ; assumption.
+  Qed.
+
   Lemma wf_augment_cnf :
     forall b l st
            (HL : has_literal (hconsmap st) l)
            (WF : wf_state st),
-      wf_state_option  (augment_cnf b l st).
+      wf_result_state  (augment_cnf b l st).
   Proof.
     unfold augment_cnf.
     intros.
     destruct (cnf_of_literal l b (fst (defs st)) (snd (defs st)) (arrows st) nil
         (elt (form_of_literal l)) (form_of_literal l)) as (((cp,cm),ar),acc) eqn:EQ.
     apply wf_cnf_of_literal with (m:=hconsmap st) in EQ; auto.
-    { apply fold_update_correct with (Q:= fun st cl => has_watched_clause (hconsmap st) cl).
+    {
+
+      apply fold_update_correct with (Q:= fun st cl => has_watched_clause (hconsmap st) cl).
       - intros.
         revert H0.
         apply has_watched_clause_mono.
-        change (incr_hconsmap (Some st0) (Some st')).
+        change (incr_hconsmap (Progress st0) (Progress st')).
         rewrite <- H.
         apply insert_fresh_watched_clause_mono.
       - intros.
-        change (wf_state_option (Some st')).
+        apply insert_fresh_watched_clause_not_OutOfFuel in H; assumption.
+      - intros.
+        change (wf_result_state (Progress st')).
         rewrite <- H1.
         apply wf_insert_fresh_watched_clause; auto.
       - destruct EQ.
@@ -3871,7 +4069,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     forall b l st
            (HL: has_literal (hconsmap st) l)
            (WF: wf_state st),
-      wf_state_option (augment_hyp b l st).
+      wf_result_state (augment_hyp b l st).
   Proof.
     unfold augment_hyp.
     intros.
@@ -3893,7 +4091,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
 
   Lemma augment_cnf_mono : forall b a st,
-      incr_hconsmap (Some st) (augment_cnf b a st).
+      incr_hconsmap (Progress st) (augment_cnf b a st).
   Proof.
     unfold augment_cnf.
     intros.
@@ -3907,6 +4105,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     eapply fold_update_rel_correct.
     - simpl; auto.
     - simpl. intros. apply hmap_order_refl.
+    - intros.
+      apply insert_fresh_watched_clause_not_OutOfFuel in H ; assumption.
     - simpl. intros.
       eapply hmap_order_trans.
       apply H;auto.
@@ -3917,23 +4117,37 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
     Lemma augment_hyp_mono : forall b a st,
-      incr_hconsmap (Some st) (augment_hyp b a st).
+      incr_hconsmap (Progress st) (augment_hyp b a st).
   Proof.
     unfold augment_hyp.
     intros.
     eapply incr_hconsmap_trans.
-    rewrite insert_unit_mono with (l:= a);auto.
+    rewrite insert_unit_mono with (l:= (annot_hyp a));auto.
     apply hmap_order_refl.
-    generalize (insert_unit a st).
+    generalize (insert_unit (annot_hyp a) st).
     apply augment_cnf_mono.
   Qed.
 
+  Lemma augment_hyp_not_OutOfFuel :
+    forall b a st f,
+      augment_hyp b a st = Fail f -> False.
+  Proof.
+    unfold augment_hyp.
+    intros.
+    unfold augment_cnf in H.
+    destruct_in_hyp H CNF.
+    destruct p as ((cp&cm)&ar).
+    revert H.
+    apply fold_update_not_OutOfFuel.
+    apply insert_fresh_watched_clause_not_OutOfFuel.
+  Qed.
 
+  
   Lemma wf_cnf_hyps :
     forall b l st
            (HL: Forall (has_literal (hconsmap st)) l)
            (WF: wf_state  st),
-      wf_state_option  (cnf_hyps b l st).
+      wf_result_state  (cnf_hyps b l st).
   Proof.
     unfold cnf_hyps.
     intros *. intro.
@@ -3943,11 +4157,12 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     - intros.
       revert H0.
       apply has_literal_mono.
-      change (incr_hconsmap (Some st0) (Some st')).
+      change (incr_hconsmap (Progress st0) (Progress st')).
       rewrite <- H.
       apply augment_hyp_mono.
+    - apply augment_hyp_not_OutOfFuel.
     - intros.
-      change (wf_state_option (Some st')).
+      change (wf_result_state (Progress st')).
       rewrite <- H1.
       apply wf_augment_hyp; auto.
   Qed.
@@ -3956,7 +4171,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     forall o l st
            (HL : has_literal (hconsmap st) l)
            (WF : wf_state st),
-      (eval_option  (augment_cnf (is_classic o) l st) -> eval_ohformula o) ->
+      (eval_result_state  (augment_cnf (is_classic o) l st) -> eval_ohformula o) ->
       (eval_state  st -> eval_ohformula o).
   Proof.
     intros.
@@ -4003,7 +4218,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     forall o l st
            (HL : has_literal (hconsmap st) l)
            (WF : wf_state  st),
-      (eval_option  (augment_hyp (is_classic o) l st) -> eval_ohformula o) ->
+      (eval_result_state  (augment_hyp (is_classic o) l st) -> eval_ohformula o) ->
       (eval_state  st -> eval_literal l -> eval_ohformula o).
   Proof.
     Proof.
@@ -4017,7 +4232,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
                                (HL: Forall (has_literal (hconsmap st)) l)
                                (WF: wf_state  st)
     ,
-      (eval_option  (cnf_hyps (is_classic o) l st) -> eval_ohformula o) ->
+      (eval_result_state  (cnf_hyps (is_classic o) l st) -> eval_ohformula o) ->
        (eval_state  st -> Forall eval_literal l -> eval_ohformula o).
   Proof.
     unfold cnf_hyps.
@@ -4026,28 +4241,29 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     - intros.
       inv H1. inv HL.
       specialize (eval_augment_hyp  o a st H3 WF).
-      assert (WFA: wf_state_option  (augment_hyp (is_classic o) a st)).
+      assert (WFA: wf_result_state  (augment_hyp (is_classic o) a st)).
       { apply wf_augment_hyp ; auto.  }
-      assert (incr_hconsmap (Some st) (augment_hyp (is_classic o) a st)).
+      assert (incr_hconsmap (Progress st) (augment_hyp (is_classic o) a st)).
       { apply augment_hyp_mono. }
       destruct (augment_hyp (is_classic o) a st).
-      + simpl in *.
+      +  simpl in *. tauto.
+      + simpl. tauto.
+      +
+        simpl in *.
       intros.
-      assert (HL : Forall (has_literal (hconsmap s)) l).
+      assert (HL : Forall (has_literal (hconsmap st0)) l).
       { revert H6.
         apply Forall_Forall.
         apply has_literal_mono; auto.
       }
-        specialize (IHl s HL).
+      specialize (IHl st0 HL).
       tauto.
-      + simpl.
-        tauto.
   Qed.
 
 
   Lemma cnf_hyps_mono :
     forall o l st,
-      incr_hconsmap (Some st) (cnf_hyps (is_classic o) l st).
+      incr_hconsmap (Progress st) (cnf_hyps (is_classic o) l st).
   Proof.
     unfold cnf_hyps.
     intros.
@@ -4055,14 +4271,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     - simpl; auto.
     - simpl; intros.
       apply hmap_order_refl.
+    - apply augment_hyp_not_OutOfFuel.
     - simpl. intros.
       eapply hmap_order_trans ; eauto.
     -  intros.
        rewrite <- H.
        apply augment_hyp_mono.
   Qed.
-
-  
 
   Lemma intro_state_correct :
     forall f st hf
@@ -4071,8 +4286,9 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (WFST : wf_state st)
            (EVAL  : eval_state  st),
            match intro_state st f hf with
-           | None => True
-           | Some (st',f') => eval_state  st' -> eval_ohformula f'
+           | Fail _ => False
+           | Success _ => True
+           | Progress (st',f') => eval_state  st' -> eval_ohformula f'
            end ->
       eval_formula f.
   Proof.
@@ -4083,26 +4299,28 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     apply wf_intro_impl with (m:= hconsmap st) in I ; auto.
     generalize (intro_impl_correct (hconsmap st) _ _ _ _ WF EQ I').
     intros.
-    assert (WFC : wf_state_option (cnf_hyps (is_classic o) l st)).
+    assert (WFC : wf_result_state (cnf_hyps (is_classic o) l st)).
     { apply wf_cnf_hyps ; auto. tauto. }
     specialize (eval_cnf_hyps o l st).
-    assert (incr_hconsmap (Some st) (cnf_hyps (is_classic o) l st)).
+    assert (incr_hconsmap (Progress st) (cnf_hyps (is_classic o) l st)).
     { apply cnf_hyps_mono. }
     destruct (cnf_hyps (is_classic o) l st).
+    - simpl in WFC. tauto.
+    - simpl in *. tauto.
     - simpl.
       intros. destruct I as (HL & HH).
       destruct o.
       +
         simpl in H1. eapply has_oform_mono in HH ; eauto.
-        generalize (eval_augment_cnf  (Some h) (NEG h) s HH WFC).
+        generalize (eval_augment_cnf  (Some h) (NEG h) st0 HH WFC).
         simpl.
-        destruct ((augment_cnf false (NEG h) s)).
+        destruct ((augment_cnf false (NEG h) st0)).
         * simpl in *. intros.
           unfold eval_hformula in *.
           tauto.
         * simpl in *. tauto.
-      + simpl in * ; tauto.
-    - simpl in * ; tauto.
+        * simpl in *. tauto.
+      + simpl in *. tauto.
   Qed.
 
   Lemma intro_state_correct_Some :
@@ -4111,7 +4329,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state st)
            (EVAL  : eval_state st)
-           (INTRO : intro_state st f hf = Some (st',f'))
+           (INTRO : intro_state st f hf = Progress (st',f'))
            (STEP  : eval_state st' -> eval_ohformula f'),
       eval_state st -> eval_formula f.
   Proof.
@@ -4122,11 +4340,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
   Lemma intro_state_correct_None :
-    forall  f st hf
+    forall  f st hf d
            (EQ    : hf.(elt) = f)
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state st)
-           (INTRO : intro_state st f hf = None),
+           (INTRO : intro_state st f hf = Success d),
       eval_state  st -> eval_formula f.
   Proof.
     intros.
@@ -4153,7 +4371,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (EQ: elt hf = f)
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state  st)
-           (INTRO : intro_state st f hf = Some (st',f'))
+           (INTRO : intro_state st f hf = Progress (st',f'))
     , wf_state  st' /\ has_oform (hconsmap st') f'.
   Proof.
     unfold intro_state.
@@ -4165,12 +4383,12 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     generalize (cnf_hyps_mono o l st).
     intros.
     destruct (cnf_hyps (is_classic o) l st); try congruence.
-    assert (HF : has_oform (hconsmap s) o).
+    assert (HF : has_oform (hconsmap st0) o).
     { eapply has_oform_mono; eauto. }
     destruct o; try congruence.
-    assert (AM := augment_cnf_mono false (NEG h) s).
-    generalize (wf_augment_cnf  false (NEG h) s).
-    - destruct ((augment_cnf false (NEG h) s)); try congruence.
+    assert (AM := augment_cnf_mono false (NEG h) st0).
+    generalize (wf_augment_cnf  false (NEG h) st0).
+    - destruct ((augment_cnf false (NEG h) st0)); try congruence.
       inv INTRO. simpl.  intuition.
       eapply has_form_mono ; eauto.
     - simpl in *.
@@ -4178,7 +4396,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
   Lemma instro_state_mono : forall st st' f hf g',
-      intro_state st f hf = Some (st', g') -> 
+      intro_state st f hf = Progress (st', g') ->
   hmap_order (hconsmap st) (hconsmap st').
   Proof.
     unfold intro_state.
@@ -4188,8 +4406,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     destruct (cnf_hyps (is_classic o) l st); try congruence.
     simpl.
     destruct o; simpl; try congruence.
-    specialize (augment_cnf_mono false (NEG h) s).
-    destruct (augment_cnf false (NEG h) s); try congruence.
+    specialize (augment_cnf_mono false (NEG h) st0).
+    destruct (augment_cnf false (NEG h) st0); try congruence.
     inv H.
     simpl. intros.
     eapply hmap_order_trans ;eauto.
@@ -4235,18 +4453,20 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     | _ => false
     end.
 
-  Definition select_clause (is_bot: bool) (lit: IntMap.ptrie bool) (acc: option (list literal)) (k:int) (cl : watched_clause) : option (list literal) :=
+  Definition select_clause (is_bot: bool) (lit: IntMap.ptrie (Annot.t bool)) (acc: option (Annot.t (list literal))) (k:int) (cl : Annot.t watched_clause) :
+    option (Annot.t (list literal)) :=
     match acc with
     | Some cl => Some cl
     | None  =>
-      let res := reduce lit (watch1 cl :: watch2 cl :: unwatched cl) in
+      let cl' := Annot.elt cl in
+      let res := reduce lit (Annot.deps cl) (watch1 cl' :: watch2 cl' :: unwatched cl') in
       match res with
       | None => None
-      | Some l => if (is_bot || check_classic l) && negb (is_silly_split l) then Some l else None
+      | Some l => if (is_bot || Annot.lift check_classic l) && negb (Annot.lift is_silly_split l) then Some l else None
       end
     end.
 
-    Definition find_clause_in_map  (is_bot: bool) (lit: IntMap.ptrie bool) (m : IntMap.ptrie watched_clause)  :=
+    Definition find_clause_in_map  (is_bot: bool) (lit: IntMap.ptrie (Annot.t bool)) (m : IntMap.ptrie (Annot.t watched_clause))  :=
     IntMap.fold' (select_clause is_bot lit)  m None.
 
     Definition is_empty {A: Type} (m: IntMap.ptrie (key:=int) A) :=
@@ -4256,7 +4476,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       end.
 
 
-  Definition find_split_acc (lit : IntMap.ptrie bool) (is_bot: bool) (acc: option (list literal))(k:int) (e: IntMap.ptrie  watched_clause * IntMap.ptrie watched_clause)
+    Definition find_split_acc (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool)
+               (acc: option (Annot.t (list literal)))(k:int) (e: IntMap.ptrie  (Annot.t watched_clause) * IntMap.ptrie (Annot.t watched_clause))
     :=
       match acc with
       | None => match find_clause_in_map is_bot lit (snd e) with
@@ -4266,14 +4487,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       | Some r =>  Some r
       end.
 
-  Definition find_split (lit : IntMap.ptrie bool) (is_bot: bool) (cl:watch_map) : option (list literal) :=
+  Definition find_split (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:watch_map) : option (Annot.t (list literal)) :=
     IntMap.fold' (find_split_acc lit is_bot) cl None.
 
   Definition progress_arrow (l:literal) (st:state): bool :=
     match  find_lit (POS (form_of_literal l)) (units st) with
      | None => true
-     | Some true => false
-     | Some false => true
+     | Some b => Annot.lift negb b
     end.
 
   Fixpoint find_arrows (st: state) (l : list literal) :=
@@ -4284,22 +4504,22 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
                 else (find_arrows st l)
     end.
 
-  Fixpoint make_clause (lit: IntMap.ptrie bool) (l: list literal) : clause :=
+  Fixpoint make_clause (lit: IntMap.ptrie (Annot.t bool)) (ann: PSet.t) (l: list literal) : Annot.t clause :=
     match l with
-    | nil => EMPTY
+    | nil => Annot.mk EMPTY ann
     | e::l => match find_lit e lit with
-              | None => make_watched lit e l
-              | Some true => TRUE
-              | Some false => make_clause lit l
+              | None => make_watched lit ann e l
+              | Some b => if Annot.elt b then Annot.mk TRUE PSet.empty else
+                            make_clause lit (PSet.union (Annot.deps b) ann) l
               end
     end.
 
 
-  Definition augment_with_clause (cl: list literal) (st:state) : option state :=
+  Definition augment_with_clause (cl: Annot.t (list literal)) (st:state) : dresult :=
     let (fr,st') := get_fresh_clause_id st in
-    insert_normalised_clause fr (make_clause (units st') cl) st'.
+    insert_normalised_clause fr (make_clause (units st') (Annot.deps cl) (Annot.elt cl)) st'.
 
-  Definition augment_clauses (st: state) (l: list (list literal)) :=
+  Definition augment_clauses (st: state) (l: list (Annot.t (list literal))) :=
     fold_update  augment_with_clause l st.
 
   Definition set_hmap (hm: hmap) (st:state) : state  :=
@@ -4319,24 +4539,24 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Definition conflict_clause := list literal.
 
   Definition ProverT :=
-    state -> option HFormula -> status (hmap * list conflict_clause).
+    state -> option HFormula -> result state (hmap * list (Annot.t conflict_clause) * PSet.t).
 
   Definition has_conflict_clause (m: hmap) (l: list literal) :=
     Forall (has_literal m) l.
   
   Definition is_correct_prover (Prover : ProverT) (st: state) :=
     forall (g: option HFormula) 
-           (m: hmap) (prf : list conflict_clause)
+           (m: hmap) (prf : list (Annot.t conflict_clause)) d
              (WFS : wf_state  st)
              (HASF: has_oform (hconsmap st) g)
-           (PRF : Prover st g  = HasProof (m,prf)),
+           (PRF : Prover st g  = Success (m,prf,d )),
       (eval_state st -> eval_ohformula g)
       /\
-      Forall eval_literal_list prf
+      Forall (Annot.lift eval_literal_list) prf
       /\
       hmap_order (hconsmap st) m
       /\
-      Forall (has_conflict_clause m) prf.
+      Forall (Annot.lift (has_conflict_clause m)) prf.
   
   Lemma has_conflict_clause_mono :
     forall m m' cl
@@ -4352,20 +4572,25 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
   Lemma wf_make_clause :
-    forall m u cl,
+    forall m u cl an,
       has_conflict_clause m cl ->
-      has_clause  m (make_clause u cl).
+      Annot.lift (has_clause  m) (make_clause u an cl).
   Proof.
     induction cl; simpl; auto.
-    - destruct (find_lit a u); simpl ; intros.
-      inv H ; destruct b; simpl; auto.
-      inv H.
-      apply has_clause_make_watched; auto.
+    - unfold Annot.lift. simpl. auto.
+    - intros.
+      destruct (find_lit a u); simpl ; intros.
+      inv H ; destruct (Annot.elt t0).
+      + unfold Annot.lift ; simpl ; auto.
+      + apply IHcl.
+        auto.
+      + inv H ; auto.
+        apply has_clause_make_watched; auto.
   Qed.
 
     Lemma augment_with_clause_mono :
     forall cl st,
-      incr_hconsmap (Some st) (augment_with_clause cl st).
+      incr_hconsmap (Progress st) (augment_with_clause cl st).
   Proof.
     unfold augment_with_clause.
     intros.
@@ -4378,9 +4603,9 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
   Lemma wf_augment_with_clause :
     forall cl st
-           (HAS : has_conflict_clause (hconsmap st) cl)
+           (HAS : Annot.lift (has_conflict_clause (hconsmap st)) cl)
            (WF: wf_state st),
-      wf_state_option (augment_with_clause cl st).
+      wf_result_state (augment_with_clause cl st).
   Proof.
     unfold augment_with_clause.
     intros.
@@ -4396,11 +4621,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
 
   Lemma eval_make_clause :
-    forall m u cl
+    forall m u cl an
            (EV: eval_units m u)
-           (HL: Forall (has_literal m) cl)
+           (HL: Forall  (has_literal m) cl)
            (EC: eval_literal_list cl),
-      eval_clause (make_clause u cl).
+      Annot.lift eval_clause (make_clause u an cl).
   Proof.
     unfold has_conflict_clause.
     induction cl; simpl; auto.
@@ -4408,10 +4633,12 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     destruct (find_lit a u) eqn:FD.
     - inv HL.
       apply eval_units_find_lit with (m:=m) in FD; auto.
-      destruct b ; simpl ; auto.
-      destruct a ; simpl in *.
-      tauto.
-      tauto.
+      destruct (Annot.elt t0) ; simpl ; auto.
+      + unfold Annot.lift ; simpl ; auto.
+      +
+        destruct a ; simpl in *.
+        apply IHcl ; auto. tauto.
+        apply IHcl ; auto.
     - inv HL.
       eapply eval_make_watched ; eauto.
   Qed.
@@ -4421,10 +4648,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Lemma eval_augment_with_clause :
     forall cl st
            (WS: wf_state st)
-           (HC: has_conflict_clause (hconsmap st) cl)
+           (HC: Annot.lift (has_conflict_clause (hconsmap st)) cl)
            (ES: eval_state st)
-           (EL: eval_literal_list cl),
-      eval_option (augment_with_clause cl st).
+           (EL: Annot.lift eval_literal_list cl),
+      eval_result_state (augment_with_clause cl st).
   Proof.
     unfold augment_with_clause.
     intros.
@@ -4451,10 +4678,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Lemma augment_with_clauses_correct :
     forall cl st
            (WF: wf_state st)
-           (CL: has_conflict_clause (hconsmap st) cl),
-      incr_hconsmap (Some st) (augment_with_clause cl st) /\
-      wf_state_option (augment_with_clause cl st) /\
-      (eval_state st -> eval_literal_list cl -> eval_option (augment_with_clause cl st)).
+           (CL: Annot.lift (has_conflict_clause (hconsmap st)) cl),
+      incr_hconsmap (Progress st) (augment_with_clause cl st) /\
+      wf_result_state (augment_with_clause cl st) /\
+      (eval_state st -> Annot.lift eval_literal_list cl -> eval_result_state (augment_with_clause cl st)).
   Proof.
     intros.
     split_and.
@@ -4463,16 +4690,26 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     apply eval_augment_with_clause; auto.
   Qed.
 
+  Lemma augment_with_clause_not_OutOfFuel :
+    forall (a : Annot.t (list literal)) (st : state) f,
+      augment_with_clause a st = Fail f -> False.
+  Proof.
+    unfold augment_with_clause.
+    intros.
+    destruct_in_hyp H FR.
+    apply insert_normalised_clause_not_OutOfFuel in H ; assumption.
+  Qed.
+
   Lemma wf_augment_clauses :
     forall st prf
-           (WC : Forall (has_conflict_clause (hconsmap st)) prf)
+           (WC : Forall (Annot.lift (has_conflict_clause (hconsmap st))) prf)
            (WF : wf_state st)
     ,
-      wf_state_option (augment_clauses st prf).
+      wf_result_state (augment_clauses st prf).
   Proof.
     unfold augment_clauses.
     intros st prf.
-    change (has_conflict_clause (hconsmap st)) with ((fun st => has_conflict_clause (hconsmap st)) st).
+    change (Annot.lift (has_conflict_clause (hconsmap st))) with ((fun st => Annot.lift (has_conflict_clause (hconsmap st))) st).
     apply fold_update_correct.
     - unfold augment_with_clause.
       intros.
@@ -4482,11 +4719,12 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       destruct (get_fresh_clause_id st0) as (fr,st2).
       simpl.
       intros.
-      change (incr_hconsmap (Some st0) (Some st')).
+      change (incr_hconsmap (Progress st0) (Progress st')).
       rewrite <- H.
       apply insert_normalised_clause_mono; auto.
+    -  apply augment_with_clause_not_OutOfFuel.
     - intros.
-      change (wf_state_option (Some st')).
+      change (wf_result_state (Progress st')).
       rewrite <- H1.
       apply wf_augment_with_clause; auto.
   Qed.
@@ -4494,14 +4732,15 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
   Lemma augment_clauses_mono :
     forall st prf,
-      incr_hconsmap (Some st) (augment_clauses st prf).
+      incr_hconsmap (Progress st) (augment_clauses st prf).
   Proof.
     intros.
     unfold augment_clauses.
     apply fold_update_rel_correct; simpl; auto with wf.
+    -  apply augment_with_clause_not_OutOfFuel.
     - intros. eapply hmap_order_trans;eauto.
     - intros.
-      change (incr_hconsmap (Some st0) (Some st')).
+      change (incr_hconsmap (Progress st0) (Progress st')).
       rewrite <- H.
       apply augment_with_clause_mono.
   Qed.
@@ -4512,11 +4751,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Lemma eval_augment_clauses :
     forall prf st
            (WF : wf_state st)
-           (WP  : Forall (has_conflict_clause (hconsmap st)) prf)
-           (EP : Forall eval_literal_list prf)
+           (WP  : Forall (Annot.lift (has_conflict_clause (hconsmap st))) prf)
+           (EP : Forall (Annot.lift eval_literal_list) prf)
     ,
       eval_state st ->
-      eval_option (augment_clauses st prf).
+      eval_result_state (augment_clauses st prf).
   Proof.
     unfold augment_clauses.
     induction prf; simpl; auto.
@@ -4541,38 +4780,38 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Section P.
 
 
-    Variable Prover : state -> option HFormula -> status (hmap * list conflict_clause).
+    Variable Prover : state -> option HFormula -> result state (hmap * list (Annot.t conflict_clause) * PSet.t).
 
-    Fixpoint forall_dis (st: state) (g : option HFormula)   (cl: list literal) :
-      status  (hmap * list conflict_clause) :=
+    Fixpoint forall_dis (st: state) (g : option HFormula) (ann:PSet.t)   (cl: list literal) :
+      result state  (hmap * list (Annot.t conflict_clause) * PSet.t) :=
       match cl with
-      | nil => HasProof (hconsmap st,nil)
-      | f :: cl => match Prover (insert_unit f st) g with
-                   | HasProof (m,prf) =>
+      | nil => Success (hconsmap st,nil, ann)
+      | f :: cl => match Prover (insert_unit (annot_hyp f) st) g with
+                   | Success (m,prf,ann') =>
                      match augment_clauses (set_hmap m st) prf with
-                     | None => HasProof (m,prf)
-                     | Some st' => forall_dis st' g cl
+                     | Success d => Success (m,prf,PSet.union ann (PSet.union d ann'))
+                     | Progress st' => forall_dis st' g (PSet.union ann ann') cl
+                     | Fail f    => Fail f
                      end
-                   | HasModel prf => HasModel prf
-                   | Timeout prf  => Timeout prf
-                   | Done st      => Done st
+                   | Fail f => Fail f
+                   | Progress st      => Progress st
                    end
 
       end.
 
-    Lemma forall_dis_rew : forall (g : option HFormula) (st: state)  (cl: list literal),
-        forall_dis st g  cl =
+    Lemma forall_dis_rew : forall (g : option HFormula) (st: state) ann (cl: list literal),
+        forall_dis st g ann cl =
       match cl with
-      | nil => HasProof (hconsmap st,nil)
-      | f :: cl => match Prover (insert_unit f st) g with
-                   | HasProof (m,prf) =>
+      | nil => Success (hconsmap st,nil, ann)
+      | f :: cl => match Prover (insert_unit (annot_hyp f) st) g with
+                   | Success (m,prf,ann') =>
                      match augment_clauses (set_hmap m st) prf with
-                     | None => HasProof (m,prf)
-                     | Some st' => forall_dis st' g  cl
+                     | Success d => Success (m,prf,PSet.union ann (PSet.union d ann'))
+                     | Progress st' => forall_dis st' g (PSet.union ann ann') cl
+                     | Fail f    => Fail f
                      end
-                   | HasModel prf => HasModel prf
-                   | Timeout prf  => Timeout prf
-                   | Done st      => Done st
+                   | Fail f => Fail f
+                   | Progress st      => Progress st
                    end
 
       end.
@@ -4580,46 +4819,53 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
     Definition prover_intro (st: state) (g:option HFormula)   :=
       match g with
-      | None => HasModel (hconsmap st,nil)
+      | None => Fail HasModel
       | Some g => 
         match intro_state st g.(elt) g with
-        | None => HasProof (hconsmap st,nil)
-        | Some (st',g') => Prover st' g' 
+        | Success d => Success (hconsmap st,nil,d)
+        | Progress (st',g') => Prover st' g'
+        | Fail f => Fail f
         end
       end.
 
-    Fixpoint prover_arrows (l : list literal) (st: state) (g : option HFormula)   : status  (hmap * list conflict_clause) :=
+
+    Definition annot_lit (f : HFormula) :=
+      Annot.mk (POS f) (PSet.singleton f.(id)).
+
+    Fixpoint prover_arrows (l : list literal) (st: state) (g : option HFormula)   : result state  (hmap * list  (Annot.t conflict_clause) * PSet.t) :=
       match l with
-      | nil => HasModel (hconsmap st,nil)
+      | nil => Fail HasModel
       | e::l =>
         let f := form_of_literal e in
         match  prover_intro (reset_arrows l st) (Some f)  with
-        | HasProof (m,prf)  =>
-          let st'' := insert_unit (POS f) st  in
+        | Success (m,prf,d)  =>
+          let st'' := insert_unit (annot_lit  f) st  in
           match augment_clauses (set_hmap m st'') prf with
-          | None => HasProof (m,prf)
-          | Some st'' => Prover st'' g 
+          | Success d => Success (m,prf,d) (* CHECK *)
+          | Progress st'' => Prover st'' g
+          | Fail f        => Fail f
           end
-        | Timeout prf => Timeout prf
-        | HasModel _ | Done _ =>  prover_arrows l st g 
+        | Fail OutOfFuel => Fail OutOfFuel
+        | Fail HasModel  | Progress _ =>  prover_arrows l st g
         end
       end.
 
     Lemma prover_arrows_rew : forall (g : option HFormula) (st: state) (l : list literal),
         prover_arrows l st g  =
       match l with
-      | nil => HasModel (hconsmap st,nil)
+      | nil => Fail HasModel
       | e::l =>
         let f := form_of_literal e in
-        match  prover_intro  (reset_arrows l st) (Some f) with
-        | HasProof (m,prf)  =>
-          let st'' := insert_unit (POS f) st  in
+        match  prover_intro (reset_arrows l st) (Some f)  with
+        | Success (m,prf,d)  =>
+          let st'' := insert_unit (annot_lit  f) st  in
           match augment_clauses (set_hmap m st'') prf with
-          | None => HasProof (m,prf)
-          | Some st'' => Prover st'' g 
+          | Success d => Success (m,prf,d) (* CHECK *)
+          | Progress st'' => Prover st'' g
+          | Fail f        => Fail f
           end
-        | Timeout prf => Timeout prf
-        | HasModel _ | Done _ =>  prover_arrows l  st g
+        | Fail OutOfFuel => Fail OutOfFuel
+        | Fail HasModel  | Progress _ =>  prover_arrows l st g
         end
       end.
     Proof. destruct l; reflexivity. Qed.
@@ -4632,23 +4878,23 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       repeat intro.
       unfold prover_intro in PRF.
       destruct g; try congruence.
-      destruct (intro_state st (elt h) h) eqn:EQ.
-      - destruct p as (st',g').
-        assert (EQ':=EQ).
-        apply wf_intro_state in EQ'; auto.
-        destruct EQ' as (WF' & HF).
-        destruct (ProverCorrect _ _ _ _ WF' HF PRF) as (P1 & P2 & P3 & P4).
-        split_and; auto.
-        + intros.
-          apply intro_state_correct_Some  in EQ; auto.
-        + eapply hmap_order_trans;eauto.
-          apply instro_state_mono in EQ; auto.
+      destruct (intro_state st (elt h) h) eqn:EQ; try congruence.
       - inv PRF.
         split_and; intros.
         apply intro_state_correct_None  in EQ; auto.
         constructor.
         apply hmap_order_refl.
         constructor.
+      - destruct st0 as (st',g').
+        assert (EQ':=EQ).
+        apply wf_intro_state in EQ'; auto.
+        destruct EQ' as (WF' & HF).
+        destruct (ProverCorrect _ _ _ _ _ WF' HF PRF) as (P1 & P2 & P3 & P4).
+        split_and; auto.
+        + intros.
+          apply intro_state_correct_Some  in EQ; auto.
+        + eapply hmap_order_trans;eauto.
+          apply instro_state_mono in EQ; auto.
     Qed.
 
     Fixpoint eval_or (l:list literal) :=
@@ -4784,20 +5030,20 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
 
     Lemma forall_dis_correct :
-      forall l g st m prf
+      forall l g st m prf a d
              (WF : wf_state st)
              (HASG : has_oform (hconsmap st) g)
              (HASL : Forall (has_literal (hconsmap st)) l)
-             (EQ: forall_dis st g l = HasProof(m, prf)),
+             (EQ: forall_dis st g a l = Success(m, prf,d)),
 
         ((eval_state st -> (eval_or l -> eval_ohformula g) -> eval_ohformula g) ->
            (eval_state st -> eval_ohformula g))
         /\
-        Forall eval_literal_list prf
+        Forall (Annot.lift eval_literal_list) prf
         /\
         hmap_order (hconsmap st) m
         /\
-        Forall (has_conflict_clause m) prf.
+        Forall (Annot.lift (has_conflict_clause m)) prf.
     Proof.
       induction l.
       - simpl. intros.
@@ -4810,20 +5056,21 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         unfold is_correct_prover in ProverCorrect.
         inv HASL. rename H1 into HASA .
         rename H2 into HASL.
-        assert (WFI:= wf_insert_unit a st WF HASA).
-        assert (EI := eval_insert_unit a st WF).
-        assert (ORD := insert_unit_mono a st).
-        assert (HASG' : has_oform (hconsmap (insert_unit a st)) g).
+        assert (WFI:= wf_insert_unit (annot_hyp a) st WF HASA).
+        assert (EI := eval_insert_unit (annot_hyp a) st WF).
+        assert (ORD := insert_unit_mono (annot_hyp a) st).
+        assert (HASG' : has_oform (hconsmap (insert_unit (annot_hyp a) st)) g).
         { revert HASG.
           apply has_oform_mono; auto.
           rewrite insert_unit_mono.
           apply hmap_order_refl.
         }
-        set (st':= insert_unit a st) in *.
+        set (st':= insert_unit (annot_hyp a) st) in *.
         clearbody st'.
         destruct (Prover st' g) eqn:PRF; try congruence.
+        destruct r as (p & ann').
         destruct p as (m',prf').
-        generalize (ProverCorrect st' g m' prf' WFI HASG' PRF).
+        generalize (ProverCorrect st' g m' prf' ann' WFI HASG' PRF).
         intros (EVAL' & EPRF & ORD' & HASC).
         assert (LE: hmap_order (hconsmap st) m').
         {
@@ -4835,7 +5082,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         generalize (wf_augment_clauses st2 prf').
         intros.
         assert (CST2 :
-                  (Forall (has_conflict_clause (hconsmap st2)) prf')).
+                  (Forall (Annot.lift (has_conflict_clause (hconsmap st2))) prf')).
         {
           revert HASC.
           apply Forall_Forall.
@@ -4847,8 +5094,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         generalize (augment_clauses_mono st2 prf').
         generalize (wf_augment_clauses st2 prf' CST2).
         destruct (augment_clauses st2 prf') ; try congruence.
-        intros.
-        assert (HF : has_oform (hconsmap s) g).
+        + simpl.
+          intros.
+          inv EQ.
+          split_and; try tauto.
+        +
+        intros. inv EQ.
+        assert (HF : has_oform (hconsmap st0) g).
         {
           revert HASG'.
           apply has_oform_mono.
@@ -4856,7 +5108,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           replace m' with (hconsmap st2) by tauto.
           simpl in H2 ; auto.
         }
-        assert (HASL' : Forall (has_literal (hconsmap s)) l).
+        assert (HASL' : Forall (has_literal (hconsmap st0)) l).
         {
           revert HASL.
           apply Forall_Forall.
@@ -4866,19 +5118,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           replace m' with (hconsmap st2) by tauto.
           simpl in H2 ; auto.
         }
-        specialize (IHl g s m prf).
+        specialize (IHl g st0 m prf (PSet.union a0 ann') d).
         simpl in *.
-        intros.
-        +
         split_and; try tauto.
         eapply hmap_order_trans; eauto.
         replace m' with (hconsmap st2) by tauto.
         eapply hmap_order_trans; eauto.
         tauto.
-        + simpl.
-          intros.
-          inv EQ.
-          split_and; try tauto.
     Qed.
 
 
@@ -4899,10 +5145,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
     Lemma insert_unit_correct : forall l st,
         wf_state st ->
-        has_literal (hconsmap st) l  -> 
+        Annot.lift (has_literal (hconsmap st)) l  ->
         wf_state (insert_unit l st) /\
         hconsmap (insert_unit l st) = hconsmap st /\
-        (eval_literal l -> eval_state st ->
+        (Annot.lift eval_literal l -> eval_state st ->
          eval_state (insert_unit l st)).
     Proof.
       intros.
@@ -4930,7 +5176,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         set (f := form_of_literal a) in *.
         unfold f in PRF.
         destruct (prover_intro st' (Some (form_of_literal a))) eqn:P; try congruence.
-        + destruct p as (m',prf').
+        + destruct f0 ; try congruence.
+          eapply IHl; eauto.
+        + destruct r as (p,a').
+          destruct p as (m',prf').
           assert (HASA : has_oform (hconsmap st') (Some (form_of_literal a))).
           {
             simpl. rewrite HC.
@@ -4938,15 +5187,15 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           }
           apply prover_intro_correct in P; auto.
           simpl in P.
-          assert (HASL : (has_literal (hconsmap st) (POS (form_of_literal a)))).
+          assert (HASL : (Annot.lift (has_literal (hconsmap st)) (annot_lit (form_of_literal a)))).
           {
             simpl.
             apply has_form_of_literal;auto.
           }
-          generalize (insert_unit_correct (POS (form_of_literal a)) st WFS HASL).
+          generalize (insert_unit_correct (annot_lit (form_of_literal a)) st WFS HASL).
           intros (WFS' & HCS' & EVS').
           set (la:= form_of_literal a) in * ; clearbody la.
-          set (st1 := insert_unit (POS la) st) in * ; clearbody st1.
+          set (st1 := insert_unit (annot_lit la) st) in * ; clearbody st1.
           destruct P as (EP & ALL & ORD & CFL).
           assert (ORD1 : hmap_order (hconsmap st1) m').
           {
@@ -4957,7 +5206,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           intros (ESM & WSM & HCSM).
           set (sm := set_hmap m' st1) in * ; clearbody sm.
           assert (ACM :=  augment_clauses_mono sm prf').
-          assert (ALL' : Forall (has_conflict_clause (hconsmap sm)) prf').
+          assert (ALL' : Forall (Annot.lift (has_conflict_clause (hconsmap sm))) prf').
           {
             revert CFL.
             apply Forall_Forall.
@@ -4967,6 +5216,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           assert (ACW :=  wf_augment_clauses sm prf' ALL' WSM).
           assert (ACE :=  eval_augment_clauses prf' sm WSM ALL' ALL).
           destruct (augment_clauses sm prf'); try congruence.
+          {
+            inv PRF.
+            simpl in *.
+            split_and ; try tauto.
+            eapply hmap_order_trans; eauto.
+            congruence.
+          }
           {
           apply ProverCorrect in PRF; auto.
           destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4).
@@ -4984,16 +5240,9 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           eapply hmap_order_trans; eauto.          
           congruence.
           }          
-          {
-            inv PRF.
-            simpl in *.
-            split_and ; try tauto.
-            eapply hmap_order_trans; eauto.
-            congruence.
-          }
+
         +  
           eapply IHl; eauto.
-        + eapply IHl; eauto.
     Qed.
     
   Section ThyProver.
@@ -5025,17 +5274,17 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       end.
 
     (** [collect_literal] positive litteral are in the first list (but negated) *)
-    Definition collect_literal (m:hmap) (acc: list literal * list literal) (k:int) (b:bool) :=
+    Definition collect_literal (m:hmap) (acc: list literal * list  literal) (k:int) (b:Annot.t bool) :=
       match get_atom m k with
       | None => acc
-      | Some f => if b then (NEG f:: fst acc, snd acc)
-                  else (fst acc, POS f::snd acc)
+      | Some f => if Annot.elt b then ( (NEG f):: fst acc, snd acc)
+                  else (fst acc,  (POS f)::snd acc)
       end.
 
-    Definition get_wneg (m:hmap) (acc: list literal) (k:int) (b : unit) :=
+    Definition get_wneg (m:hmap) (acc: list  literal) (k:int) (b : unit) :=
       match get_atom m k with
       | None => acc
-      | Some f => POS f::acc
+      | Some f => POS  f::acc
       end.
 
 
@@ -5043,13 +5292,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       IntMap.fold' (get_wneg m) wn nil.
 
 
-    Definition extract_theory_problem (m : hmap) (u : IntMap.ptrie (key:=int) bool) : list literal * list literal :=
+    Definition extract_theory_problem (m : hmap) (u : IntMap.ptrie (key:=int) (Annot.t bool)) : list  literal * list literal :=
       IntMap.fold' (collect_literal m) u (nil,nil).
 
-    Definition app_conflict_clause (ln: list literal) (lp: list literal) : list literal := ln ++ lp.
 
-
-    Definition add_conclusion  (c : option HFormula) (acc : list literal * list literal) :=
+    Definition add_conclusion  (c : option HFormula) (acc : list  literal * list  literal) :=
       match c with
       | None => acc
       | Some f => match f.(elt) with
@@ -5061,17 +5308,23 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     Definition generate_conflict_clause (st:state) (g: option HFormula) :=
       let (ln,lp) := add_conclusion  g (extract_theory_problem (hconsmap st) (units st)) in
       let wn  := collect_all_wneg (hconsmap st) (wneg st) in
-      app_conflict_clause ln (wn++lp).
+       ln ++ (wn++lp).
+
+
+    Definition deps_of_clause (l : list literal) : PSet.t := PSet.empty. (* TODO *)
 
 
     Definition run_thy_prover (st: state) (g: option HFormula)  :=
       let cl := generate_conflict_clause st g in
       match thy.(thy_prover) (hconsmap st) cl with
-      | None => HasModel (hconsmap st,nil)
-      | Some (h',cl') => match augment_with_clause  cl' (set_hmap h' st) with
-                         | None => HasProof (h',cl'::nil)
-                         | Some st' => Prover st' g
-                         end
+      | None => Fail HasModel
+      | Some (h',cl') =>
+        let acl := (Annot.mk cl' (deps_of_clause cl')) in
+        match augment_with_clause acl  (set_hmap h' st) with
+        | Success d => Success (h',acl::nil,d)
+        | Progress st' => Prover st' g
+        | Fail f       => Fail f
+        end
       end.
 
   Lemma wf_extract_thy_pb : forall hm u l1 l2
@@ -5138,7 +5391,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       destruct p ; simpl.
       destruct QACC.
       simpl in *.
-      destruct (snd a) ; split ; simpl ; try constructor ; simpl; auto.
+      destruct (Annot.elt (snd a)) ; split ; simpl ; try constructor ; simpl; auto.
   Qed.
 
   Lemma wf_add_conclusion :
@@ -5161,7 +5414,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     forall [hm l1 l2]
            (WFL1: Forall (has_literal hm) l1)
            (WFL2: Forall (has_literal hm) l2),
-      Forall (has_literal hm) (app_conflict_clause l1 l2).
+      Forall (has_literal hm) (l1 ++ l2).
   Proof.
     unfold generate_conflict_clause.
     intros.
@@ -5240,7 +5493,6 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     specialize (wf_add_conclusion  C1 C2 HASG).
     destruct (add_conclusion g (ln,lp)) as (ln1,lp1).
     simpl.
-    unfold app_conflict_clause.
     intros (C1' & C2').
     repeat rewrite Forall_app.
     repeat split ; auto.
@@ -5264,9 +5516,14 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       intros (EV' & WF' & ORD').
       set (st' := set_hmap h' st) in *.
       clearbody st'.  subst.
-      generalize (augment_with_clauses_correct cl' st' WF' WF).
+      set (acl' := {| Annot.elt := cl'; Annot.deps := deps_of_clause cl' |}) in *.
+      generalize (augment_with_clauses_correct acl' st' WF' WF).
       intros (ORD2 & WF2 & EVAL2).
-      destruct (augment_with_clause cl' st'); try congruence.
+      destruct (augment_with_clause acl' st'); try congruence.
+     - inv PRF.
+        simpl in EVAL2.
+        rewrite! Forall_rew.
+        tauto.
       -  apply ProverCorrect in PRF; auto.
          destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4).
          split_and ; try tauto.
@@ -5276,10 +5533,6 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
          + revert HASF.
            apply has_oform_mono.
            eapply hmap_order_trans;eauto.
-      - inv PRF.
-        simpl in EVAL2.
-        rewrite! Forall_rew.
-        tauto.
     Qed.
 
     End ThyProver.
@@ -5292,54 +5545,57 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Section Prover.
 
 
-  Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : status (hmap * list conflict_clause) :=
+  Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list (Annot.t conflict_clause) * PSet.t) :=
     match unit_propagation n st g with
-    | Success => HasProof (hconsmap st,nil)
+    | Success d => Success (hconsmap st,nil,d)
     | Progress st' => match n with
-                  | O => Timeout (hconsmap st,nil)
+                  | O => Fail OutOfFuel
                   | S n =>
                     match find_split (units st') (is_classic g) (clauses st') with
                     | None =>
                       match prover_arrows (prover thy use_prover n) (find_arrows st' (arrows st')) st' g   with
-                      | HasProof prf => HasProof prf
-                      | HasModel prf   => if use_prover
-                                        then run_thy_prover (prover thy use_prover n) thy st' g
-                                        else HasModel prf
-                      | Done st => Done st
-                      | Timeout prf  => Timeout prf
+                      | Success prf => Success prf
+                      | Fail HasModel  =>
+                        if use_prover
+                        then run_thy_prover (prover thy use_prover n) thy st' g
+                        else Fail HasModel
+                      | Progress st => Progress st
+                      | Fail OutOfFuel  => Fail OutOfFuel
                       end
-                    | Some cl => forall_dis (prover thy use_prover n) st' g  cl
+                    | Some cl => forall_dis (prover thy use_prover n) st' g (Annot.deps cl)
+                                            (Annot.elt cl)
                     end
                   end
-    | OutOfFuel =>  Timeout (hconsmap st,nil)
+    | Fail d => Fail d
     end.
 
   Lemma prover_rew : forall thy up n g st,
       prover thy up (n:nat)  (st:state) (g : option HFormula)   =
     match unit_propagation n st g with
-    | Success => HasProof (hconsmap st,nil)
+    | Success d => Success (hconsmap st,nil,d)
     | Progress st' => match n with
-                  | O => Timeout (hconsmap st,nil)
+                  | O => Fail OutOfFuel
                   | S n =>
                     match find_split (units st') (is_classic g) (clauses st') with
                     | None =>
                       match prover_arrows (prover thy up n) (find_arrows st' (arrows st')) st' g   with
-                      | HasProof prf => HasProof prf
-                      | HasModel prf   => if up
-                                        then run_thy_prover (prover thy up n) thy st' g
-                                        else HasModel prf
-                      | Done st => Done st
-                      | Timeout prf  => Timeout prf
+                      | Success prf => Success prf
+                      | Fail HasModel  =>
+                        if up
+                        then run_thy_prover (prover thy up n) thy st' g
+                        else Fail HasModel
+                      | Progress st => Progress st
+                      | Fail OutOfFuel  => Fail OutOfFuel
                       end
-                    | Some cl => forall_dis (prover thy up n) st' g  cl
+                    | Some cl => forall_dis (prover thy up n) st' g (Annot.deps cl)
+                                            (Annot.elt cl)
                     end
                   end
-    | OutOfFuel =>  Timeout (hconsmap st,nil)
+    | Fail d => Fail d
     end.
   Proof.
     destruct n ; reflexivity.
   Qed.
-
 
   Lemma eval_literal_list_classic :
     forall m l
@@ -5371,15 +5627,15 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     forall m g u ln
            (WF : wf_map ln)
            (EU : eval_units m u)
-           (WL : IntMapForall (has_watched_clause m) ln)
-           (EV : IntMapForall eval_watched_clause  ln)
-           (EVAL : ohold eval_or (find_clause_in_map (is_classic g) u ln) -> eval_ohformula g),
+           (WL : IntMapForall (Annot.lift (has_watched_clause m)) ln)
+           (EV : IntMapForall (Annot.lift eval_watched_clause)  ln)
+           (EVAL : ohold (Annot.lift eval_or) (find_clause_in_map (is_classic g) u ln) -> eval_ohformula g),
       eval_ohformula g.
   Proof.
     unfold find_clause_in_map.
     intros.
     revert EVAL.
-    set (Q:= (fun x => (ohold eval_or x -> eval_ohformula g) ->
+    set (Q:= (fun x => (ohold (Annot.lift eval_or) x -> eval_ohformula g) ->
                      eval_ohformula g)).
 
     change (Q ((IntMap.fold' (select_clause (is_classic g) u) ln None))).
@@ -5394,9 +5650,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     destruct acc.
     - unfold Q in Qacc. simpl in Qacc. tauto.
     -  
-    apply eval_reduce with (m:=m) (u:=u)in Pacc2; auto.
-    apply wf_reduce with (u:=u) in Pacc1.
-    destruct ((reduce u (watch1 v :: watch2 v :: unwatched v))); auto.
+    apply eval_reduce with (m:=m) (u:=u) (an:= Annot.deps v) in Pacc2; auto.
+    apply wf_reduce with (u:=u) (an:= Annot.deps v) in Pacc1.
+    destruct ((reduce u (Annot.deps v) (watch1 (Annot.elt v) :: watch2 (Annot.elt v) ::
+                                               unwatched (Annot.elt v)))); auto.
     lift_if ; split ; auto.
     rewrite andb_true_iff.
     intros (H &  _); revert H.
@@ -5415,22 +5672,22 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Lemma wf_find_clause_in_map :
     forall m b u ln
            (WF : wf_map ln)
-           (WL : IntMapForall (has_watched_clause m) ln),
-      ohold (Forall (has_literal m)) (find_clause_in_map b u ln).
+           (WL : IntMapForall (Annot.lift (has_watched_clause m)) ln),
+      ohold (Annot.lift (Forall (has_literal m))) (find_clause_in_map b u ln).
   Proof.
     unfold find_clause_in_map.
     intros.
-    assert (ohold (Forall (has_literal m)) None) by (simpl; auto).
+    assert (ohold (Annot.lift (Forall (has_literal m))) None) by (simpl; auto).
     revert H.
     revert WL.
     apply fold_slemma ; auto.
     intros.
     unfold select_clause in *.
     destruct acc ; auto.
-    apply wf_reduce with (u:=u) in H0.
-    destruct (reduce u (watch1 v :: watch2 v :: unwatched v));
+    apply wf_reduce with (u:=u) (an:= Annot.deps v) in H0.
+    destruct (reduce u (Annot.deps v) (watch1 (Annot.elt v) :: watch2 (Annot.elt v) :: unwatched (Annot.elt v)));
       simpl in * ; auto.
-    destruct ((b || check_classic l) && negb (is_silly_split l)) ; simpl ; auto.
+    destruct ((b || Annot.lift check_classic t0) && negb (Annot.lift is_silly_split t0)) ; simpl ; auto.
   Qed.
 
   Lemma eval_find_split :
@@ -5440,13 +5697,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (EU : eval_units m u)
            (WF : has_clauses m cls)
            (EV : eval_clauses  cls)
-           (EVAL : ohold eval_or (find_split u (is_classic g) cls) -> eval_ohformula g),
+           (EVAL : ohold (Annot.lift eval_or) (find_split u (is_classic g) cls) -> eval_ohformula g),
       eval_ohformula g.
   Proof.
     intros.
     unfold find_split in EVAL.
     revert EVAL.
-    set (P:= (fun x => (ohold eval_or x -> eval_ohformula g) ->
+    set (P:= (fun x => (ohold (Annot.lift eval_or) x -> eval_ohformula g) ->
                        eval_ohformula g)).
     change (P ((IntMap.fold' (find_split_acc u (is_classic g)) cls None))).
     assert (P None) by (unfold P ; simpl; auto).
@@ -5474,10 +5731,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (WFM: wf_map cls)
            (WFW: wf_watch_map cls)
            (WF : has_clauses m cls),
-      ohold (Forall (has_literal m)) (find_split u (is_classic g) cls).
+      ohold (Annot.lift (Forall (has_literal m))) (find_split u (is_classic g) cls).
   Proof.
     intros.
-    assert (ohold (Forall (has_literal m)) None) by (simpl; auto).
+    assert (ohold (Annot.lift (Forall (has_literal m))) None) by (simpl; auto).
     revert H.
     specialize (IntMapForallAnd _ _ _  WF WFW).
     apply fold_slemma;auto.
@@ -5539,7 +5796,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       + intros (WFS0, ORDS0)  ES.
         destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:FD ; try congruence.
         *
-          assert (FDC : eval_state st0 -> (ohold eval_or (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
+          assert (FDC : eval_state st0 -> (ohold (Annot.lift eval_or) (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
                   eval_ohformula g).
           {
             intro ES'.
@@ -5548,7 +5805,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           }
           rewrite FD in FDC.
           simpl in FDC.
-          assert (WFD : (ohold (Forall (has_literal (hconsmap st0))) (find_split (units st0) (is_classic g) (clauses st0)))).
+          assert (WFD : (ohold (Annot.lift(Forall (has_literal (hconsmap st0)))) (find_split (units st0) (is_classic g) (clauses st0)))).
           {
             destruct WFS0.
             apply wf_find_split; auto.
@@ -5559,7 +5816,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
             revert HASF.
             apply has_oform_mono; auto.
           }
-          generalize (forall_dis_correct (prover thy b n) IHn l g st0 m prf WFS0 HF0 WFD PRF).
+          generalize (forall_dis_correct (prover thy b n) IHn (Annot.elt t0) g st0 m prf (Annot.deps t0) d WFS0 HF0 WFD PRF).
           intros.
           split_and; try tauto.
           eapply hmap_order_trans; eauto.
@@ -5574,13 +5831,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           clearbody l.
           destruct (prover_arrows (prover thy b n) l st0 g)eqn:EQ; try congruence.
           {
-            inv PRF.
-            apply prover_arrows_correct in EQ ; auto.
-            split_and ; try tauto.
-            eapply hmap_order_trans;eauto. tauto.
-            revert HASF.
-            apply has_oform_mono;auto.
-          }
+          destruct f ; try congruence.
           destruct b ; try congruence.
           apply run_thy_prover_correct in PRF; auto.
           split_and ; try tauto.
@@ -5589,6 +5840,15 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           }
           { revert HASF.
             eapply has_oform_mono;eauto.
+          }
+          }
+          {
+            inv PRF.
+            apply prover_arrows_correct in EQ ; auto.
+            split_and ; try tauto.
+            eapply hmap_order_trans;eauto. tauto.
+            revert HASF.
+            apply has_oform_mono;auto.
           }
   Qed.
 
@@ -5630,12 +5890,12 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
   Definition prover_formula thy (up: bool) (m: hmap) (n:nat) (f: HFormula)  :=
     if wfb m && chkHc m f.(elt) f.(id) f.(is_dec)
-    then prover_intro (prover thy up n) (insert_unit (POS hTT) (empty_state m)) (Some f)
-    else HasModel (m,nil).
+    then prover_intro (prover thy up n) (insert_unit (annot_lit hTT) (empty_state m)) (Some f)
+    else Fail HasModel.
 
   Definition prover_bformula thy (m: hmap) (n:nat) (f: HFormula)  :=
     match prover_formula thy false m n f with
-    | HasProof _ => true
+    | Success _ => true
     |  _    => false
     end.
 
@@ -5685,8 +5945,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       congruence.
   Qed.
 
-  Lemma prover_formula_correct : forall thy up m m' prf n f ,
-      prover_formula thy up m n f = HasProof (m',prf) ->
+  Lemma prover_formula_correct : forall thy up m m' prf d n f ,
+      prover_formula thy up m n f = Success (m',prf, d) ->
       eval_hformula f.
   Proof.
     unfold prover_formula.
@@ -5706,15 +5966,22 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       simpl. constructor.
       apply wf_true ; auto. congruence.
     }
-    generalize (insert_unit_correct _ _ WE HL).
+    assert (HL' : Annot.lift (has_literal (hconsmap s0)) (annot_lit hTT)).
+    {
+      unfold Annot.lift.
+      apply HL.
+    }
+    generalize (insert_unit_correct _ _ WE HL').
     intros (WF & HM & EV).
     simpl in EV.
-    set (s1 := (insert_unit (POS hTT) s0)) in * ; clearbody s1.
+    set (s1 := (insert_unit (annot_lit hTT) s0)) in * ; clearbody s1.
     destruct (prover_intro (prover thy up n) s1 (Some f))
              eqn:PI ; try congruence.
-    destruct p.
+    destruct r. destruct p.
+    inv H.
     apply prover_intro_correct  in PI; auto.
-    - tauto.
+    -  simpl in *. unfold annot_lit, Annot.lift in EV. simpl in EV.
+       tauto.
     -  eapply prover_correct; eauto.
     - simpl.
       destruct f ; simpl in *.
@@ -5753,7 +6020,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     intros.
     unfold prover_bformula in H.
     destruct (prover_formula thy false (hcons_form f) n f) eqn:EQ; try congruence.
-    destruct p.
+    destruct r. destruct p.
     apply prover_formula_correct in EQ.
     auto.
   Qed.
@@ -5762,9 +6029,6 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   End Prover.
   End S.
 
-  Inductive kind : Type :=
-  |IsProp
-  |IsBool.
 
   Definition eval_kind (k:kind) : Type :=
     match k with
@@ -5775,13 +6039,6 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
 
 Module BForm.
 
-  Inductive BFormula  : kind -> Type :=
-  | BTT   : forall (k: kind), BFormula k
-  | BFF   : forall (k: kind), BFormula k
-  | BAT   : forall (k: kind), int -> BFormula k
-  | BOP   : forall (k: kind), op -> HCons.t (BFormula k) ->
-                             HCons.t (BFormula k) -> (BFormula k)
-  | BIT   : (BFormula IsBool) -> BFormula IsProp.
 
   Definition HBFormula := HCons.t (BFormula IsProp).
 

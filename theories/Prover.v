@@ -22,4 +22,4 @@ Require Import Cdcl.Formula.
 
 (* This extracts at the right place only if Pwd is itauto top-level
 directory *)
-Extraction "src/prover.ml" hcons_bprover.
+Extraction "src/prover.ml" hcons_bprover PSet.fold PSet.mem.

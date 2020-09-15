@@ -38,7 +38,7 @@ Ltac gen_conflicts tac :=
 Ltac run_solver :=
   (* Generalize all the propositions
      (in reverse order to avoid problems with dependent hypotheses *)
-  cdcl_generalize ;
+  (*  cdcl_generalize ;*)
   (* Reify the conclusion *)
   cdcl_change;
   let n := fresh in

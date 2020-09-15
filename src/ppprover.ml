@@ -3,6 +3,8 @@ open Prover
 
 (** val empty_state *)
 
+let lift_printer (p: out_channel -> 'a -> unit)  o v = p o (Annot.elt v)
+
 let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
 
 let rec output_formula o = function
@@ -12,6 +14,18 @@ let rec output_formula o = function
   | OP (op, f1, f2) ->
     Printf.fprintf o "(%a %s %a)" output_formula f1.HCons.elt (string_op op)
       output_formula f2.HCons.elt
+
+let rec output_bformula o = function
+  | BTT _ -> output_string o "⊤"
+  | BFF _ -> output_string o "⊥"
+  | BAT (_,i) -> Printf.fprintf o "p%i" (Uint63.hash i)
+  | BOP (_,op, f1, f2) ->
+    Printf.fprintf o "(%a.(%i) %s %a.(%i))" output_bformula f1.HCons.elt (Uint63.hash f1.HCons.id) (string_op op)
+      output_bformula f2.HCons.elt (Uint63.hash f2.HCons.id)
+  | BIT _ -> ()
+
+let  output_hbformula o f =
+  Printf.fprintf o "%a.(%i)" output_bformula f.HCons.elt (Uint63.hash f.HCons.id)
 
 let output_lit o = function
   | POS p -> Printf.fprintf o "[%a]" output_formula p.HCons.elt
@@ -59,7 +73,7 @@ let rec output_list out o l =
   | e :: l -> out o e; output_string o ";"; output_list out o l
 
 let output_map out o m =
-  IntMap.fold' (fun _ i cl -> Printf.fprintf o "%a;" out cl) m ()
+  IntMap.fold' (fun _ i cl -> Printf.fprintf o "%a;" out (Annot.elt cl)) m ()
 
 let output_clauses o m =
   IntMap.fold'
@@ -75,7 +89,7 @@ let output_units hm o m =
     | Some (b', f) ->
       let hf = HCons.{id = i; is_dec = b'; elt = f} in
       Printf.fprintf o "%i:%a;" (Uint63.hash i) output_lit
-        (if b then POS hf else NEG hf)
+        (if Annot.elt b then POS hf else NEG hf)
   in
   IntMap.fold' (fun _ i b -> out_elt i b) m ()
 
@@ -92,7 +106,7 @@ let output_wneg hm o m =
 let output_state o st =
   Printf.fprintf o "Arrows : %a\n" (output_list output_lit) st.arrows;
   Printf.fprintf o "WNEG : %a\n" (output_wneg st.hconsmap) st.wneg;
-  Printf.fprintf o "Lit : %a\n" (output_list output_lit) st.unit_stack;
+  Printf.fprintf o "Lit : %a\n" ( output_list (lift_printer output_lit)) st.unit_stack;
   Printf.fprintf o "Units : %a\n" (output_units st.hconsmap) st.units;
   Printf.fprintf o "Clauses : %a\n" output_clauses st.clauses
 
