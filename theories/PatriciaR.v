@@ -435,6 +435,7 @@ Module PTrie.
           get' i r
       end.
 
+    (* Slow if key is not there *)
     Fixpoint mem' {A: Type} (i: key) (t: ptrie A) :=
       match t with
       | Empty => false
@@ -445,6 +446,19 @@ Module PTrie.
           mem' i r
       end.
 
+    Definition is_Some {A: Type} (e: option A) : bool :=
+      match e with
+      | Some _ => true
+      | None => false
+      end.
+
+    Lemma gmem' : forall {A: Type} (i:key) (t: ptrie A),
+        mem' i t = is_Some (get' i t).
+    Proof.
+      induction t ; simpl ; auto.
+      destruct (eqb i k) ; reflexivity.
+      destruct (zerobit i brbit) ; auto.
+    Qed.
 
 
     Definition join {A: Type} (k1: key) (t1: ptrie A) (k2: key) (t2: ptrie A) :=
@@ -780,6 +794,15 @@ Module PTrie.
         else join i (Leaf i x) prefix (Branch prefix brbit l r)
       end.
 
+
+    Lemma eqb_refl : forall i, eqb i i = true.
+    Proof.
+      intro.
+      rewrite eqb_spec.
+      reflexivity.
+    Qed.
+
+
     Lemma set'_not_empty:
       forall A k x (pt: ptrie A),
         set' k x pt <> Empty.
@@ -1007,12 +1030,6 @@ Module PTrie.
         + econstructor; eauto.
     Qed.
 
-    Lemma eqb_refl : forall i, eqb i i = true.
-    Proof.
-      intro.
-      rewrite eqb_spec.
-      reflexivity.
-    Qed.
 
     Lemma gss':
       forall (A: Type) opt (i: key) (x: A) (m: ptrie A),
@@ -1201,7 +1218,8 @@ Module PTrie.
           * eapply wf_weaken; trivial. exact H10. auto.
           * eauto.
     Qed.        
-    
+
+
     Lemma grs':
       forall (A: Type) opt (i: key) (m: ptrie A),
         wf opt m ->

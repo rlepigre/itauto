@@ -929,7 +929,7 @@ let rec output_list p o l =
   | e :: l -> p o e; output_string o ";"; output_list p o l
 
 let output_pset o s =
-  ProverPatch.PSet.fold
+  ProverPatch.PLit.fold
     (fun () k -> Printf.fprintf o "%i " (Uint63.hash k))
     s ()
 
@@ -971,7 +971,7 @@ let collect_conflict_clauses tac gl =
     in
     let hyps =
       map_filter
-        (fun (h, f) -> if P.PSet.mem f.P.HCons.id d then Some h else None)
+        (fun (h, f) -> if P.PLit.mem f.P.HCons.id d then Some h else None)
         hyps
     in
     if debug then (
