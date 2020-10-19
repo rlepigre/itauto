@@ -336,8 +336,7 @@ Inductive op :=
 
     Definition add (k:int) (b:bool) (s:t) : t := union (singleton k b) s.
 
-    Definition fold {A: Type} (f: A -> int -> A) (s: t) (a: A)  :=
-      IntMap.fold' (fun acc k e => f acc k) s a.
+    Definition fold {A: Type} : forall  (f: A -> int -> OBool.t -> A) (s:t) (a:A), A := @IntMap.fold' int OBool.t A.
 
     Definition mem (i:int) (s:t)  := IntMap.mem' i s.
 
@@ -1475,7 +1474,7 @@ Inductive op :=
       clauses := clauses st
     |}).
 
-  Inductive failure := OutOfFuel | HasModel.
+  Inductive failure := OutOfFuel | HasModel | Error.
 
 
   Inductive result (A B: Type):=
@@ -6098,11 +6097,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state st)
            (EVAL  : eval_state  st)
+           (EVALA  : eval_annot_state  st)
              ,
            match intro_state st f hf with
            | Fail _ => False
            | Success _ => True
-           | Progress (st',f') => eval_state  st' -> eval_ohformula f'
+           | Progress (st',f') =>
+             eval_state  st' -> eval_annot_state st' -> eval_ohformula f'
            end ->
       eval_formula f.
   Proof.
@@ -6118,6 +6119,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     specialize (eval_cnf_hyps o l st).
     generalize (hconsmap_cnf_hyps  o l st).
     unfold hconsmap_progress.
+    specialize (eval_annot_cnf_hyps o l st).
     destruct (cnf_hyps (is_classic o) l st).
     - simpl in WFC. tauto.
     - simpl in *. tauto.
@@ -6234,10 +6236,9 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (EQ    : hf.(elt) = f)
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state st)
-           (EVAL  : eval_state st)
            (INTRO : intro_state st f hf = Progress (st',f'))
-           (STEP  : eval_state st' -> eval_ohformula f'),
-      eval_state st -> eval_formula f.
+           (STEP  : eval_state st' -> eval_annot_state st' -> eval_ohformula f'),
+      eval_state st -> eval_annot_state st -> eval_formula f.
   Proof.
     intros.
     generalize (intro_state_correct f st hf EQ WF WFST).
@@ -6251,7 +6252,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
            (WF    : has_form (hconsmap st) hf)
            (WFST : wf_state st)
            (INTRO : intro_state st f hf = Success d),
-      eval_state  st -> eval_formula f.
+      eval_state  st -> eval_annot_state st -> eval_formula f.
   Proof.
     intros.
     generalize (intro_state_correct f st hf EQ WF WFST).
@@ -6316,7 +6317,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       tauto.
   Qed.
 
-  Lemma instro_state_mono : forall st st' f hf g',
+  Lemma intro_state_mono : forall st st' f hf g',
       intro_state st f hf = Progress (st', g') ->
   hmap_order (hconsmap st) (hconsmap st').
   Proof.
@@ -6465,25 +6466,6 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     state -> option HFormula -> result state (hmap * list conflict_clause * PLit.t).
 
 
-  Definition is_correct_prover (Prover : ProverT) (st: state) :=
-    forall (g: option HFormula) 
-           (m: hmap) (prf : list conflict_clause) d
-             (WFS : wf_state  st)
-             (HASF: has_oform (hconsmap st) g)
-           (PRF : Prover st g  = Success (m,prf,d )),
-      (eval_state st -> eval_ohformula g)
-      /\
-      (eval_annot_state st -> eval_pset m d -> eval_ohformula g)
-      /\
-      Forall eval_literal_list prf
-      /\
-      hmap_order (hconsmap st) m
-      /\
-      Forall  (has_conflict_clause m) prf
-      /\
-      wf_pset m d.
-
-  
   Lemma has_conflict_clause_mono : isMono has_conflict_clause.
   Proof.
     unfold has_conflict_clause.
@@ -6820,6 +6802,27 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
 
+  Definition is_correct_prover (Prover : ProverT) (st: state) :=
+    forall (g: option HFormula) 
+           (m: hmap) (prf : list conflict_clause) d
+             (WFS : wf_state  st)
+             (HASF: has_oform (hconsmap st) g)
+           (PRF : Prover st g  = Success (m,prf,d )),
+      (eval_state st -> eval_annot_state st -> eval_ohformula g)
+      /\
+      (eval_annot_state st -> eval_pset m d -> eval_ohformula g)
+      /\
+      Forall eval_literal_list prf
+      /\
+      hmap_order (hconsmap st) m
+      /\
+      Forall  (has_conflict_clause m) prf
+      /\
+      wf_pset m d.
+
+  
+
+
   Section P.
 
 
@@ -6851,32 +6854,46 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     | Failure (f:failure).
 
 
+    Definition lazy_and (b:bool) (f: unit -> bool) :=
+      match b with
+      | true => f tt
+      | false => false
+      end.
+
+    Lemma lazy_and_andb : forall b f,
+        lazy_and b f = b && f tt.
+    Proof.
+      destruct b ; reflexivity.
+    Qed.
+
     Fixpoint forall_dis (st: state) (g : option HFormula)   (cl: list literal) : result_dis :=
       match cl with
       | nil => Backjump false (hconsmap st) nil PLit.empty
       | f :: cl =>
         match Prover (insert_unit (annot_hyp f) st) g with
         | Success (m,prf,ann') =>
-          if has_lit f ann'
-          then
+          if lazy_and (negb (has_lit f ann')) (fun _ =>  annot_holds (units st) ann')
+          then Backjump true m prf ann'
+          else
             match augment_clauses  prf (set_hmap m st) with
             | Success (m,d') => (* This case is weird *) Backjump true m prf d'
             | Progress st' =>
               match forall_dis st' g cl with
               | Failure f => Failure f
-              | Backjump b m' prf' d' => Backjump b m' (prf++prf')
-                                                  (if b then d' else
-                                                     (PLit.union d' (remove_lit f ann')))
+              | Backjump b m' prf' d' =>
+                Backjump b m' (prf++prf')
+                         (if b then d' else
+                            (PLit.union d'
+                                        (if (has_lit f ann')
+                                        then (remove_lit f ann') else ann')))
               end
             | Fail f => Failure f
             end
-          else if annot_holds (units st) ann' (* Should always succeed => backjump *)
-               then Backjump true m prf ann'
-               else Failure HasModel
         | Fail f => Failure f
         | Progress st      => Failure OutOfFuel
         end
       end.
+
 
     Definition forall_dis_ann (st:state) (g: option HFormula) (an: PLit.t) (cl:list literal) : result state (hmap * list conflict_clause * PLit.t) :=
       match forall_dis st g cl with
@@ -6892,22 +6909,23 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       | f :: cl =>
         match Prover (insert_unit (annot_hyp f) st) g with
         | Success (m,prf,ann') =>
-          if has_lit f ann'
-          then
+          if negb (has_lit f ann') && annot_holds (units st) ann'
+          then Backjump true m prf ann'
+          else
             match augment_clauses  prf (set_hmap m st) with
             | Success (m,d') => (* This case is weird *) Backjump true m prf d'
             | Progress st' =>
               match forall_dis st' g cl with
               | Failure f => Failure f
-              | Backjump b m' prf' d' => Backjump b m' (prf++prf')
-                                                  (if b then d' else
-                                                     (PLit.union d' (remove_lit f ann')))
+              | Backjump b m' prf' d' =>
+                Backjump b m' (prf++prf')
+                         (if b then d' else
+                            (PLit.union d'
+                                        (if (has_lit f ann')
+                                        then (remove_lit f ann') else ann')))
               end
             | Fail f => Failure f
             end
-          else if annot_holds (units st) ann' (* Should always succeed => backjump *)
-               then Backjump true m prf ann'
-               else Failure HasModel
         | Fail f => Failure f
         | Progress st      => Failure OutOfFuel
         end
@@ -6948,7 +6966,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail OutOfFuel => Fail OutOfFuel
+        | Fail (OutOfFuel | Error) as e => e
         | Fail HasModel  | Progress _ =>  prover_arrows l st g
         end
       end.
@@ -6967,7 +6985,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail OutOfFuel => Fail OutOfFuel
+        | Fail (OutOfFuel | Error) as e => e
         | Fail HasModel  | Progress _ =>  prover_arrows l st g
         end
       end.
@@ -7525,6 +7543,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         +  eapply IHl ;eauto.
     Qed.
 
+
     Lemma forall_dis_correct :
       forall l g st m prf a d b
              (WF : wf_state st)
@@ -7533,9 +7552,9 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
              (HASL : Forall (has_literal (hconsmap st)) l)
              (EQ: forall_dis st g l = Backjump b m prf d)
       ,
-        (eval_state st -> eval_annot_state st -> ((eval_or l -> eval_ohformula g) -> eval_ohformula g) -> eval_ohformula g) /\
-        (eval_annot_state st ->
-         if b then eval_pset m d -> eval_ohformula g
+        (eval_state st -> eval_annot_state st ->
+         (if b then True else (eval_state st -> ( eval_or l -> eval_ohformula g) -> eval_ohformula g)) -> eval_ohformula g) /\
+        (eval_annot_state st -> if b then eval_pset m d -> eval_ohformula g
          else (eval_pset m a -> ((eval_or l -> eval_ohformula g) -> eval_ohformula g) ->
               eval_pset m (PLit.union a d) -> eval_ohformula g)) /\
         Forall eval_literal_list prf /\
@@ -7548,8 +7567,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         inv EQ.
         split_and;auto with wf.
         + tauto.
-        + intros.
-          apply eval_pset_union in H2; auto.
+        + intros AS EV F EU.
+          apply eval_pset_union in EU; auto.
           tauto.
           destruct HASAN;auto.
           constructor.
@@ -7575,7 +7594,36 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         destruct (Prover st' g) eqn:PRF; try congruence.
         destruct r as (p & ann').
         destruct p as (m',prf').
-        destruct  (has_lit a ann')eqn:HLIT.
+        destruct (negb (has_lit a ann') && annot_holds (units st) ann') eqn:CHECK.
+        + (* backjump *)
+          rewrite andb_true_iff in CHECK.
+          destruct CHECK as (C1 & HOLD).
+          inv EQ.
+          clear IHl.
+          apply ProverCorrect in PRF.
+          destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6).
+          assert (HOLD' : eval_state st -> eval_pset m d).
+          {
+            intros.
+            apply annot_holds_correct with (m:= m) in HOLD;auto.
+            destruct H.
+            revert ev_units0.
+            apply eval_units_mono.
+            rewrite ORD in *. auto.
+            destruct WF ; auto.
+          }
+          simpl.
+          unfold Annot.lift, annot_hyp in EI.
+          simpl in *.
+          assert (eval_annot eval_literal (hconsmap st) (annot_hyp a)).
+          {
+            apply eval_annot_hyp; auto.
+          }
+          split_and; try tauto; auto.
+          * eapply hmap_order_trans;eauto.
+            rewrite ORD. auto with wf.
+          * auto.
+          * auto.
         + (* Normal case / no backjump *)
           generalize (ProverCorrect st' g m' prf' ann' WFI HASG' PRF).
           intros (EVAL' & EVALA & EPRF & ORD' & HASC& WFP).
@@ -7645,19 +7693,27 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         destruct IHl as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6 ).
         simpl.
         rewrite HMST0 in * by tauto.
+        assert (EA' :=eval_annot_hyp (hconsmap st) a).
         split_and.
-        - tauto.
-        - assert (EA' :=eval_annot_hyp (hconsmap st) a).
+          -  destruct b.
+             + (* backjump *)
+               intros.
+               simpl in *.
+               tauto.
+             + tauto.
+        -
           destruct b.
           tauto.
-          intros.
+          intros ES EPS EOR EU.
           assert (WFA0' : PLit.wf a0).
           { destruct WFA0 ; auto. }
           assert (WFD : PLit.wf deps).
           { destruct PRF6; auto. }
-          apply eval_pset_union in H2; auto.
-          destruct H2 as (EPSA0 & EPSD).
+          apply eval_pset_union in EU; auto.
+          destruct EU as (EPSA0 & EPSD).
           apply eval_pset_union in EPSD; auto.
+          destruct (has_lit a ann') eqn:HASLIT.
+          {
           assert (eval_literal a -> eval_pset m (remove_lit a ann') -> eval_pset m ann').
           {
             apply eval_pset_remove;auto.
@@ -7668,24 +7724,39 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
             apply wf_pset_mono.
             tauto.
           }
-          apply H1.
-          intros.
-          destruct H3.
+          apply EOR.
+          intros OR.
+          destruct OR.
+          *
           apply EVALA. tauto.
           destruct EPSD as (ED & ER).
-          specialize (H2 H3 ER).
-          revert H2.
+          specialize (H H0 ER).
+          revert H.
           apply eval_pset_mono.
           tauto.
-          apply PRF2; auto.
+          *
+            apply PRF2; auto.
+            apply EVAST0; auto.
+            apply eval_pset_union; auto.
+            tauto.
+          }
+          {
+          apply EVALA. tauto.
+          destruct EPSD as (ED & ER).
+          revert ER.
+          apply eval_pset_mono.
           tauto.
-          apply eval_pset_union; auto.
-          tauto.
-          apply wf_remove_lit; auto.
-          destruct WFP; auto.
-          apply PLit.wf_union; auto.
-          apply wf_remove_lit; auto.
-          destruct WFP; auto.
+          }
+          + destruct (has_lit a ann').
+            apply wf_remove_lit; auto.
+            destruct WFP; auto.
+            destruct WFP; auto.
+          + destruct (has_lit a ann').
+            apply PLit.wf_union; auto.
+            apply wf_remove_lit; auto.
+            destruct WFP; auto.
+            apply PLit.wf_union; auto.
+            destruct WFP; auto.
         -
           rewrite Forall_app.
           tauto.
@@ -7699,41 +7770,18 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           tauto.
           tauto.
         - destruct b ; try tauto.
-          + apply wf_pset_union;auto.
+          + destruct (has_lit a ann').
+            apply wf_pset_union;auto.
             unfold remove_lit.
             apply wf_pset_remove; auto.
             revert WFP.
             apply wf_pset_mono.
             tauto.
+            apply wf_pset_union;auto.
+            revert WFP.
+            apply wf_pset_mono.
+            tauto.
         }
-        + (* backjump *)
-          destruct (annot_holds (units st) ann') eqn:HOLD ; try congruence.
-          inv EQ.
-          clear IHl.
-          apply ProverCorrect in PRF.
-          destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6).
-          assert (HOLD' : eval_state st -> eval_pset m d).
-          {
-            intros.
-            apply annot_holds_correct with (m:= m) in HOLD;auto.
-            destruct H.
-            revert ev_units0.
-            apply eval_units_mono.
-            rewrite ORD in *. auto.
-            destruct WF ; auto.
-          }
-          simpl.
-          unfold Annot.lift, annot_hyp in EI.
-          simpl in *.
-          assert (eval_annot eval_literal (hconsmap st) (annot_hyp a)).
-          {
-            apply eval_annot_hyp; auto.
-          }
-          split_and; try tauto; auto.
-          * eapply hmap_order_trans;eauto.
-            rewrite ORD. auto with wf.
-          * auto.
-          * auto.
     Qed.
 
 
@@ -7742,10 +7790,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       forall  st g a cl m prf d
               (UPWF : wf_state st)
               (PRF : forall_dis_ann  st g a cl = Success (m, prf, d))
-              (EVST : eval_state st -> eval_annot_state st ->
+              (EVST : eval_state st -> (*eval_annot_state st ->*)
                       (eval_or cl -> eval_ohformula g) -> eval_ohformula g)
               (EVA : eval_annot_state st ->
-                     (eval_annot eval_or (hconsmap st) (Annot.mk cl a) -> eval_ohformula g) -> eval_ohformula g)
+                     (eval_pset  (hconsmap st)  a)  -> (( eval_or  cl  -> eval_ohformula g) -> eval_ohformula g))
               (AN :  wf_pset (hconsmap st) a)
               (WFD : (has_conflict_clause (hconsmap st)) cl)
               (HF  : has_oform (hconsmap st) g)
@@ -7766,12 +7814,13 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       apply forall_dis_correct with (a:= a) in EQ; auto.
       destruct EQ as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6).
       split_and; try tauto.
-      - intros.
+      -  destruct b; auto.
+      - intros EPA EPS.
         destruct b.
         tauto.
         assert (EA : eval_pset m a).
-        { apply eval_pset_union in H0.
-          destruct H0; auto.
+        { apply eval_pset_union in EPS.
+          destruct EPS; auto.
           destruct AN;auto.
           destruct PRF6;auto.
         }
@@ -7780,7 +7829,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           revert EA.
           apply eval_pset_mono; auto.
         }
-        tauto.
+        apply PRF2 ; auto.
       - destruct b ; auto.
         apply wf_pset_union.
         revert AN. apply wf_pset_mono; auto.
@@ -8122,7 +8171,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
                         then run_thy_prover (prover thy use_prover n) thy st' g
                         else Fail HasModel
                       | Progress st => Progress st
-                      | Fail OutOfFuel  => Fail OutOfFuel
+                      | e  => e
                       end
                     | Some cl => forall_dis_ann (prover thy use_prover n) st' g (Annot.deps cl)  (Annot.elt cl)
                     end
@@ -8146,7 +8195,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
                         then run_thy_prover (prover thy up n) thy st' g
                         else Fail HasModel
                       | Progress st => Progress st
-                      | Fail OutOfFuel  => Fail OutOfFuel
+                      |  e  =>  e
                       end
                     | Some cl => forall_dis_ann (prover thy up n) st' g (Annot.deps cl)  (Annot.elt cl)
                     end
@@ -8633,16 +8682,25 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
             intro ES'. destruct ES' ; destruct UPWF.
             apply eval_find_split with (m:=(hconsmap st0)); auto.
           }
-          assert (FDC' : eval_annot_state st0 -> (ohold (eval_annot  eval_or (hconsmap st0)) (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
+          assert (FDC' :
+                    eval_annot_state st0 ->
+                      eval_pset (hconsmap st0) (Annot.deps t0) ->
+                        (eval_or (Annot.elt t0) -> eval_ohformula g) -> eval_ohformula g).
+          {
+            intro ES'. destruct ES' ; destruct UPWF.
+            intros.
+            eapply eval_annot_find_split in ev_an_clauses0; eauto.
+            rewrite FD. simpl. unfold eval_annot ; auto.
+          }
+
+          (*          eval_annot_state st0 -> (ohold (eval_annot  eval_or (hconsmap st0)) (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
                   eval_ohformula g).
           {
             intro ES'. destruct ES' ; destruct UPWF.
             apply eval_annot_find_split ; auto.
-          }
+          } *)
           rewrite FD in FDC.
           simpl in FDC.
-          rewrite FD in FDC'.
-          simpl in FDC'.
           assert (WFD : (ohold (check_annot has_conflict_clause  (hconsmap st0)) (find_split (units st0) (is_classic g) (clauses st0)))).
           {
             destruct UPWF.
@@ -8659,11 +8717,11 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
           simpl in WFD.
           destruct WFD as (AN & WFD).
           simpl in UPWF.
+          unfold Annot.lift in *.
           generalize (forall_dis_ann_correct (prover thy b n) IHn
                                              st0 g (Annot.deps t0) (Annot.elt t0) _ prf  d UPWF PRF FDC FDC' AN WFD HF0).
           intros.
           split_and; try tauto.
-          simpl in *.
           intuition.
           eapply hmap_order_trans; eauto.
           intuition congruence.
@@ -8802,6 +8860,18 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       congruence.
   Qed.
 
+  Lemma eval_annot_empty : forall m,
+      eval_annot_state (empty_state m).
+  Proof.
+    unfold empty_state.
+    constructor ; simpl ; auto.
+    apply forall_units_empty.
+    repeat intro.
+      unfold empty_watch_map in H.
+      rewrite empty_o in H.
+      congruence.
+  Qed.
+
   Lemma prover_formula_correct : forall thy up m m' prf d n f ,
       prover_formula thy up m n f = Success (m',prf, d) ->
       eval_hformula f.
@@ -8815,6 +8885,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     apply chkHc_has_form in CHK; auto.
     assert (WE := wf_empty m WFM).
     assert (EE := eval_empty m).
+    assert (EA := eval_annot_empty m).
     assert (M : hconsmap (empty_state m) = m) by reflexivity.
     set (s0 := empty_state m) in *.
     clearbody s0.
@@ -8838,6 +8909,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     inv H.
     apply prover_intro_correct  in PI; auto.
     -  simpl in *. unfold annot_lit, Annot.lift in EV. simpl in EV.
+       assert (ETT := eval_annot_hyp _ (POS hTT) HL) .
        tauto.
     -  eapply prover_correct; eauto.
     - simpl.

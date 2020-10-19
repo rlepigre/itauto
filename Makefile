@@ -13,7 +13,6 @@ coq : CoqMakefile
 
 theories/Prover.vo src/prover.ml : CoqMakefile coq
 
-
 src/patch/mlpatch :
 	cd src/patch ; make 
 
@@ -28,6 +27,15 @@ ifdef $(HASOCAMLFORMAT)
 else
 	cp src/proverPatch.in src/proverPatch.ml
 endif
+
+UINT := $(shell coqc -config | grep COQLIB | cut -f2 -d'=')/kernel
+
+
+
+
+src/prover.cmx : src/prover.ml
+	ocamlc -annot -I $(UINT) -rectypes -c src/prover.mli
+	ocamlc -annot -I $(UINT) -I src -rectypes -c src/prover.ml
 
 install :
 	make -f CoqMakefile install

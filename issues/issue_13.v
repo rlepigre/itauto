@@ -3,6 +3,7 @@ Require Import Cdcl.Itauto.
 Open Scope Z_scope.
 
 Unset Lia Cache.
+Set Itauto Theory Time.
 
 
 Goal forall Y r0 r q q0 r1 q1 : Z,

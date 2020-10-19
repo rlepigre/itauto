@@ -4,6 +4,12 @@ open Names
 open Constr
 module P = ProverPatch
 
+let show_theory_time =
+  Goptions.declare_bool_option_and_ref ~depr:false
+    ~key:["Itauto"; "Theory"; "Time"]
+    ~value:false
+
+let thy_time = ref 0.
 let debug = false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
@@ -782,6 +788,14 @@ module Theory = struct
           Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
       NoCore (CErrors.print e, gl)
 
+  let find_unsat_core ep cl tac env sigma =
+    let t1 = System.get_time () in
+    let res = find_unsat_core ep cl tac env sigma in
+    let t2 = System.get_time () in
+    if show_theory_time () then
+      thy_time := !thy_time +. System.time_difference t1 t2;
+    res
+
   let cons_core c f a =
     match c with
     | UnsatCore c -> UnsatCore c
@@ -865,9 +879,15 @@ let run_prover tac cc (genv, sigma) ep f =
     with Not_found -> false
   in
   let m = P.hcons_form f in
-  P.prover_formula is_dec
-    (Theory.thy_prover tac cc (genv, sigma) ep)
-    true m (nat_of_int 200) f
+  thy_time := 0.;
+  let res =
+    P.prover_formula is_dec
+      (Theory.thy_prover tac cc (genv, sigma) ep)
+      true m (nat_of_int 200) f
+  in
+  if show_theory_time () then
+    Feedback.msg_debug Pp.(str "Theory running time " ++ real !thy_time);
+  res
 
 let fresh_id id gl =
   Tactics.fresh_id_in_env Id.Set.empty id (Proofview.Goal.env gl)
@@ -930,7 +950,7 @@ let rec output_list p o l =
 
 let output_pset o s =
   ProverPatch.PLit.fold
-    (fun () k -> Printf.fprintf o "%i " (Uint63.hash k))
+    (fun () k _ -> Printf.fprintf o "%i " (Uint63.hash k))
     s ()
 
 let rec map_filter f l =
