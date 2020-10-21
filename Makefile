@@ -51,7 +51,8 @@ clean : cleanaux
 
 
 CoqMakefile : _CoqProject
-	coq_makefile -f _CoqProject -o CoqMakefile
+	echo $(COQBIN)
+	$(COQBIN)/coq_makefile -f _CoqProject -o CoqMakefile
 
 
 TESTSUITE = arith.v no_test.v refl_bool.v
