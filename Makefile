@@ -3,6 +3,14 @@
 
 .PHONY: clean cleanaux coq test cleantest
 
+-include CoqMakefile.conf
+
+ifneq (,$(COQBIN))
+# add an ending /
+COQBIN:=$(COQBIN)/
+endif
+
+
 all : src/proverPatch.ml
 	rm src/cdcl.ml.d
 	rm src/cdcl_plugin.mlpack.d
@@ -51,8 +59,7 @@ clean : cleanaux
 
 
 CoqMakefile : _CoqProject
-	echo $(COQBIN)
-	$(COQBIN)/coq_makefile -f _CoqProject -o CoqMakefile
+	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 
 TESTSUITE = arith.v no_test.v refl_bool.v
@@ -62,12 +69,6 @@ ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.
 ALLTESTV = $(addprefix test-suite/,$(TESTSUITE)) $(addprefix issues/,$(ISSUES))
 ALLTESTVO = $(ALLTESTV:.v=.vo)
 
--include CoqMakefile.conf
-
-ifneq (,$(COQBIN))
-# add an ending /
-COQBIN:=$(COQBIN)/
-endif
 
 COQC ?= "$(COQBIN)coqc"
 
