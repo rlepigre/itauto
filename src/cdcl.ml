@@ -615,6 +615,13 @@ module Theory = struct
   let not_constr c =
     EConstr.mkProd (Context.anonR, c, constr_of_gref (Lazy.force coq_False))
 
+  let pp_literal env sigma ep a =
+    let c, i = Env.get_constr_of_atom ep (form_of_literal a) in
+    Pp.(
+      (match a with NEG _ -> str "¬" | POS _ -> str "")
+      ++ Printer.pr_econstr_env env sigma c
+      ++ str "@" ++ int i)
+
   let rec constr_of_clause ep cl =
     match cl with
     | [] -> constr_of_gref (Lazy.force coq_False)
@@ -771,9 +778,16 @@ module Theory = struct
       in
       match Proofview.partial_proof e pv with
       | [prf] ->
-        if debug then
+        if debug then begin
           Feedback.msg_debug
             Pp.(str "EPrf " ++ Printer.pr_econstr_env env sigma prf);
+          Feedback.msg_debug
+            Pp.(
+              str "Literals"
+              ++ prlist_with_sep
+                   (fun () -> str ";")
+                   (pp_literal env sigma ep) cl)
+        end;
         let core, prf = reduce_proof sigma cl prf in
         if debug then
           Feedback.msg_debug
@@ -854,7 +868,7 @@ module Theory = struct
     match l with [] -> None | e :: l -> if p e then Some e else search p l
 
   let thy_prover tac cc (genv, sigma) ep hm l =
-    let l = List.sort compare_atom l in
+    let l = List.sort_uniq compare_atom l in
     match search (fun (x, _) -> subset_clause x l) !cc with
     | None -> (
       (* Really run the prover *)
