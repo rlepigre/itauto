@@ -33,6 +33,7 @@ Ltac itauto_use_tauto := constr:(false).
 
 Ltac itauton tac  :=
   gen_conflicts tac ;
+  clear;
   lazymatch itauto_use_tauto with
   | true => tauto
   | false => run_solver
