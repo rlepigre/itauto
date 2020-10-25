@@ -953,8 +953,7 @@ let assert_conflicts l gl =
       Tacticals.New.tclTHENLIST
         [ Tactics.assert_by (Names.Name id) c
             (Tacticals.New.tclTHENLIST
-               [(*Tactics.keep [];*)
-                (*tclRETYPE prf;*) Tactics.exact_check prf])
+               [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_no_check prf])
         ; assert_conflicts (n + 1) l ]
   in
   if show_theory_time () then
