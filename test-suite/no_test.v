@@ -71,3 +71,14 @@ Proof.
   intros.
   no congruence lia.
 Qed.
+
+Open Scope Z_scope.
+Goal forall (f g: Z -> Z) (a d x y: Z),
+    g x = g y ->
+    0 < d ->
+    a < f (g y) ->
+    a < f (g x) + d.
+Proof.
+  intros.
+  no congruence lia.
+Qed.

@@ -75,7 +75,7 @@ Goal  forall (word : Type) (left right : word) (xs : list word)
   r0 < r1 * Z.of_nat (Datatypes.length x).
 Proof.
   intros.
-  Fail itauto lia.
+  Time Fail itauto lia.
   (* Manual decomposition *)
   assert (CASE : 2 ^ width < 0 \/ 2^width = 0 \/ 0 < 2^width) by lia.
   destruct CASE as [C1 | [C1 | C1]].

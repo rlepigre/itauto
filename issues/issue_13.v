@@ -26,5 +26,7 @@ Goal forall Y r0 r q q0 r1 q1 : Z,
   (4 = 0 -> q = 0 /\ r = 0) -> False.
 Proof.
   intros.
-  Time itauto lia. (* still slow, down to 38s - but a lia subcall takes 17 secs *)
-Qed.
+  Time itauto lia. (* still slow, down to 18s -
+                      - but lia subcalls take 13 secs.
+                       - 4 seconds to assert to conflicst                    *)
+Time Qed.

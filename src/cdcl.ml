@@ -147,7 +147,7 @@ module Env = struct
   let get_constr_of_atom ep a =
     ProverPatch.(
       match a.HCons.elt with
-      | AT i ->
+      | LAT i ->
         ( get_proposition_of_atom_spec (AMap.find (Uint63.hash i) ep.amap)
         , Uint63.hash i )
       | _ -> raise Not_found)
@@ -537,9 +537,9 @@ let constr_of_hcons typ constr_of_elt f =
     constr_of_hcons ftyp constr_of_op_formula f)
  *)
 
-let constr_of_formula f =
-  let tt = Lazy.force coq_TT in
-  let ff = Lazy.force coq_FF in
+(*let constr_of_formula f =
+  (* let tt = Lazy.force coq_TT in
+     let ff = Lazy.force coq_FF in *)
   let ftyp = Lazy.force coq_Formula in
   let at i = EConstr.mkApp (Lazy.force coq_AT, [|EConstr.mkInt i|]) in
   let mk_op = Lazy.force coq_OP in
@@ -547,16 +547,16 @@ let constr_of_formula f =
   P.(
     let rec constr_of_op_formula f =
       match f with
-      | TT -> tt
-      | FF -> ff
-      | AT i -> at i
-      | OP (o, f1, f2) ->
+      (* | TT -> tt
+         | FF -> ff *)
+      | LAT i -> at i
+      | LOP (o, l) ->
         mkop o
           (constr_of_hcons ftyp constr_of_op_formula f1)
           (constr_of_hcons ftyp constr_of_op_formula f2)
     in
     constr_of_hcons ftyp constr_of_op_formula f)
-
+ *)
 let constr_of_kind = function
   | P.IsProp -> Lazy.force coq_IsProp
   | P.IsBool -> Lazy.force coq_IsBool
@@ -897,7 +897,9 @@ let run_prover tac cc (genv, sigma) ep f =
   let res =
     P.prover_formula is_dec
       (Theory.thy_prover tac cc (genv, sigma) ep)
-      true m (nat_of_int 200) f
+      true m
+      (nat_of_int (10 * ep.Env.fresh))
+      f
   in
   if show_theory_time () then
     Feedback.msg_debug Pp.(str "Theory running time " ++ real !thy_time);
@@ -951,10 +953,13 @@ let assert_conflicts l gl =
       Tacticals.New.tclTHENLIST
         [ Tactics.assert_by (Names.Name id) c
             (Tacticals.New.tclTHENLIST
-               [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_check prf])
+               [(*Tactics.keep [];*)
+                (*tclRETYPE prf;*) Tactics.exact_check prf])
         ; assert_conflicts (n + 1) l ]
   in
-  assert_conflicts 0 l
+  if show_theory_time () then
+    Proofview.tclTIME (Some "Assert conflicts") (assert_conflicts 0 l)
+  else assert_conflicts 0 l
 
 let rec output_list p o l =
   match l with
@@ -972,6 +977,19 @@ let rec map_filter f l =
   | [] -> []
   | e :: l -> (
     match f e with None -> map_filter f l | Some e' -> e' :: map_filter f l )
+
+let rec needed_hyp f d =
+  if P.PLit.mem f.P.HCons.id d then true else needed_hyp_form f.P.HCons.elt d
+
+and needed_hyp_form f d =
+  match f with
+  | P.BAT _ | P.BTT _ | P.BFF _ -> false
+  | P.BOP (_, _, f1, f2) -> needed_hyp f1 d || needed_hyp f2 d
+  | P.BIT f -> (
+    match f with
+    | P.BTT _ | P.BFF _ | P.BAT _ -> false
+    | P.BOP (_, _, f1, f2) -> needed_hyp f1 d || needed_hyp f2 d
+    | P.BIT f -> needed_hyp_form f d )
 
 (** [assert_conflict_clauses tac] runs the sat prover in ml 
     and asserts conflict_clauses *)
@@ -994,7 +1012,7 @@ let collect_conflict_clauses tac gl =
       Env.has_bool d
     with Not_found -> false
   in
-  let form = P.BForm.to_hformula has_bool bform in
+  let form = P.hlform (P.BForm.to_hformula has_bool bform) in
   let cc = ref [] in
   match run_prover tac cc (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
@@ -1004,9 +1022,7 @@ let collect_conflict_clauses tac gl =
         !cc
     in
     let hyps =
-      map_filter
-        (fun (h, f) -> if P.PLit.mem f.P.HCons.id d then Some h else None)
-        hyps
+      map_filter (fun (h, f) -> if needed_hyp f d then Some h else None) hyps
     in
     if debug then (
       Printf.printf "Deps %a\n" output_pset d;
@@ -1077,6 +1093,21 @@ let change_goal =
       let m = Env.map_of_env env in
       let f = env.Env.fresh in
       let n = fresh_id (Names.Id.of_string "__n") gl in
+      if debug then (
+        flush stdout;
+        Feedback.msg_debug Pp.(str "Running prover with conflict clauses");
+        let has_bool i =
+          try
+            let d = Env.AMap.find (Uint63.hash i) env.Env.amap in
+            Env.has_bool d
+          with Not_found -> false
+        in
+        match
+          run_prover Tacticals.New.tclIDTAC (ref []) (genv, sigma) env
+            (P.hlform (P.BForm.to_hformula has_bool form))
+        with
+        | P.Progress _ | P.Fail _ -> failwith "Failure with conflict clauses"
+        | P.Success _ -> Feedback.msg_debug Pp.(str "Prover success") );
       let change =
         EConstr.mkLetIn
           ( Context.nameR n

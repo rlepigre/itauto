@@ -2,6 +2,9 @@ Require Import Cdcl.Itauto.
 
 Require Import Int63 Bool  ZArith Lia.
 
+Import Formula.
+Import HCons.
+
 Open Scope Z_scope.
 Lemma l1 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.
 Proof.
@@ -27,11 +30,19 @@ Proof.
   itauto idtac.
 Qed.
 
+Lemma p_impl_p : forall (p:Prop), p /\ True -> p.
+Proof.
+  intros.
+  itauto idtac.
+Qed.
+
+
 Lemma x_andb_true : forall x, Is_true (x && true) -> Is_true x.
 Proof.
   intros.
   itauto idtac.
 Qed.
+
 
 Instance Zge_dec : DecP2 Z.ge.
 Proof.
