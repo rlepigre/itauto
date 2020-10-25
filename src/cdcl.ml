@@ -764,7 +764,7 @@ module Theory = struct
 
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause_dec ep cl in
-    let e, pv = Proofview.init sigma [(env, gl)] in
+    let e, pv = Proofview.init !sigma [(env, gl)] in
     try
       let _, pv, _, _ =
         Proofview.apply
@@ -780,20 +780,21 @@ module Theory = struct
       | [prf] ->
         if debug then begin
           Feedback.msg_debug
-            Pp.(str "EPrf " ++ Printer.pr_econstr_env env sigma prf);
+            Pp.(str "EPrf " ++ Printer.pr_econstr_env env !sigma prf);
           Feedback.msg_debug
             Pp.(
               str "Literals"
               ++ prlist_with_sep
                    (fun () -> str ";")
-                   (pp_literal env sigma ep) cl)
+                   (pp_literal env !sigma ep) cl)
         end;
-        let core, prf = reduce_proof sigma cl prf in
+        sigma := Proofview.return pv;
+        let core, prf = reduce_proof !sigma cl prf in
         if debug then
           Feedback.msg_debug
             Pp.(
               str "Core "
-              ++ Printer.pr_econstr_env env sigma (constr_of_clause ep core));
+              ++ Printer.pr_econstr_env env !sigma (constr_of_clause ep core));
         UnsatCore (core, prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e ->
@@ -873,7 +874,7 @@ module Theory = struct
     | None -> (
       (* Really run the prover *)
       match find_unsat_core ep l tac genv sigma with
-      | NoCore r -> CErrors.user_err (pp_no_core genv sigma r)
+      | NoCore r -> CErrors.user_err (pp_no_core genv !sigma r)
       | UnsatCore (core, prf) ->
         if debug then
           Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
@@ -945,7 +946,7 @@ let tclRETYPE c =
       let sigma, _ = Typing.type_of env sigma c in
       Unsafe.tclEVARS sigma)
 
-let assert_conflicts l gl =
+let assert_conflicts sigma l gl =
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC
@@ -953,12 +954,17 @@ let assert_conflicts l gl =
       Tacticals.New.tclTHENLIST
         [ Tactics.assert_by (Names.Name id) c
             (Tacticals.New.tclTHENLIST
-               [(*Tactics.keep [];*) tclRETYPE prf; Tactics.exact_no_check prf])
+               [ (*Tactics.keep [];*)
+                 (*tclRETYPE prf;*)
+                 Tactics.exact_no_check prf ])
         ; assert_conflicts (n + 1) l ]
   in
+  let update_evar_and_assert s l =
+    Tacticals.New.tclTHEN (Proofview.Unsafe.tclEVARS s) (assert_conflicts 0 l)
+  in
   if show_theory_time () then
-    Proofview.tclTIME (Some "Assert conflicts") (assert_conflicts 0 l)
-  else assert_conflicts 0 l
+    Proofview.tclTIME (Some "Assert conflicts") (update_evar_and_assert sigma l)
+  else update_evar_and_assert sigma l
 
 let rec output_list p o l =
   match l with
@@ -1013,6 +1019,7 @@ let collect_conflict_clauses tac gl =
   in
   let form = P.hlform (P.BForm.to_hformula has_bool bform) in
   let cc = ref [] in
+  let sigma = ref sigma in
   match run_prover tac cc (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
@@ -1028,7 +1035,7 @@ let collect_conflict_clauses tac gl =
       Printf.printf "Hyps %a\n"
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
         hyps );
-    Some (cc, hyps)
+    Some (!sigma, cc, hyps)
   | _ -> None
 
 let assert_conflict_clauses tac =
@@ -1036,12 +1043,12 @@ let assert_conflict_clauses tac =
       Coqlib.check_required_library ["Cdcl"; "Formula"];
       match collect_conflict_clauses tac gl with
       | None -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology")
-      | Some (cc, d) ->
+      | Some (sigma, cc, d) ->
         let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
         let cc = List.combine ids cc in
         Tacticals.New.tclTHENLIST
           [ (* Assert the conflict clauses *)
-            assert_conflicts cc gl
+            assert_conflicts sigma cc gl
           ; (* Generalize the used hypotheses *)
             Tactics.generalize (List.map EConstr.mkVar d)
           ; (* Generalize the conflict clauses *)
@@ -1102,7 +1109,9 @@ let change_goal =
           with Not_found -> false
         in
         match
-          run_prover Tacticals.New.tclIDTAC (ref []) (genv, sigma) env
+          run_prover Tacticals.New.tclIDTAC (ref [])
+            (genv, ref sigma)
+            env
             (P.hlform (P.BForm.to_hformula has_bool form))
         with
         | P.Progress _ | P.Fail _ -> failwith "Failure with conflict clauses"
