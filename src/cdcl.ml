@@ -778,23 +778,22 @@ module Theory = struct
       in
       match Proofview.partial_proof e pv with
       | [prf] ->
+        sigma := Proofview.return pv;
+        let core, prf = reduce_proof !sigma cl prf in
         if debug then begin
           Feedback.msg_debug
-            Pp.(str "EPrf " ++ Printer.pr_econstr_env env !sigma prf);
+            Pp.(str "Goal " ++ Printer.pr_econstr_env env !sigma gl);
           Feedback.msg_debug
             Pp.(
               str "Literals"
               ++ prlist_with_sep
                    (fun () -> str ";")
-                   (pp_literal env !sigma ep) cl)
-        end;
-        sigma := Proofview.return pv;
-        let core, prf = reduce_proof !sigma cl prf in
-        if debug then
+                   (pp_literal env !sigma ep) cl);
           Feedback.msg_debug
             Pp.(
               str "Core "
-              ++ Printer.pr_econstr_env env !sigma (constr_of_clause ep core));
+              ++ Printer.pr_econstr_env env !sigma (constr_of_clause ep core))
+        end;
         UnsatCore (core, prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e ->

@@ -33,4 +33,5 @@ Qed.
 Instance DecLe : DecP2 Z.le := dec_le.
 Instance DecLt : DecP2 Z.lt := dec_lt.
 Instance DecGt : DecP2 Z.gt := dec_gt.
+Instance DecGe : DecP2 Z.ge := dec_ge.
 Instance DecEq : DecP2 (@eq Z) := dec_eq.
