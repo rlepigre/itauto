@@ -766,6 +766,9 @@ module Theory = struct
     let gl = constr_of_clause_dec ep cl in
     let e, pv = Proofview.init !sigma [(env, gl)] in
     try
+      if debug then
+        Feedback.msg_debug
+          Pp.(str "Goal " ++ Printer.pr_econstr_env env !sigma gl);
       let _, pv, _, _ =
         Proofview.apply
           ~name:(Names.Id.of_string "unsat_core")
@@ -781,8 +784,6 @@ module Theory = struct
         sigma := Proofview.return pv;
         let core, prf = reduce_proof !sigma cl prf in
         if debug then begin
-          Feedback.msg_debug
-            Pp.(str "Goal " ++ Printer.pr_econstr_env env !sigma gl);
           Feedback.msg_debug
             Pp.(
               str "Literals"
