@@ -49,6 +49,17 @@ Instance DecLt : DecP2 Z.lt := dec_lt.
 Instance DecGt : DecP2 Z.gt := dec_gt.
 Instance DecGe : DecP2 Z.ge := dec_ge.
 Instance DecEq : DecP2 (@eq Z) := dec_eq.
+
+(** To eliminate literals of the form ~ x = y,
+    we generate the clause x < y \/ x = y \/ y < x.
+ *)
+
+Instance negeqZ : TheoryPropagation.NegBinRel (@eq Z) :=
+  {
+  neg_bin_rel_clause := fun x y => x < y \/ x = y \/ y < x;
+  neg_bin_rel_correct := Z.lt_trichotomy
+  }.
+
 (** TODO
 Instance DecRLeb : Reflect.RProp2 Z.le := Reflect.mkrProp2 _ _ Z.le Z.leb decb_le.
 Instance DecLeb : Reflect.Rbool2 Z.leb := Reflect.mkrbool2 _ _ Z.leb Z.le  decb_le.

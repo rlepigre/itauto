@@ -10293,6 +10293,10 @@ Register Reflect.RProp2    as cdcl.RProp2.type.
 Register Reflect.b2        as cdcl.RProp2.b2.
 Register Reflect.b2_prf    as cdcl.RProp2.b2_prf.
 
+Register TheoryPropagation.NegBinRel as cdcl.NegBinRel.type.
+Register TheoryPropagation.neg_bin_rel_clause as cdcl.neg_bin_rel_clause.
+Register TheoryPropagation.neg_bin_rel_correct as cdcl.neg_bin_rel_correct.
+
 Register atomT      as cdcl.atomT.type.
 Register mkAtom     as cdcl.mkAtom.
 Register mkAtomDec  as cdcl.mkAtomDec.

@@ -83,6 +83,9 @@ let coq_eval_hformula = lazy (constr_of_ref "cdcl.eval_hformula")
 let coq_eval_hbformula = lazy (constr_of_ref "cdcl.eval_hbformula")
 let coq_empty = lazy (constr_of_ref "cdcl.IntMap.empty")
 let coq_add = lazy (constr_of_ref "cdcl.IntMap.add")
+let coq_NegBinRel = lazy (constr_of_ref "cdcl.NegBinRel.type")
+let coq_neg_bin_rel_clause = lazy (constr_of_ref "cdcl.neg_bin_rel_clause")
+let coq_neg_bin_rel_correct = lazy (constr_of_ref "cdcl.neg_bin_rel_correct")
 let whd = Reductionops.clos_whd_flags CClosure.all
 
 let is_prop env sigma term =
@@ -492,6 +495,24 @@ let make_formula env hyps hconcl =
   in
   make env hyps hconcl
 
+(** [clause_of_formula f] returns a list of literals if the formula [f] is in clausal form.
+    NB: the verification is partial.
+ *)
+let rec clause_of_formula f =
+  let P.HCons.{id; is_dec; elt} = f in
+  let mkf () = hcons (Uint63.hash id) is_dec (P.LAT id) in
+  match elt with
+  | P.BAT (k, _) -> [P.POS (mkf ())]
+  | P.BOP (k, P.IMPL, f1, f2) -> (
+    match clause_of_formula f1 with
+    | [P.POS f] -> P.NEG f :: clause_of_formula f2
+    | _ -> failwith "clause_of_formula: not a clause" )
+  | P.BOP (k, P.OR, f1, f2) -> (
+    match clause_of_formula f1 with
+    | [P.POS f] -> P.POS f :: clause_of_formula f2
+    | _ -> failwith "clause_of_formula: not a clause" )
+  | _ -> failwith "clause_of_formula: not a clause"
+
 let constr_of_bool = function
   | true -> constr_of_gref (Lazy.force coq_true)
   | false -> constr_of_gref (Lazy.force coq_false)
@@ -763,7 +784,7 @@ module Theory = struct
     (core, mkLambdas rused prf_core)
 
   let find_unsat_core ep cl tac env sigma =
-    let gl = constr_of_clause_dec ep cl in
+    let gl = constr_of_clause_dec !ep cl in
     let e, pv = Proofview.init !sigma [(env, gl)] in
     try
       if debug then
@@ -789,11 +810,12 @@ module Theory = struct
               str "Literals"
               ++ prlist_with_sep
                    (fun () -> str ";")
-                   (pp_literal env !sigma ep) cl);
+                   (pp_literal env !sigma !ep)
+                   cl);
           Feedback.msg_debug
             Pp.(
               str "Core "
-              ++ Printer.pr_econstr_env env !sigma (constr_of_clause ep core))
+              ++ Printer.pr_econstr_env env !sigma (constr_of_clause !ep core))
         end;
         UnsatCore (core, prf)
       | _ -> failwith "Multiple proof terms"
@@ -868,28 +890,115 @@ module Theory = struct
   let rec search p l =
     match l with [] -> None | e :: l -> if p e then Some e else search p l
 
+  type clause_type =
+    | CC
+    (* Conflict_clause *)
+    | PC
+
+  let search_atom a l =
+    search
+      (fun (x, _) ->
+        match x with PC, [a'] -> compare_atom a a' = 0 | _ -> false)
+      l
+
+  let get_binrel evd t =
+    try
+      let c, a = EConstr.destApp evd t in
+      let len = Array.length a in
+      if len = 2 then Some (c, a.(0), a.(1))
+      else if len < 2 then None
+      else
+        Some
+          (EConstr.mkApp (c, Array.sub a 0 (len - 2)), a.(len - 2), a.(len - 1))
+    with DestKO -> None
+
+  (* Propagation clause *)
+
+  let thy_prop_atom env sigma ep a =
+    match a with
+    | NEG _ -> None (* We do not do theory propagation for negative atoms *)
+    | POS f -> (
+      match get_binrel !sigma (fst (Env.get_constr_of_atom !ep f)) with
+      | None -> None
+      | Some (c, a1, a2) -> (
+        let t1 = Retyping.get_type_of env !sigma a1 in
+        let t2 = Retyping.get_type_of env !sigma a2 in
+        (* Get the instance *)
+        let tc = EConstr.mkApp (Lazy.force coq_NegBinRel, [|t1; t2; c|]) in
+        try
+          let sigma', c' = Typeclasses.resolve_one_typeclass env !sigma tc in
+          let rc = Reductionops.clos_whd_flags CClosure.delta env sigma' c' in
+          match EConstr.kind sigma' rc with
+          | App (c, a) ->
+            sigma := sigma';
+            let cl = a.(3) in
+            let prf = a.(4) in
+            let form, ep' =
+              reify_formula env !ep P.IsProp
+                (Reductionops.beta_applist sigma' (cl, [a1; a2]))
+            in
+            let prf = Reductionops.beta_applist sigma' (prf, [a1; a2]) in
+            ep := ep';
+            let l = clause_of_formula form in
+            Some (l, prf)
+          | _ -> None
+        with Not_found -> None
+        (* This is an error *) ) )
+
+  let thy_prop_atoms cc (env, sigma) ep l =
+    let rec prop l =
+      match l with
+      | [] -> None
+      | a :: l -> (
+        match search_atom a !cc with
+        | Some _ -> prop l
+        | None -> (
+          match thy_prop_atom env sigma ep a with
+          | None -> prop l
+          | Some (l, prf) ->
+            cc := ((PC, [a]), (l, prf)) :: !cc;
+            Some l ) )
+    in
+    prop l
+
+  let hcons_form hm f =
+    let P.HCons.{id; is_dec; elt} = f in
+    match elt with
+    | P.LAT _ -> P.PTrie.set' kInt id (is_dec, elt) hm
+    | _ -> failwith "hcons_form"
+
+  let hcons_literals hm l =
+    List.fold_left (fun m l -> hcons_form m (P.form_of_literal l)) hm l
+
   let thy_prover tac cc (genv, sigma) ep hm l =
     let l = List.sort_uniq compare_atom l in
-    match search (fun (x, _) -> subset_clause x l) !cc with
+    match search (fun ((ck, x), _) -> ck = CC && subset_clause x l) !cc with
     | None -> (
-      (* Really run the prover *)
-      match find_unsat_core ep l tac genv sigma with
-      | NoCore r -> CErrors.user_err (pp_no_core genv !sigma r)
-      | UnsatCore (core, prf) ->
+      match thy_prop_atoms cc (genv, sigma) ep l with
+      | Some l ->
         if debug then
-          Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
-        cc := (List.sort compare_atom core, (core, prf)) :: !cc;
-        Some (hm, core) )
+          Printf.fprintf stdout "Thy ⊢p %a\n" P.output_literal_list l;
+        Some (hcons_literals hm l, l) (* We did not augment hm... *)
+      | None -> (
+        (* Really run the prover *)
+        match find_unsat_core ep l tac genv sigma with
+        | NoCore r -> CErrors.user_err (pp_no_core genv !sigma r)
+        | UnsatCore (core, prf) ->
+          if debug then
+            Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
+          cc := ((CC, List.sort compare_atom core), (core, prf)) :: !cc;
+          Some (hm, core) ) )
     | Some (core, prf) ->
       if debug then
-        Printf.fprintf stdout "Thy[Again] ⊢ %a\n" P.output_literal_list core;
-      Some (hm, core)
+        Printf.fprintf stdout "Thy[Again] ⊢ %a\n" P.output_literal_list
+          (snd core);
+      Some (hm, snd core)
 end
 
 let run_prover tac cc (genv, sigma) ep f =
   let is_dec i =
     try
-      let d = Env.AMap.find (Uint63.hash i) ep.Env.amap in
+      let d = Env.AMap.find (Uint63.hash i) !ep.Env.amap in
       Env.is_dec d
     with Not_found -> false
   in
@@ -899,7 +1008,7 @@ let run_prover tac cc (genv, sigma) ep f =
     P.prover_formula is_dec
       (Theory.thy_prover tac cc (genv, sigma) ep)
       true m
-      (nat_of_int (10 * ep.Env.fresh))
+      (nat_of_int (10 * !ep.Env.fresh))
       f
   in
   if show_theory_time () then
@@ -1020,11 +1129,16 @@ let collect_conflict_clauses tac gl =
   let form = P.hlform (P.BForm.to_hformula has_bool bform) in
   let cc = ref [] in
   let sigma = ref sigma in
+  let env = ref env in
   match run_prover tac cc (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
       List.map
-        (fun (_, (c, prf)) -> (Theory.constr_of_clause_dec env c, prf))
+        (fun ((k, _), (c, prf)) ->
+          ( ( if k = Theory.CC then Theory.constr_of_clause_dec
+            else Theory.constr_of_clause )
+              !env c
+          , prf ))
         !cc
     in
     let hyps =
@@ -1111,7 +1225,7 @@ let change_goal =
         match
           run_prover Tacticals.New.tclIDTAC (ref [])
             (genv, ref sigma)
-            env
+            (ref env)
             (P.hlform (P.BForm.to_hformula has_bool form))
         with
         | P.Progress _ | P.Fail _ -> failwith "Failure with conflict clauses"
