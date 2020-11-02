@@ -19,11 +19,31 @@ let rec output_op_list op o l =
       (output_op_list op) l
 
 and output_formula o = function
+  | LFF   -> output_string o "⊥"
   | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
   | LOP (op, l) -> Printf.fprintf o "(%a)" (output_op_list (op_of_lop op)) l
   | LIMPL (l, r) ->
     Printf.fprintf o "(%a → %a)" (output_op_list IMPL) l output_formula
       r.HCons.elt
+
+
+let rec dbg_output_op_list o l =
+  match l with
+  | [] -> ()
+  | [f] -> dbg_output_formula o f.HCons.elt
+  | f1 :: l ->
+    Printf.fprintf o "%a ; %a" dbg_output_formula  f1.HCons.elt
+      (dbg_output_op_list) l
+
+and dbg_output_formula o = function
+  | LFF  -> output_string o "⊥"
+  | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
+  | LOP (op, l) -> Printf.fprintf o "[%s %a]" (string_lop op) (dbg_output_op_list ) l
+  | LIMPL (l, r) ->
+    Printf.fprintf o "(%s [%a] %a)" (string_op IMPL)(dbg_output_op_list ) l  dbg_output_formula
+      r.HCons.elt
+
+
 
 let rec output_bformula o = function
   | BTT _ -> output_string o "⊤"
@@ -44,6 +64,9 @@ let output_lit o = function
   | NEG p -> Printf.fprintf o "~[%a]" output_formula p.HCons.elt
 
 let output_hform o f = Printf.fprintf o "%a" output_formula f.HCons.elt
+
+let dbg_output_hform o f = Printf.fprintf o "%a" dbg_output_formula f.HCons.elt
+
 
 let output_oform o f =
   match f with None -> output_string o "⊥" | Some f -> output_hform o f

@@ -1580,7 +1580,12 @@ Module PTrie.
             { generalize (get_not_same_lr H3 H1). congruence. }
             { generalize (get_not_same_lr H3 H1). congruence. }
     Qed.
-    
+
+
+
+
+
+
     Fixpoint fold' {A B: Type} (f: B -> key -> A -> B) (m: ptrie A) (acc: B): B :=
       match m with
       | Empty => acc
@@ -1613,6 +1618,77 @@ Module PTrie.
       simpl. replace (elements' m2 nil) with (nil ++ elements' m2 nil); auto.
       rewrite elements_append'. rewrite fold_left_app.
       rewrite IHm1. auto.
+    Qed.
+
+
+    Fixpoint search {A B: Type} (f: key -> A -> option B) (m: ptrie A) : option B :=
+      match m with
+      | Empty => None
+      | Leaf k v => f k v
+      | Branch p m l r => match search f l with
+                          | Some r => Some r
+                          | None   => search f r
+                          end
+      end.
+
+    Lemma search_fold : forall {A B: Type} (f: key -> A -> option B) (m: ptrie A),
+        search f m = fold' (fun acc k v => match acc with
+                                           | None => f k v
+                                           | Some r => Some r end) m None.
+    Proof.
+      intros A B f.
+      set (F := (fun (acc : option B) (k : key) (v : A) => match acc with
+                                                                | Some r => Some r
+                                                                | None => f k v
+                                                           end)).
+      assert (FOUND : forall m x, fold' F m (Some x) = Some x).
+      {
+        induction m ; simpl ; auto.
+        intros. rewrite IHm1. auto.
+      }
+      induction m; simpl.
+      - reflexivity.
+      - auto.
+      - rewrite IHm1.
+        destruct (fold' F m1 None) eqn:E1.
+        rewrite FOUND. reflexivity.
+        auto.
+    Qed.
+
+    Lemma search_some : forall {A B: Type} (f: key -> A -> option B) opt (m: ptrie A) (r:B)
+        (WF: wf opt m),
+        search f m = Some r -> exists k v, get' k m = Some v /\ f k v = Some r.
+    Proof.
+      intros.
+      rewrite search_fold in H.
+      rewrite fold_elements' in H.
+      assert (exists k v, In (k,v) (elements' m nil) /\ f k v = Some r).
+      {
+        revert r H.
+        set (F:= (fun (a : option B) (p : key * A) => match a with
+                                                 | Some r0 => Some r0
+                                                 | None => f (fst p) (snd p)
+                                                      end)).
+        assert (forall r l, fold_left F l (Some r) = Some r).
+        {
+          induction l; simpl; auto.
+        }
+        induction (elements' m nil); simpl.
+        - intros. discriminate.
+        - intros.
+          destruct (f (fst a) (snd a)) eqn:EQ.
+          + rewrite H in H0. inv H0.
+          exists (fst a), (snd a).
+          split ; auto. left. destruct a; reflexivity.
+          +  apply IHl in H0.
+             destruct H0 as (k1&v1&IN & FS).
+             exists k1,v1.
+             split ; tauto.
+      }
+      destruct H0 as (k&v&IN&FS).
+      exists k,v. split ; auto.
+      generalize (in_elements' m _ _ _ _ WF IN).
+      simpl. tauto.
     Qed.
 
     Fixpoint insert' {A: Type} (c: A -> A -> A) (i: key) (x: A) (m: ptrie A): ptrie A :=

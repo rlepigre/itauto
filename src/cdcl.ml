@@ -1127,6 +1127,9 @@ let collect_conflict_clauses tac gl =
     with Not_found -> false
   in
   let form = P.hlform (P.BForm.to_hformula has_bool bform) in
+  if debug then (
+    Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
+    flush stdout );
   let cc = ref [] in
   let sigma = ref sigma in
   let env = ref env in
