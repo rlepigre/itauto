@@ -17,7 +17,7 @@ Ltac gen_conflicts tac :=
   (* Generate conflict clauses *)
   (cdcl_conflicts tac).
 
-Ltac run_solver :=
+Ltac vitauto :=
   (* Generalize all the propositions
      (in reverse order to avoid problems with dependent hypotheses *)
   (*  cdcl_generalize ;*)
@@ -29,6 +29,16 @@ Ltac run_solver :=
   apply (hcons_bprover_correct (KeyInt.nat_of_int n));
   vm_compute; reflexivity).
 
+Ltac nitauto :=
+  cdcl_change;
+  let n := fresh in
+  (intro n ;
+  (* Apply soundness proof and compute *)
+  apply (hcons_bprover_correct (KeyInt.nat_of_int n));
+  native_compute; reflexivity).
+
+
+
 Ltac itauto_use_tauto := constr:(false).
 
 Ltac itauton tac  :=
@@ -36,7 +46,7 @@ Ltac itauton tac  :=
   clear;
   lazymatch itauto_use_tauto with
   | true => tauto
-  | false => run_solver
+  | false => vitauto
   end.
 
 

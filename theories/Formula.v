@@ -9226,6 +9226,55 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     - destruct a ; simpl; tauto.
   Qed.
 
+
+  Lemma eval_select_clause :
+    forall m g u k v
+           (WFU: wf_units_lit u m)
+           (EU : eval_units m u)
+           (EW : Annot.lift eval_watched_clause v)
+           (CHK : check_annot has_watched_clause m v)
+           (EVAL : ohold (Annot.lift eval_or) (select_clause (is_classic g) u k v) -> eval_ohformula g),
+      eval_ohformula g.
+  Proof.
+    intros.
+    revert  EW.
+    unfold select_clause in EVAL.
+    destruct_in_hyp EVAL R; [|simpl in EVAL ; auto].
+    destruct_in_hyp EVAL C; [| simpl in EVAL ; auto].
+    rewrite <- R in EVAL.
+    rewrite andb_true_iff in C.
+    destruct C as (C & _).
+    assert (WFR : ohold (check_annot has_conflict_clause m) (reduce u (Annot.deps v)
+                                                              (watch1 (Annot.elt v)
+         :: watch2 (Annot.elt v) :: unwatched (Annot.elt v)))).
+    { apply wf_reduce; auto.
+      destruct CHK ; auto.
+      destruct CHK; auto.
+    }
+    destruct g ; simpl in C.
+    - intro. apply EVAL.
+      rewrite R. simpl.
+      apply eval_literal_list_classic with (m:=m) ;auto.
+      rewrite R in WFR;auto.
+      simpl in WFR.
+      destruct WFR ; auto.
+      change (ohold (Annot.lift eval_literal_list) (Some t0)).
+      rewrite <- R.
+      eapply eval_reduce; eauto.
+      destruct CHK ;auto.
+    - unfold eval_ohformula in *.
+      intro EVAL'.
+      eapply eval_reduce in EVAL'; eauto.
+      rewrite R in EVAL'.
+      simpl in EVAL'.
+      revert EVAL'.
+      apply eval_literal_list_neg;auto.
+      rewrite R in *. auto.
+      destruct CHK;auto.
+  Qed.
+
+
+
   Lemma eval_find_clause_in_map :
     forall m g u ln
            (WF : wf_map ln)
@@ -9243,41 +9292,8 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     destruct SEARCH as (k&v&G&S).
     change (ohold (Annot.lift eval_or) (Some t0) -> eval_ohformula g) in EVAL.
     rewrite <- S in EVAL. clear S.
-    assert (G' := G).
-    apply EV in G.
-    apply WL in G'.
-    unfold select_clause in EVAL.
-    destruct_in_hyp EVAL R; [| simpl in EVAL ; auto].
-    destruct_in_hyp EVAL C; [| simpl in EVAL ; auto].
-    rewrite <- R in EVAL.
-    rewrite andb_true_iff in C.
-    destruct C as (C & _).
-    assert (WFR : ohold (check_annot has_conflict_clause m) (reduce u (Annot.deps v)
-                                                              (watch1 (Annot.elt v)
-         :: watch2 (Annot.elt v) :: unwatched (Annot.elt v)))).
-    { apply wf_reduce; auto.
-      apply G'.
-      destruct G'; auto.
-    }
-    destruct g ; simpl in C.
-    - apply EVAL.
-      rewrite R. simpl.
-      apply eval_literal_list_classic with (m:=m) ;auto.
-      rewrite R in WFR;auto.
-      simpl in WFR.
-      destruct WFR ; auto.
-      change (ohold (Annot.lift eval_literal_list) (Some t1)).
-      rewrite <- R.
-      eapply eval_reduce; eauto.
-      destruct G' ;auto.
-    - unfold eval_ohformula in *.
-      eapply eval_reduce in G; eauto.
-      rewrite R in G.
-      simpl in G.
-      revert G.
-      apply eval_literal_list_neg;auto.
-      rewrite R in *. auto.
-      destruct G';auto.
+    revert EVAL.
+    eapply eval_select_clause; eauto.
   Qed.
 
   Lemma subset_reduce :
@@ -9386,6 +9402,64 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
 
+  Lemma eval_annot_select_clause :
+    forall m g u k v
+           (WFU: wf_units_lit u m)
+           (EU : eval_annot_units u m)
+           (EW :  eval_annot eval_watched_clause m v)
+           (CHK : check_annot has_watched_clause m v)
+           (EVAL : ohold (eval_annot eval_or m) (select_clause (is_classic g) u k v) -> eval_ohformula g),
+      eval_ohformula g.
+  Proof.
+    intros.
+    revert  EW.
+    unfold select_clause in EVAL.
+    destruct_in_hyp EVAL R; [|simpl in EVAL ; auto].
+    destruct_in_hyp EVAL C; [| simpl in EVAL ; auto].
+    rewrite <- R in EVAL.
+    rewrite andb_true_iff in C.
+    destruct C as (C & _).
+    assert (WFR : ohold (check_annot has_conflict_clause m) (reduce u (Annot.deps v)
+                                                              (watch1 (Annot.elt v)
+         :: watch2 (Annot.elt v) :: unwatched (Annot.elt v)))).
+    { apply wf_reduce; auto.
+      destruct CHK ; auto.
+      destruct CHK; auto.
+    }
+    destruct g ; simpl in C.
+    - intro.
+      apply EVAL.
+      rewrite R. simpl.
+      unfold eval_annot.
+      intro.
+      apply eval_literal_list_classic with (m:=m) ;auto.
+      rewrite R in WFR;auto.
+      simpl in WFR.
+      destruct WFR ; auto.
+      revert H.
+      change (ohold (eval_annot eval_literal_list m) (Some t0)).
+      rewrite <- R.
+      eapply eval_annot_reduce;eauto.
+      destruct CHK ;auto.
+      destruct CHK ; auto.
+    - unfold eval_ohformula in *.
+      intro.
+      eapply eval_annot_reduce in EW; eauto.
+      rewrite R in EW.
+      simpl in EW.
+      revert EW.
+      unfold eval_annot in *.
+      intros.
+      rewrite R in *.
+      simpl in EVAL.
+      specialize (eval_literal_list_neg (Annot.elt t0)).
+      intuition.
+      destruct CHK;auto.
+      destruct CHK;auto.
+  Qed.
+
+
+
   Lemma eval_annot_find_clause_in_map :
     forall m g u ln
            (WF : wf_map ln)
@@ -9403,51 +9477,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     destruct SEARCH as (k&v&G&S).
     change (ohold (eval_annot eval_or m) (Some t0) -> eval_ohformula g) in EVAL.
     rewrite <- S in EVAL. clear S.
-    assert (G' := G).
-    apply EV in G.
-    apply WL in G'.
-    unfold select_clause in EVAL.
-    destruct_in_hyp EVAL R; [| simpl in EVAL ; auto].
-    destruct_in_hyp EVAL C; [| simpl in EVAL ; auto].
-    rewrite <- R in EVAL.
-    rewrite andb_true_iff in C.
-    destruct C as (C & _).
-    assert (WFR : ohold (check_annot has_conflict_clause m) (reduce u (Annot.deps v)
-                                                              (watch1 (Annot.elt v)
-         :: watch2 (Annot.elt v) :: unwatched (Annot.elt v)))).
-    { apply wf_reduce; auto.
-      apply G'.
-      destruct G'; auto.
-    }
-    destruct g ; simpl in C.
-    - apply EVAL.
-      rewrite R. simpl.
-      unfold eval_annot.
-      intro.
-      apply eval_literal_list_classic with (m:=m) ;auto.
-      rewrite R in WFR;auto.
-      simpl in WFR.
-      destruct WFR ; auto.
-      revert H.
-      change (ohold (eval_annot eval_literal_list m) (Some t1)).
-      rewrite <- R.
-      eapply eval_annot_reduce;eauto.
-      destruct G' ;auto.
-      destruct G' ; auto.
-    - unfold eval_ohformula in *.
-      eapply eval_annot_reduce in G; eauto.
-      rewrite R in G.
-      simpl in G.
-      revert G.
-      unfold eval_annot in *.
-      intros.
-      rewrite R in *.
-      simpl in EVAL.
-      specialize (eval_literal_list_neg (Annot.elt t1)).
-      intuition.
-      rewrite R in *. auto.
-      destruct G';auto.
-      destruct G';auto.
+    revert EVAL.
+    apply eval_annot_select_clause; auto.
+    apply EV in G; auto.
+    apply WL in G; auto.
   Qed.
 
   Lemma wf_find_clause_in_map :
