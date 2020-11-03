@@ -1,7 +1,7 @@
 # For debugging purposes, it is desirable to patch the Coq extracted code
 # This is done by calling `make prover` once the Coq code is extracted
 
-.PHONY: clean cleanaux coq test cleantest
+.PHONY: clean cleanaux coq test cleantest benchmark
 
 -include CoqMakefile.conf
 
@@ -69,6 +69,9 @@ ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.
 ALLTESTV = $(addprefix test-suite/,$(TESTSUITE)) $(addprefix issues/,$(ISSUES))
 ALLTESTVO = $(ALLTESTV:.v=.vo)
 
+BENCH = pigeon_hole.v
+ALLBENCHV = $(addprefix benchmark/,$(BENCH))
+ALLBENCHVO = $(ALLBENCHV:.v=.vo)
 
 COQC ?= "$(COQBIN)coqc"
 
@@ -77,5 +80,10 @@ COQC ?= "$(COQBIN)coqc"
 
 test : $(ALLTESTVO)
 
+benchmark : $(ALLBENCHVO)
+
 cleantest :
 	rm -f $(ALLTESTVO)
+
+
+

@@ -1931,7 +1931,8 @@ Module PTrie.
               rewrite negb_false_iff in H3. rewrite negb_false_iff in H4. congruence. }
     Qed.
 
-    Fixpoint combine' {A: Type} (c: A -> A -> A) (t1: ptrie A) { struct t1 } :=
+
+    Fixpoint xcombine' {A: Type} (c: A -> A -> A) (t1: ptrie A) { struct t1 } :=
       fix combine_aux t2 { struct t2 } :=
         match t1, t2 with
         | Empty, _ => t2
@@ -1940,24 +1941,48 @@ Module PTrie.
         | _, Leaf i x => insert' (fun a b => c b a) i x t1
         | Branch p1 m1 l1 r1, Branch p2 m2 l2 r2 =>
           if eqb p1 p2 && eqb m1 m2
-          then Branch p1 m1 (combine' c l1 l2) (combine' c r1 r2)
+          then Branch p1 m1 (xcombine' c l1 l2) (xcombine' c r1 r2)
           else if ltb m1 m2 && match_prefix p2 p1 m1 then
-                 if zerobit p2 m1 then Branch p1 m1 (combine' c l1 t2) r1 else Branch p1 m1 l1 (combine' c r1 t2)
+                 if zerobit p2 m1 then Branch p1 m1 (xcombine' c l1 t2) r1 else Branch p1 m1 l1 (xcombine' c r1 t2)
                else if ltb m2 m1 && match_prefix p1 p2 m2 then
                       if zerobit p1 m2 then Branch p2 m2 (combine_aux l2) r2 else Branch p2 m2 l2 (combine_aux r2)
                     else join p1 t1 p2 t2
         end.
 
-    Lemma combine'_not_empty:
+    Fixpoint combine' {A: Type} (c: A -> A -> A) (t1: ptrie A) { struct t1 } :=
+      fix combine_aux t2 { struct t2 } :=
+        match t1, t2 with
+        | Empty, _ => t2
+        | _, Empty => t1
+        | Leaf i x, _ => insert' c i x t2
+        | _, Leaf i x => insert' (fun a b => c b a) i x t1
+        | Branch p1 m1 l1 r1, Branch p2 m2 l2 r2 =>
+          if lazy_and (eqb p1 p2) (fun _ => eqb m1 m2)
+          then Branch p1 m1 (combine' c l1 l2) (combine' c r1 r2)
+          else if lazy_and (ltb m1 m2) (fun _ => match_prefix p2 p1 m1) then
+                 if zerobit p2 m1 then Branch p1 m1 (combine' c l1 t2) r1 else Branch p1 m1 l1 (combine' c r1 t2)
+               else if lazy_and (ltb m2 m1)  (fun _ => match_prefix p1 p2 m2) then
+                      if zerobit p1 m2 then Branch p2 m2 (combine_aux l2) r2 else Branch p2 m2 l2 (combine_aux r2)
+                    else join p1 t1 p2 t2
+        end.
+
+
+    Lemma  combine_eq : forall {A: Type} (c: A -> A -> A) (t1 t2: ptrie A) ,
+        xcombine' c t1 t2 = combine' c t1 t2.
+    Proof.
+      induction t1; induction t2; reflexivity.
+    Qed.
+
+    Lemma xcombine'_not_empty:
       forall A c (t1 t2: ptrie A),
         t1 <> Empty \/ t2 <> Empty ->
-        combine' c t1 t2 <> Empty.
+        xcombine' c t1 t2 <> Empty.
     Proof.
       induction t1; intros.
       - destruct H; try congruence.
         destruct t2; simpl; congruence.
-      - destruct H; destruct t2; unfold combine'; try congruence; eapply insert'_not_empty.
-      - destruct H; destruct t2; unfold combine'; try congruence.
+      - destruct H; destruct t2; unfold xcombine'; try congruence; eapply insert'_not_empty.
+      - destruct H; destruct t2; unfold xcombine'; try congruence.
         + eapply insert'_not_empty.
         + unfold join; destruct (eqb prefix prefix0 && eqb brbit brbit0); destruct (ltb brbit brbit0 && match_prefix prefix0 prefix brbit); destruct (zerobit prefix0 brbit); destruct (ltb brbit0 brbit && match_prefix prefix prefix0 brbit0); destruct (zerobit prefix brbit0); destruct (zerobit prefix (branching_bit prefix prefix0)); try discriminate .
         + eapply insert'_not_empty.
@@ -2564,9 +2589,9 @@ Module PTrie.
             { assumption. }
     Qed.
 
-    Lemma combine_aux_combine':
+    Lemma combine_aux_xcombine':
       forall {A: Type} c prefix brbit t1_1 t1_2 (t2: ptrie A),
-        combine' c (Branch prefix brbit t1_1 t1_2) t2 = 
+        xcombine' c (Branch prefix brbit t1_1 t1_2) t2 =
         ((fix combine_aux (t2 : ptrie A) : ptrie A :=
             match t2 with
             | Empty => Branch prefix brbit t1_1 t1_2
@@ -2579,29 +2604,29 @@ Module PTrie.
               else join i (Leaf i x) prefix (Branch prefix brbit t1_1 t1_2)
             | Branch p2 m2 l2 r2 =>
               if eqb prefix p2 && eqb brbit m2
-              then Branch prefix brbit (combine' c t1_1 l2) (combine' c t1_2 r2)
+              then Branch prefix brbit (xcombine' c t1_1 l2) (xcombine' c t1_2 r2)
               else
                 if ltb brbit m2 && match_prefix p2 prefix brbit
                 then
                   if zerobit p2 brbit
-                  then Branch prefix brbit (combine' c t1_1 t2) t1_2
-                  else Branch prefix brbit t1_1 (combine' c t1_2 t2)
+                  then Branch prefix brbit (xcombine' c t1_1 t2) t1_2
+                  else Branch prefix brbit t1_1 (xcombine' c t1_2 t2)
                 else
                   if ltb m2 brbit && match_prefix prefix p2 m2
                   then if zerobit prefix m2 then Branch p2 m2 (combine_aux l2) r2 else Branch p2 m2 l2 (combine_aux r2)
                   else join prefix (Branch prefix brbit t1_1 t1_2) p2 t2
             end) t2).
     Proof.
-      intros; unfold combine'.
-      fold (@combine' A).
+      intros; unfold xcombine'.
+      fold (@xcombine' A).
       unfold insert'; fold (@insert' A). reflexivity.
     Qed.
 
-    Lemma wf_combine':
+    Lemma wf_xcombine':
       forall (A: Type) c (t1 t2: ptrie A) opt,
         wf opt t1 ->
         wf opt t2 ->
-        wf opt (combine' c t1 t2).
+        wf opt (xcombine' c t1 t2).
     Proof.
       induction t1; induction t2; intros.
       - simpl; econstructor.
@@ -2611,24 +2636,25 @@ Module PTrie.
       - simpl. destruct_eq k k0.
         + inv H; econstructor; eauto.
         + eapply wf_join_Leaf; eauto.
-      - unfold combine'. eapply wf_insert'; eauto.
+      - unfold xcombine'. eapply wf_insert'; eauto.
       - simpl; auto.
-      - unfold combine'. eapply wf_insert'; eauto.
-      - simpl. erewrite <- ! (combine_aux_combine' c prefix brbit t1_1 t1_2 t2_2).
-        erewrite <- ! (combine_aux_combine' c prefix brbit t1_1 t1_2 t2_1).
-        Local Opaque combine'. destruct_eq brbit brbit0.
+      - unfold xcombine'. eapply wf_insert'; eauto.
+      - simpl.
+        erewrite <- ! (combine_aux_xcombine' c prefix brbit t1_1 t1_2 t2_2).
+        erewrite <- ! (combine_aux_xcombine' c prefix brbit t1_1 t1_2 t2_1).
+        Local Opaque xcombine'. destruct_eq brbit brbit0.
         + destruct_eq prefix prefix0.
           * simpl; subst. inv H; inv H0; econstructor; eauto.
-            { eapply combine'_not_empty. left; auto. }
-            { eapply combine'_not_empty. left; auto. }
+            { eapply xcombine'_not_empty. left; auto. }
+            { eapply xcombine'_not_empty. left; auto. }
             { eapply IHt1_1; eauto. assert (brbit'0 = brbit').
               - generalize (proj2 (Hbrbit'0 _) eq_refl). intros; symmetry; eapply Hbrbit'; auto.
               - subst; auto. }
             { eapply IHt1_2; eauto. assert (brbit'0 = brbit').
               - generalize (proj2 (Hbrbit'0 _) eq_refl). intros; symmetry; eapply Hbrbit'; auto.
               - subst; auto. }
-            { eapply combine'_not_empty. left; auto. }
-            { eapply combine'_not_empty. left; auto. }
+            { eapply xcombine'_not_empty. left; auto. }
+            { eapply xcombine'_not_empty. left; auto. }
             { eapply IHt1_1; eauto. assert (brbit'0 = brbit').
               - generalize (proj2 (Hbrbit'0 _) eq_refl). intros; symmetry; eapply Hbrbit'; auto.
               - subst; auto. }
@@ -2642,7 +2668,7 @@ Module PTrie.
           * case_eq (match_prefix prefix0 prefix brbit); intros.
             { rewrite andb_comm. simpl. case_eq (zerobit prefix0 brbit); intros.
               - inv H; inv H0; econstructor; trivial.
-                + eapply combine'_not_empty; eauto; right; discriminate.
+                + eapply xcombine'_not_empty; eauto; right; discriminate.
                 + exact Hincr.
                 + assumption.
                 + assumption.
@@ -2651,7 +2677,7 @@ Module PTrie.
                   * generalize (proj1 (match_prefix_spec _ _ _ _ Hbrbit' Hmask') H2).
                     intros; symmetry; eapply H; eauto.
                 + assumption.
-                + eapply combine'_not_empty; eauto; right; discriminate.
+                + eapply xcombine'_not_empty; eauto; right; discriminate.
                 + eassumption.
                 + assumption.
                 + eapply IHt1_1; eauto. econstructor; try eassumption.
@@ -2663,7 +2689,7 @@ Module PTrie.
                     intros; symmetry; eapply H; eauto.
                 + assumption.
               - inv H; inv H0; econstructor; trivial.
-                + eapply combine'_not_empty; eauto; right; discriminate.
+                + eapply xcombine'_not_empty; eauto; right; discriminate.
                 + exact Hincr.
                 + assumption.
                 + assumption.
@@ -2672,7 +2698,7 @@ Module PTrie.
                   * eapply ltb_spec; eauto.
                   * generalize (proj1 (match_prefix_spec _ _ _ _ Hbrbit' Hmask') H2).
                     intros; symmetry; eapply H; eauto.
-                + eapply combine'_not_empty; eauto; right; discriminate.
+                + eapply xcombine'_not_empty; eauto; right; discriminate.
                 + eassumption.
                 + assumption.
                 + assumption.
@@ -2710,13 +2736,13 @@ Module PTrie.
             { case_eq (match_prefix prefix prefix0 brbit0); intros.
               - simpl. case_eq (zerobit prefix brbit0); intros.
                 + inv H; inv H0; econstructor; eauto.
-                  * eapply combine'_not_empty; eauto; left; discriminate.
+                  * eapply xcombine'_not_empty; eauto; left; discriminate.
                   * eapply IHt2_1; eauto.
                     econstructor; try eassumption.
                     { eapply ltb_spec; eauto. }
                     { generalize (proj1 (match_prefix_spec _ _ _ _ Hbrbit'0 Hmask'0) H3).
                       intros; symmetry; eapply H; eauto. }
-                  * eapply combine'_not_empty; eauto; left; discriminate.
+                  * eapply xcombine'_not_empty; eauto; left; discriminate.
                   * eapply IHt2_1; eauto.
                     econstructor; try eassumption.
                     { inv H7; auto; congruence. }
@@ -2726,13 +2752,13 @@ Module PTrie.
                       generalize (proj1 (match_prefix_spec _ _ _ _ Hbrbit'0 Hmask'0) H3).
                       intros; symmetry; eapply H; eauto. }
                 + inv H; inv H0; econstructor; eauto.
-                  * eapply combine'_not_empty; eauto; left; discriminate.
+                  * eapply xcombine'_not_empty; eauto; left; discriminate.
                   * eapply IHt2_2; eauto.
                     econstructor; try eassumption.
                     { eapply ltb_spec; eauto. }
                     { generalize (proj1 (match_prefix_spec _ _ _ _ Hbrbit'0 Hmask'0) H3).
                       intros; symmetry; eapply H; eauto. }
-                  * eapply combine'_not_empty; eauto; left; discriminate.
+                  * eapply xcombine'_not_empty; eauto; left; discriminate.
                   * eapply IHt2_2; eauto.
                     econstructor; try eassumption.
                     { inv H7; auto; congruence. }
@@ -2771,14 +2797,14 @@ Module PTrie.
                     intros; congruence. }
     Qed.
 
-    Local Transparent combine'.
+    Local Transparent xcombine'.
     Local Opaque insert'.
 
-    Lemma gcombine':
+    Lemma gxcombine':
       forall (A: Type) (c: A -> A -> A) (t1 t2: ptrie A) opt i,
         wf opt t1 ->
         wf opt t2 ->
-        get' i (combine' c t1 t2) = match get' i t1, get' i t2 with
+        get' i (xcombine' c t1 t2) = match get' i t1, get' i t2 with
                                     | None, None => None
                                     | None, Some x2 => Some x2
                                     | Some x1, None => Some x1
@@ -2805,9 +2831,9 @@ Module PTrie.
         + erewrite gio'; eauto. simpl.
           destruct (if zerobit i brbit then get' i t1_1 else get' i t1_2); auto.
       - rewrite andb_comm. Local Transparent insert'. simpl.
-        erewrite <- ! (combine_aux_combine' c prefix brbit t1_1 t1_2 t2_2).
-        erewrite <- ! (combine_aux_combine' c prefix brbit t1_1 t1_2 t2_1).
-        Local Opaque combine'.
+        erewrite <- ! (combine_aux_xcombine' c prefix brbit t1_1 t1_2 t2_2).
+        erewrite <- ! (combine_aux_xcombine' c prefix brbit t1_1 t1_2 t2_1).
+        Local Opaque xcombine'.
         destruct_eq brbit brbit0.
         + destruct_eq prefix prefix0.
           * simpl. subst. inv H; inv H0.

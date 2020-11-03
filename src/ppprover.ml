@@ -161,6 +161,7 @@ let output_plit o hm p =
 (**  *)
 
 (** *)
+
 (*
 let cnf pol is_classic cp cm ar acc f hf =
   let x, cl = cnf pol is_classic cp cm ar acc f hf in
@@ -183,7 +184,7 @@ let cnf pol is_classic cp cm ar acc f hf =
 (** *)
 (*
 let cnf_hyps b hs st =
-  Printf.printf "cnf_hyps: %a\n" output_literal_list hs;
+  Printf.printf "cnf_hyps: %a\n" (output_list output_lit) hs;
   cnf_hyps b hs st
  *)
 (** *)

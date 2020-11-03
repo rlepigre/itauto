@@ -1276,6 +1276,25 @@ Ltac InvBooleans :=
   | _ => idtac
   end.
 
+Definition lazy_and (b:bool) (f: unit -> bool) :=
+  match b with
+  | false => false
+  | true  => f tt
+  end.
+
+Definition lazy_or (b:bool) (f: unit -> bool) :=
+  match b with
+  | true => true
+  | false => f tt
+  end.
+
+Lemma lazy_and_andb : forall b f, lazy_and b f = b && f tt.
+Proof.  destruct b ; reflexivity.  Qed.
+
+Lemma lazy_or_orb : forall b f, lazy_or b f = b || f tt.
+Proof.  destruct b ; reflexivity.  Qed.
+
+
 Section DECIDABLE_EQUALITY.
 
 Variable A: Type.

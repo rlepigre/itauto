@@ -1,6 +1,6 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
-Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses.
-Require Import Bool Setoid ZifyBool  ZArith Int63 Lia List.
+Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses Cdcl.Coqlib.
+Require Import  Bool Setoid ZifyBool  ZArith Int63 Lia List.
 Import ZifyClasses.
 
 Ltac inv H := inversion H ; try subst ; clear H.
@@ -265,6 +265,10 @@ Inductive op :=
                 | LOP o' l' => if lop_eqb o o'
                                then lform_app o (rev_append l' acc) l
                                else lform_app o (e::acc) l
+                | LFF   => match o with
+                           | LOR => lform_app o acc l
+                           | LAND => e::nil
+                           end
                 | _ => lform_app o (e::acc) l
                 end
     end.
@@ -492,7 +496,7 @@ Inductive op :=
     Proof.
       unfold subset,union,get, wf_map.
       intros.
-      rewrite IntMap.gcombine' with (opt:=None); auto.
+      rewrite IntMap.gxcombine' with (opt:=None); auto.
       change (option bool) with OBool.t.
       destruct (IntMap.get' k s) ; simpl.
       destruct (IntMap.get' k s').
@@ -506,7 +510,7 @@ Inductive op :=
       unfold subset,union, wf_map.
       unfold get.
       intros.
-      rewrite IntMap.gcombine' with (opt:=None); auto.
+      rewrite IntMap.gxcombine' with (opt:=None); auto.
       change (option bool) with OBool.t.
       destruct (IntMap.get' k s') ; simpl.
       destruct (IntMap.get' k s); simpl.
@@ -524,7 +528,7 @@ Inductive op :=
     Proof.
       unfold mem, union.
       intros. repeat rewrite IntMap.gmem'.
-      rewrite IntMap.gcombine' with (opt:=None) ; auto.
+      rewrite IntMap.gxcombine' with (opt:=None) ; auto.
       change (option bool) with OBool.t.
       destruct (IntMap.get' k s).
       destruct (IntMap.get' k s') ; auto.
@@ -544,7 +548,7 @@ Inductive op :=
     Proof.
       intros.
       unfold get, union, OBool.lift_has_bool.
-      rewrite IntMap.gcombine' with (opt:=None) ; auto.
+      rewrite IntMap.gxcombine' with (opt:=None) ; auto.
       change (option bool) with OBool.t.
       destruct (IntMap.get' i d1).
       - simpl.
@@ -562,7 +566,7 @@ Inductive op :=
              wf (union s s').
     Proof.
       unfold union.
-      intros. apply IntMap.wf_combine'; auto.
+      intros. apply IntMap.wf_xcombine'; auto.
     Qed.
 
 
@@ -1328,13 +1332,17 @@ Inductive op :=
       destruct (elt (nform lform a)) eqn:EQ.
       + intros.
         rewrite! eval_op_list_cons.
-        rewrite <- IHl.
-        rewrite !eval_op_list_app.
-        rewrite eval_op_list_cons.
-        rewrite <- (H a).
-        rewrite EQ.
-        destruct o ; simpl; tauto.
-      + intros.
+        destruct o.
+        * simpl. rewrite <- H.
+          rewrite EQ. simpl.
+          tauto.
+        *
+          rewrite IHl.
+          simpl.  rewrite <- H.
+          rewrite EQ. simpl.
+          tauto.
+      +
+        intros.
         rewrite! eval_op_list_cons.
         rewrite <- IHl.
         rewrite !eval_op_list_app.
@@ -1748,7 +1756,7 @@ Inductive op :=
 
   Definition cnf_minus_or (l:list HFormula)  (f:HFormula) (rst: list watched_clause) :=
     match l with
-    | nil |  _::nil => rst
+    | nil  => rst
     | f1::l'  =>
       {|
         watch1 := NEG f ;
@@ -1756,8 +1764,14 @@ Inductive op :=
         unwatched := rev_map POS l' |} :: rst
     end.
 
+  Definition unit_or (r: HFormula) :=
+    match r.(elt) with
+    | LFF => nil
+    |  _  => (POS r:: nil)
+    end.
+
   Definition cnf_minus_impl (l:list HFormula) (r: HFormula) (f:HFormula) (rst: list watched_clause) :=
-    match watch_clause_of_list (NEG f :: xrev_map NEG (POS r::nil) l)  with
+    match watch_clause_of_list (NEG f :: xrev_map NEG (unit_or r) l)  with
     | None => rst
     | Some wc => wc ::rst
     end.
@@ -1990,7 +2004,6 @@ Inductive op :=
       auto.
     - unfold cnf_minus_or.
       destruct l; auto.
-      destruct l; auto.
       constructor ; auto.
       unfold eval_watched_clause.
       simpl. rewrite EQ.
@@ -2130,6 +2143,13 @@ Inductive op :=
       +  tauto.
   Qed.
 
+  Lemma unit_or_correct : forall f, eval_hformula f <-> eval_literal_list (unit_or f).
+  Proof.
+    unfold unit_or. intros.
+    destruct (elt f) eqn:F; simpl; unfold eval_hformula; try tauto.
+    rewrite F. simpl. tauto.
+  Qed.
+
   Lemma cnf_minus_impl_correct :
     forall l r hf g acc
            (EQ : elt hf = LIMPL l r)
@@ -2142,13 +2162,13 @@ Inductive op :=
     intro ACC'; clear ACC.
     apply H; clear H.
     unfold cnf_minus_impl.
-    destruct (watch_clause_of_list (NEG hf :: xrev_map NEG (POS r :: nil) l))
+    destruct (watch_clause_of_list (NEG hf :: xrev_map NEG (unit_or r) l))
              eqn:WC;auto.
     constructor ; auto.
     apply eval_watched_clause_of_list in WC ; auto.
     rewrite xmap_rev.
-    change (NEG hf :: List.map NEG (rev l) ++ (POS r ::nil)) with
-        (List.map NEG (hf ::rev l) ++  POS r::nil).
+    change (NEG hf :: List.map NEG (rev l) ++ (unit_or r)) with
+        (List.map NEG (hf ::rev l) ++  (unit_or r)).
     rewrite eval_literal_list_NEG_app.
     simpl. unfold eval_hformula at 1.
     rewrite EQ. simpl.
@@ -2156,10 +2176,10 @@ Inductive op :=
     rewrite eval_and_list_rev in H.
     rewrite <- eval_impl_list_eq in H.
     rewrite eval_and_list_eq in H.
+    rewrite <- unit_or_correct.
+    unfold eval_hformula.
     tauto.
   Qed.
-
-
 
   Lemma cnf_correct_list :
     forall l
@@ -6463,25 +6483,19 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       apply HF1;auto.
     - simpl. unfold cnf_minus_or.
       destruct l; simpl; auto.
-      destruct l; simpl ; auto.
       rewrite Forall_rew.
       split ; auto.
       unfold has_watched_clause.
       simpl.
-      inv HF1. inv H2.
+      inv HF1.
       rewrite Forall_rew;split; auto.
       rewrite Forall_rew;split; auto.
       unfold rev_map.
       rewrite xmap_rev.
-      simpl.
-      rewrite map_app.
-      rewrite! Forall_app.
+      rewrite <- app_nil_end.
       rewrite map_rev.
       rewrite Forall_rev_iff.
-      repeat split;auto.
       apply Forall_has_literal_POS;auto.
-      simpl.
-      rewrite! Forall_rew; split; auto.
   Qed.
 
   Lemma wf_cnf_plus_impl :
@@ -6514,6 +6528,16 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     - repeat constructor ; auto.
   Qed.
 
+  Lemma wf_unit_or : forall m r
+      (HFr : has_form m r),
+      Forall (has_literal m) (unit_or r).
+  Proof.
+    unfold unit_or.
+    intros.
+    destruct (elt r); constructor ; auto.
+  Qed.
+
+
   Lemma wf_cnf_minus_impl :
     forall m l r hf acc
            (HF1: Forall (has_form m) l)
@@ -6537,6 +6561,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     intros. rewrite in_map_iff in H.
     destruct H. destruct H ; subst.
     apply HF1;auto.
+    apply wf_unit_or; auto.
   Qed.
 
 
@@ -7352,8 +7377,15 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     | NEG f => f.(is_dec)
     end.
 
-  Definition check_classic (l : list literal) :=
-    List.forallb is_classic_lit l.
+  Fixpoint check_classic (l : list literal) :=
+    match l with
+    | nil => true
+    | e::l => match is_classic_lit e with
+              | true => check_classic l
+              | false => false
+              end
+    end.
+
 
   Definition is_silly_split (l : list literal) := false.
 (*    match l with
@@ -7386,35 +7418,78 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     end.
  *)
 
+
+  Section SEARCH.
+
+    Context  {A: Type}.
+    Variable search : forall (k:int) (cl: Annot.t watched_clause), option A.
+
+    Definition  search_in_map  (m : IntMap.ptrie (Annot.t watched_clause))  :=
+      IntMap.search search  m.
+
+    Definition search_in_pair_map (pos : bool) (k:int) (e: IntMap.ptrie  (Annot.t watched_clause) * IntMap.ptrie (Annot.t watched_clause)) :=
+      if pos then search_in_map (snd e)
+      else search_in_map (fst e).
+
+    Definition search_in_watch_map (only_pos:bool) (cl:watch_map) :=
+      IntMap.search (search_in_pair_map only_pos) cl.
+
+
+    Lemma search_in_watch_map_correct :
+      forall P b m r
+             (WF  : wf_map m)
+             (WFE : wf_watch_map m)
+             (ALL: ForallWatchedClause P m)
+             (S  : search_in_watch_map b m = Some r),
+             exists k c, P c /\ search k c = Some r.
+    Proof.
+      unfold search_in_watch_map.
+      intros.
+      apply IntMap.search_some with (opt:= None) in S; auto.
+      destruct S as (k&v&G&S).
+      assert (G':= G).
+      apply ALL in G.  destruct G as (GF & GS).
+      apply WFE in G'. destruct G' as (WFF & WFS).
+      unfold search_in_pair_map in S.
+      destruct b.
+      - unfold search_in_map in S.
+        apply IntMap.search_some with (opt:= None) in S; auto.
+        destruct S as (k' & v' & G2 & S2).
+        exists k', v'; split; auto.
+        apply GS in G2 ; auto.
+      - unfold search_in_map in S.
+        apply IntMap.search_some with (opt:= None) in S; auto.
+        destruct S as (k' & v' & G2 & S2).
+        exists k', v'; split; auto.
+        apply GF in G2 ; auto.
+    Qed.
+
+  End SEARCH.
+
+  Definition is_empty {A: Type} (m: IntMap.ptrie (key:=int) A) :=
+    match m with
+    | IntMap.Leaf _ _ _ => true
+    | _      => false
+    end.
+
   Definition select_clause (is_bot: bool) (lit: IntMap.ptrie (Annot.t bool)) (k:int) (cl : Annot.t watched_clause) :     option (Annot.t (list literal)) :=
     let cl' := Annot.elt cl in
     let res := reduce lit (Annot.deps cl) (watch1 cl' :: watch2 cl' :: unwatched cl') in
     match res with
     | None => None
-    | Some l => if (is_bot || Annot.lift check_classic l) && negb (Annot.lift is_silly_split l) then Some l else None
+    | Some l => if (lazy_or is_bot (fun x => Annot.lift check_classic l)) && negb (Annot.lift is_silly_split l) then Some l else None
     end.
 
-    Definition find_clause_in_map  (is_bot: bool) (lit: IntMap.ptrie (Annot.t bool)) (m : IntMap.ptrie (Annot.t watched_clause))  :=
-    IntMap.search (select_clause is_bot lit)  m.
-
-    Definition is_empty {A: Type} (m: IntMap.ptrie (key:=int) A) :=
-      match m with
-      | IntMap.Leaf _ _ _ => true
-      | _      => false
-      end.
-
-
-    Definition find_split_acc (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool)
-               (k:int) (e: IntMap.ptrie  (Annot.t watched_clause) * IntMap.ptrie (Annot.t watched_clause))
-    :=
-      match find_clause_in_map is_bot lit (snd e) with
-      | None => find_clause_in_map is_bot lit (fst e)
-      | Some r => Some r
-      end.
+  Definition select_in_watch_map (pos: bool) (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:watch_map) : option (Annot.t (list literal)) :=
+    search_in_watch_map (select_clause is_bot lit) pos cl.
 
 
   Definition find_split (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:watch_map) : option (Annot.t (list literal)) :=
-    IntMap.search (find_split_acc lit is_bot) cl.
+    match select_in_watch_map true lit is_bot cl with
+    | None => select_in_watch_map false lit is_bot cl
+    | Some r => Some r
+    end.
+
 
   Definition progress_arrow (l:literal) (st:state): bool :=
     match  find_lit (POS (form_of_literal l)) (units st) with
@@ -7854,11 +7929,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
       | false => false
       end.
 
-    Lemma lazy_and_andb : forall b f,
-        lazy_and b f = b && f tt.
-    Proof.
-      destruct b ; reflexivity.
-    Qed.
+    Lemma lazy_and_andb : forall b f, lazy_and b f = b && f tt.  Proof.  destruct b ; reflexivity.  Qed.
 
     Fixpoint forall_dis (st: state) (g : option HFormula)   (cl: list literal) : result_dis :=
       match cl with
@@ -9209,10 +9280,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Proof.
     induction l; simpl ; auto.
     intros.
-    rewrite andb_true_iff in C.
+    destruct_in_hyp C ISC; try congruence.
     inv HF.
-    destruct C. destruct a; simpl in *.
-    - intuition.
+    destruct a; simpl in *.
+    -  intuition.
     - apply eval_formula_dec in H1 ; auto.
       tauto.
   Qed.
@@ -9274,7 +9345,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
 
-
+(*
   Lemma eval_find_clause_in_map :
     forall m g u ln
            (WF : wf_map ln)
@@ -9295,6 +9366,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     revert EVAL.
     eapply eval_select_clause; eauto.
   Qed.
+ *)
 
   Lemma subset_reduce :
     forall u m (WFU: wf_units_lit u m) cl an
@@ -9459,7 +9531,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Qed.
 
 
-
+(*
   Lemma eval_annot_find_clause_in_map :
     forall m g u ln
            (WF : wf_map ln)
@@ -9506,6 +9578,7 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     rewrite <- R.
     apply wf_reduce; auto.
   Qed.
+ *)
 
   Lemma check_annot_reduce :
     forall m u l an
@@ -9532,7 +9605,25 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
         constructor ;auto.
   Qed.
 
+  Lemma check_annot_select_clause :
+    forall  b m u k v
+            (WU : wf_units_lit u m)
+            (CHK : check_annot has_watched_clause m v),
+      ohold (check_annot has_conflict_clause m) (select_clause b u k v).
+  Proof.
+    unfold select_clause.
+    intros.
+    destruct CHK.
+    destruct_in_goal R.
+    rewrite lazy_or_orb.
+    destruct_in_goal B.
+    rewrite <- R.
+    apply check_annot_reduce; auto.
+    simpl. auto.
+    simpl. auto.
+  Qed.
 
+  (*
   Lemma check_annot_find_clause_in_map :
     forall m b u ln
            (WF : wf_map ln)
@@ -9556,7 +9647,48 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     rewrite <- R.
     apply wf_reduce; auto.
   Qed.
+*)
 
+  Lemma ForallWatchedClauseAND : forall P Q cls,
+      ForallWatchedClause P cls -> ForallWatchedClause Q cls ->
+      ForallWatchedClause (fun cl : Annot.t watched_clause => P cl /\ Q cl) cls.
+  Proof.
+    intros.
+    unfold ForallWatchedClause in *.
+    specialize (IntMapForallAnd _ _ _  H H0).
+    apply IntMapForall_Forall.
+    intros.
+    destruct H1. destruct H1. destruct H2.
+    split.
+    apply IntMapForallAnd ; auto.
+    apply IntMapForallAnd ; auto.
+  Qed.
+
+
+  Lemma eval_select_in_watch_map :
+    forall pos m g u cls
+           (WFM: wf_map cls)
+           (WFW: wf_watch_map cls)
+           (WFU: wf_units_lit u m)
+           (EU : eval_units m u)
+           (WF : has_clauses m cls)
+           (EV : eval_clauses  cls)
+           (EVAL : ohold (Annot.lift eval_or) (select_in_watch_map pos u (is_classic g) cls) -> eval_ohformula g),
+      eval_ohformula g.
+  Proof.
+    intros.
+    unfold select_in_watch_map in EVAL.
+    revert EVAL.
+    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply search_in_watch_map_correct
+      with (P :=
+              fun cl => Annot.lift eval_watched_clause cl /\ check_annot has_watched_clause m cl) in EQ; auto.
+    destruct EQ as (k&v&P&S).
+    rewrite <- S.
+    destruct P as (P1 & P2).
+    eapply eval_select_clause; eauto.
+    apply ForallWatchedClauseAND; auto.
+  Qed.
 
   Lemma eval_find_split :
     forall m g u cls
@@ -9572,24 +9704,36 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     intros.
     unfold find_split in EVAL.
     revert EVAL.
-    destruct ((IntMap.search (find_split_acc u (is_classic g)) cls)) eqn:EQ.
-    eapply IntMap.search_some in EQ; eauto.
-    destruct EQ as (k&v&G&S).
-    rewrite <- S.
-    unfold find_split_acc.
-    destruct (find_clause_in_map (is_classic g) u (snd v)) eqn:EQ.
-    - rewrite <- EQ.
-      eapply eval_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-      apply EV in G. destruct G ; auto.
-    - eapply eval_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-      apply EV in G. destruct G ; auto.
-    - simpl. tauto.
+    destruct_in_goal SEL.
+    rewrite <- SEL.
+    eapply eval_select_in_watch_map; eauto.
+    eapply eval_select_in_watch_map; eauto.
   Qed.
 
+  Lemma eval_annot_select_in_watch_map :
+    forall pos m g u cls
+           (WFM: wf_map cls)
+           (WFW: wf_watch_map cls)
+           (WFU: wf_units_lit u m)
+           (EU : eval_annot_units u m)
+           (WF : has_clauses m cls)
+           (EV : eval_annot_clauses m cls)
+           (EVAL : ohold (eval_annot  eval_or m) (select_in_watch_map pos u (is_classic g) cls) -> eval_ohformula g),
+      eval_ohformula g.
+  Proof.
+    intros.
+    unfold select_in_watch_map in EVAL.
+    revert EVAL.
+    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply search_in_watch_map_correct
+      with (P :=
+              fun cl =>   eval_annot eval_watched_clause m cl /\ check_annot has_watched_clause m cl) in EQ; auto.
+    destruct EQ as (k&v&P&S).
+    rewrite <- S.
+    destruct P as (P1 & P2).
+    eapply eval_annot_select_clause; eauto.
+    apply ForallWatchedClauseAND; auto.
+  Qed.
 
   Lemma eval_annot_find_split :
     forall m g u cls
@@ -9605,22 +9749,29 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
     intros.
     unfold find_split in EVAL.
     revert EVAL.
-    destruct ((IntMap.search (find_split_acc u (is_classic g)) cls)) eqn:EQ.
-    eapply IntMap.search_some in EQ; eauto.
-    destruct EQ as (k&v&G&S).
+    destruct_in_goal SEL.
+    rewrite <- SEL.
+    apply eval_annot_select_in_watch_map; auto.
+    apply eval_annot_select_in_watch_map; auto.
+  Qed.
+
+  Lemma wf_select_in_watch_map :
+    forall pos m g u cls
+           (WFM: wf_map cls)
+           (WFU: wf_units_lit u m)
+           (WFW: wf_watch_map cls)
+           (WF : has_clauses m cls),
+      ohold (check_annot has_conflict_clause  m) (select_in_watch_map pos u (is_classic g) cls) .
+  Proof.
+    intros.
+    unfold select_in_watch_map.
+    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply search_in_watch_map_correct
+      with (P :=
+              fun cl => check_annot has_watched_clause m cl) in EQ; auto.
+    destruct EQ as (k&v&P&S).
     rewrite <- S.
-    unfold find_split_acc.
-    destruct (find_clause_in_map (is_classic g) u (snd v)) eqn:EQ.
-    - rewrite <- EQ.
-      eapply eval_annot_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-      apply EV in G. destruct G ; auto.
-    - eapply eval_annot_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-      apply EV in G. destruct G ; auto.
-    - simpl. tauto.
+    apply check_annot_select_clause; auto.
   Qed.
 
 
@@ -9634,20 +9785,10 @@ Lemma cnf_of_literal_correct : forall g cp cm ar l,
   Proof.
     intros.
     unfold find_split.
-    destruct ((IntMap.search (find_split_acc u (is_classic g)) cls)) eqn:EQ.
-    eapply IntMap.search_some in EQ; eauto.
-    destruct EQ as (k&v&G&S).
-    rewrite <- S.
-    unfold find_split_acc.
-    destruct (find_clause_in_map (is_classic g) u (snd v)) eqn:EQ.
-    - rewrite <- EQ.
-      eapply check_annot_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-    - eapply check_annot_find_clause_in_map; eauto.
-      apply WFW in G. tauto.
-      apply WF in G. destruct G ; auto.
-    - simpl. tauto.
+    destruct_in_goal SEL.
+    rewrite <- SEL.
+    apply wf_select_in_watch_map ; auto.
+    apply wf_select_in_watch_map ; auto.
   Qed.
 
 
