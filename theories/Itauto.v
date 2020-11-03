@@ -17,10 +17,8 @@ Ltac gen_conflicts tac :=
   (* Generate conflict clauses *)
   (cdcl_conflicts tac).
 
-Ltac vitauto :=
-  (* Generalize all the propositions
-     (in reverse order to avoid problems with dependent hypotheses *)
-  (*  cdcl_generalize ;*)
+(** [vitautog] reifies the CONCLUSION of the goal and computes using vm_compute *)
+Ltac vitautog :=
   (* Reify the conclusion *)
   cdcl_change;
   let n := fresh in
@@ -29,7 +27,8 @@ Ltac vitauto :=
   apply (hcons_bprover_correct (KeyInt.nat_of_int n));
   vm_compute; reflexivity).
 
-Ltac nitauto :=
+(** [nitautog] same as [vitauto] but uses native_compute *)
+Ltac nitautog :=
   cdcl_change;
   let n := fresh in
   (intro n ;
@@ -37,25 +36,25 @@ Ltac nitauto :=
   apply (hcons_bprover_correct (KeyInt.nat_of_int n));
   native_compute; reflexivity).
 
-
+(** [vitauto] is a standalone version reifying all the hypotheses *)
+Ltac vitauto :=
+  cdcl_generalize ;
+  vitautog.
 
 Ltac itauto_use_tauto := constr:(false).
 
-Ltac itauton tac  :=
+Ltac itauto tac  :=
   gen_conflicts tac ;
   clear;
   lazymatch itauto_use_tauto with
   | true => tauto
-  | false => vitauto
+  | false => vitautog
   end.
-
-
-Ltac itauto tac := itauton tac.
 
 Ltac smt :=
   let tac := no congruence lia in
   (* zify of div mod generate propositional formulae *)
-  Zify.zify ; itauton tac.
+  Zify.zify ; itauto tac.
 
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)

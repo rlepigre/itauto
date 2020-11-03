@@ -48,12 +48,17 @@ Fixpoint forall_2 (P : nat -> nat -> option Prop) (i:nat) (j:nat) :=
                      | S i' => forall_2 P i' j
                      end.
 
-Definition at_most_one_pigeon_per_hole (b:nat) (k:nat) :=
-  Some (forall_2 (fun i j => if Nat.ltb i j then  Some (Pigeon_In_Hole i k -> Pigeon_In_Hole j k -> False) else None) b b).
+Definition at_most_one_pigeon_per_hole (dis:bool) (b:nat) (k:nat) :=
+  let F i j := if dis then (not (Pigeon_In_Hole i k) \/ not (Pigeon_In_Hole j k))
+               else (Pigeon_In_Hole i k -> Pigeon_In_Hole j k -> False)
+                 in
+  Some (forall_2 (fun i j => if Nat.ltb i j then  Some (F i j) else None) b b).
 
-Definition at_most_one_pigeon (b:nat) (n:nat)  :=
-  big_and n (at_most_one_pigeon_per_hole b).
+Definition at_most_one_pigeon (dis: bool) (b:nat) (n:nat)  :=
+  big_and n (at_most_one_pigeon_per_hole dis b).
 
-Definition pigeon_hole (b:nat) (n:nat) :=
-  pigeon_in_hole b n /\ at_most_one_pigeon b n.
+Definition pigeon_hole (dis: bool) (b:nat) (n:nat) :=
+  pigeon_in_hole b n /\ at_most_one_pigeon dis b n.
 
+Ltac simpl_pigeon :=
+  unfold pigeon_hole; cbn; unfold not.

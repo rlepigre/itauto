@@ -5,7 +5,7 @@ dev-repo: "git@gitlab.inria.fr:fbesson/itauto.git"
 authors: ["Frédéric Besson"]
 bug-reports: "frederic.besson@inria.fr"
 license: "GPL 3"
-synopsis: "A 'itauto' tactic to solve SMT goals"
+synopsis: "'itauto' is a reflexive SAT solver parameterised by a leaf tactic"
 build: [
   [make]
 ]
@@ -14,6 +14,7 @@ install: [
 ]
 remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
+  "ocaml" {>= 4.9~}
   "coq" {= "dev" }
   "ocamlbuild" {build }
 ]
