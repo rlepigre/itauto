@@ -301,7 +301,22 @@ Inductive op :=
     if is_TT f.(elt) then hTT else f.
 
   Definition nform (F: LForm -> LForm) (f: HFormula) :=
-    mklform (HCons.map F f).
+    match F (elt f) with
+    | LFF => hFF
+    | LOP LAND nil => hTT
+    | LAT i        => HCons.mk i (is_dec f) (LAT i)
+    |   r          => HCons.mk (id f) (is_dec f) r
+    end.
+
+  Definition mk_op (o: lop) (l: list HFormula) :=
+    match l with
+    | nil => match o with
+             | LOR => LFF
+             |  _  => LOP o l
+             end
+    | e::nil => e.(elt)
+    |   _    => LOP  o l
+    end.
 
 
   Fixpoint lform (f : LForm) :=
@@ -1304,7 +1319,26 @@ Inductive op :=
     rewrite EQ. simpl. tauto.
   Qed.
 
-  
+  Lemma eval_nform : forall
+    (REC : forall f : LForm, eval_formula f <-> eval_formula (lform f)),
+      forall f : HFormula, eval_hformula (nform lform f) <-> eval_hformula f.
+  Proof.
+    intro REC.
+    intro.
+    unfold eval_hformula.
+    rewrite (REC (elt f)).
+    unfold nform.
+    destruct (lform (elt f)).
+    - simpl. tauto.
+    - simpl. tauto.
+    - destruct l.
+      destruct l0.
+      + simpl. tauto.
+      + unfold elt. tauto.
+      + unfold elt. tauto.
+    - unfold elt. tauto.
+  Defined.
+
   Lemma eval_op_list_lform_app :
     forall (REC : forall f : LForm, eval_formula f <-> eval_formula (lform f))
            (o:lop) (l: list (t LForm)),
@@ -1317,12 +1351,7 @@ Inductive op :=
     generalize (nil (A:= HCons.t LForm)).
     assert (forall f, eval_hformula (nform lform f) <-> eval_hformula f).
     {
-      unfold eval_hformula.
-      intro.
-      unfold nform.
-      rewrite eval_mklform.
-      unfold map;simpl.
-      rewrite <- REC. tauto.
+      apply eval_nform; auto.
     }
     unfold eval_hformula in H.
     induction l.
@@ -1383,7 +1412,6 @@ Inductive op :=
           simpl.
           destruct o; simpl; tauto.
   Defined.
-
 
 
   Fixpoint eval_formula_lform (f:LForm):
@@ -10542,15 +10570,13 @@ Lemma eval_hformula_hlform : forall am f,
     eval_hformula (eval_prop am IsProp) (hlform f) <->
     eval_hformula (eval_prop am IsProp) f.
 Proof.
-  unfold eval_hformula, hlform.
-  unfold nform.
   intros.
-  rewrite eval_mklform.
-  unfold map.
-  simpl.
+  apply eval_nform; auto.
+  exact (fun _ => true). (* bizarre *)
+  intro.
   rewrite <- eval_formula_lform.
   tauto.
-  exact (fun _ => true). (* bizarre *)
+  exact (fun _ => true). (* bizarre2 *)
 Qed.
 
 Lemma hcons_bprover_correct : forall n (f:BForm.HBFormula) am,
