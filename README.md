@@ -57,15 +57,17 @@ and move to the `itauto` directory.
 
 ### Using opam
 
-`opam pin add coq https://github.com/fajb/coq.git#for_itauto`
+`opam pin add dune https://github.com/ocaml/dune.git#master`
+`opam pin add coq https://github.com/coq/coq.git#master`
 
 `opam install .`
 
 ### Manual install
 
-Once de dependancies are build:
+Once the dependancies are build:
 
-- `coq` from `https://github.com/fajb/coq.git#for_itauto`
+- `dune` from https://github.com/ocaml/dune.git#master
+- `coq` from https://github.com/coq/coq.git#master
 - `ocamlbuild` https://ocaml.org/learn/tutorials/
 
 In the `itauto` top directory, `make; make install` builds and installs the plugin.

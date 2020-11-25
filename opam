@@ -14,7 +14,8 @@ install: [
 ]
 remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
-  "ocaml" {>= 4.9~}
+  "ocaml" {>= "4.9~"}
+  "dune" {= "2.7.1"}
   "coq" {= "dev" }
   "ocamlbuild" {build }
 ]

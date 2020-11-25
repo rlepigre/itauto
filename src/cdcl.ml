@@ -102,7 +102,7 @@ module Env = struct
   module OMap = Map.Make (struct
     type t = P.op * Uint63.t * Uint63.t
 
-    let compare : t -> t -> int = Pervasives.compare
+    let compare : t -> t -> int = Stdlib.compare
   end)
 
   module AMap = Map.Make (Int)
