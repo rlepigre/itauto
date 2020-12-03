@@ -135,7 +135,7 @@ case-splits.
 - unit propagation is implemented using a variation of head tail pointers.
 
 - When unit propatation is done, the solver branches over a clause of
-the form $` q_1 \lor \dots q_n `$ 
+the form $` q_1 \lor \dots q_n `$. 
 
 - When there is no disjunction to branch over, the solver searches for
 a literal bound to a formula of the form $`f \to g `$ and tried to
@@ -147,7 +147,7 @@ solver continues.
 
 ### Future work
 
-- **Backjumping** requires to track dependencies of used decisions.
-
-- **Conflict Driven Clause Learning** requires a finer tracking of dependencies to detect the set of input clauses responsible for a conflict.
+- **Conflict Driven Clause Learning**, beyond backjumping, requires a
+  finer tracking of dependencies to detect the set of input clauses
+  responsible for a conflict.
 
