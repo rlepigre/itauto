@@ -56,9 +56,10 @@ cleanaux :
 
 clean : cleanaux
 	make -f CoqMakefile clean
+	rm CoqMakefile.conf
 
 
-CoqMakefile : _CoqProject
+CoqMakefile CoqMakefile.conf : _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 
