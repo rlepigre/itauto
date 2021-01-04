@@ -10,7 +10,7 @@ let show_theory_time =
     ~value:false
 
 let thy_time = ref 0.
-let debug = false
+let debug = false 
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -86,7 +86,21 @@ let coq_add = lazy (constr_of_ref "cdcl.IntMap.add")
 let coq_NegBinRel = lazy (constr_of_ref "cdcl.NegBinRel.type")
 let coq_neg_bin_rel_clause = lazy (constr_of_ref "cdcl.neg_bin_rel_clause")
 let coq_neg_bin_rel_correct = lazy (constr_of_ref "cdcl.neg_bin_rel_correct")
+
 let whd = Reductionops.clos_whd_flags CClosure.all
+
+let get_projection env evd c =
+  match EConstr.kind evd c with
+  | Const(c,u) ->
+     let body = Environ.constant_value_in env (c,EConstr.Unsafe.to_instance u) in
+     begin
+       match Constr.kind  body with
+       | App(c,a) -> fun i -> EConstr.of_constr a.(i)
+       | _        -> failwith "get_projection: expecting an application"
+     end
+  | _ -> failwith "get_projection: expecting a Constant"
+  
+
 
 let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
@@ -100,7 +114,7 @@ module IMap = Map.Make (Int)
 
 module Env = struct
   module OMap = Map.Make (struct
-    type t = P.op * Uint63.t * Uint63.t
+    type t = (P.op * Uint63.t * Uint63.t)
 
     let compare : t -> t -> int = Stdlib.compare
   end)
@@ -114,6 +128,11 @@ module Env = struct
         { constr_bool : EConstr.t
         ; constr_prop : EConstr.t
         ; constr_iff : EConstr.t }
+
+  let pp_atom_spec env evd = function
+    | AtomProp(e,_) -> Pp.(str "AtomProp " ++ Printer.pr_econstr_env env evd e)
+    | AtomBool{constr_bool;constr_prop} -> Pp.(str "AtomBool " ++ Printer.pr_econstr_env env evd constr_bool ++ str"," ++ Printer.pr_econstr_env env evd constr_prop)
+
 
   let check_atom env evd = function
     | AtomProp _ -> ()
@@ -253,14 +272,9 @@ module Env = struct
         let tc = EConstr.mkApp (Lazy.force coq_Rbool2, [|ty1; ty2; c|]) in
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
-          let p2 =
-            whd env evd
-              (EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|]))
-          in
-          let p2_prf =
-            whd env evd
-              (EConstr.mkApp
-                 (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|]))
+          let proj = get_projection env evd refl in 
+          let p2 = EConstr.mkApp (proj 3,[|v1;v2|]) in
+          let p2_prf = EConstr.mkApp (proj 4,[|v1;v2|])
           in
           check_atom env evd
             (AtomBool {constr_bool = t; constr_prop = p2; constr_iff = p2_prf})
@@ -303,14 +317,15 @@ module Env = struct
         let tc = EConstr.mkApp (Lazy.force coq_RProp2, [|ty1; ty2; c|]) in
         try
           let _evd, refl = Typeclasses.resolve_one_typeclass env evd tc in
-          let p2 =
-            whd env evd
-              (EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|]))
+          let proj = get_projection env evd refl in 
+          let p2 = EConstr.mkApp (proj 3,[|v1;v2|])
+    (* whd  env evd
+              (EConstr.mkApp (Lazy.force coq_p2, [|ty1; ty2; c; refl; v1; v2|])) *)
           in
-          let p2_prf =
-            whd env evd
+          let p2_prf = EConstr.mkApp (proj 4,[|v1;v2|])
+    (* whd  env evd
               (EConstr.mkApp
-                 (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|]))
+                 (Lazy.force coq_p2_prf, [|ty1; ty2; c; refl; v1; v2|])) *)
           in
           check_atom env evd
             (AtomBool {constr_bool = p2; constr_prop = t; constr_iff = p2_prf})
@@ -350,6 +365,15 @@ module Env = struct
         ; fresh = f + 1 }
       , (atom, f) )
 
+  let hcons_atom genv env k v1 = 
+    let res = hcons_atom genv env k v1 in
+    if debug then
+      Feedback.msg_debug Pp.(str "hons_atom " ++
+                               Printer.pr_econstr_env genv env.sigma v1 ++ str"->" ++
+                               pp_atom_spec genv env.sigma (fst (snd res))) ;
+    res
+
+  
   let is_dec = function AtomProp (_, None) -> false | _ -> true
   let has_bool = function AtomBool _ -> true | _ -> false
 
