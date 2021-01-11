@@ -148,7 +148,7 @@ let output_state o st =
   Printf.fprintf o "Clauses : %a\n" output_clauses st.clauses
 
 let output_plit o hm p =
-  PLit.fold
+  LitSet.fold
     (fun () k b ->
       match IntMap.get' kInt k hm with
       | None -> failwith "Unknow literal"

@@ -1106,7 +1106,7 @@ let rec output_list p o l =
   | e :: l -> p o e; output_string o ";"; output_list p o l
 
 let output_pset o s =
-  ProverPatch.PLit.fold
+  ProverPatch.LitSet.fold
     (fun () k _ -> Printf.fprintf o "%i " (Uint63.hash k))
     s ()
 
@@ -1117,7 +1117,7 @@ let rec map_filter f l =
     match f e with None -> map_filter f l | Some e' -> e' :: map_filter f l )
 
 let rec needed_hyp f d =
-  if P.PLit.mem f.P.HCons.id d then true else needed_hyp_form f.P.HCons.elt d
+  if P.LitSet.mem f.P.HCons.id d then true else needed_hyp_form f.P.HCons.elt d
 
 and needed_hyp_form f d =
   match f with
