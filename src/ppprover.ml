@@ -165,8 +165,9 @@ let output_plit o hm p =
 (*
 let cnf pol is_classic cp cm ar acc f hf =
   let x, cl = cnf pol is_classic cp cm ar acc f hf in
-  Printf.printf "cnf %a ⊢ %a\n" output_formula f
-    (output_list output_useful_watched_clause)
+  let s = if pol then "+" else "-" in
+  Printf.printf "cnf%s %a ⊢ %a\n" s output_formula f
+    (output_list output_watched_clause)
     cl;
   (x, cl)
  *)
@@ -204,8 +205,7 @@ let intro_state st f hf =
     f
  *)
 (** *)
-(*
-let unit_propagation n st concl =
+(*let unit_propagation n st concl =
   let res = unit_propagation n st concl in
   ( match res with
   | Success _ -> Printf.printf "OK"
@@ -226,22 +226,47 @@ let unit_propagation n st concl =
   res
  *)
 (** *)
-
-(*let find_split lit is_bot cl =
+(*
+let find_split lit is_bot cl =
   let res = find_split lit is_bot cl in
   ( match res with
   | None -> Printf.printf "find_split  -> ∅\n"
-  | Some l -> Printf.printf "find_split  -> %a\n" (output_list output_lit) l );
+  | Some l -> Printf.printf "find_split  -> %a\n" (output_list output_lit) l.Annot.elt );
   res
  *)
 (** *)
+(*
+let progress_arrow l st  =
+  let res = find_lit (POS (form_of_literal l)) (st.units) in
+  (match res with
+  | None -> Printf.printf "find_lit %a -> None\n" output_lit l ;
+  | Some b -> Printf.printf "find_lit %a -> Some %b \n" output_lit l (Annot.elt b ));
+  let res = progress_arrow l st  in
+  Printf.printf "progress_arrow %a -> %b\n" output_lit l res;
+  res
+ *)
 
-(*let find_arrows st l =
+(** *)
+(*
+let find_arrows st l =
   let res = find_arrows st l in
   Printf.printf "find_arrows %a -> %a\n" (output_list output_lit) l
     (output_list output_lit) res;
   res
  *)
+(** *)
+(*
+let forall_dis prover st g l =
+  let prover = fun st g ->
+    Printf.printf "(Starting prover %a\n" output_lit (List.hd st.unit_stack).Annot.elt;
+    let res = prover st g in
+    Printf.printf ")"; flush stdout; res  in
+  Printf.printf "( Case analysing %a\n" (output_list output_lit) l ;
+  let res = forall_dis prover st g l in
+  Printf.printf ")"; flush stdout;
+  res
+ *)
+
 (** *)
 (*
 let prover_intro p st g =

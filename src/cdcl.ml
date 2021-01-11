@@ -10,7 +10,7 @@ let show_theory_time =
     ~value:false
 
 let thy_time = ref 0.
-let debug = false 
+let debug = false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -994,7 +994,7 @@ module Theory = struct
   let hcons_literals hm l =
     List.fold_left (fun m l -> hcons_form m (P.form_of_literal l)) hm l
 
-  let thy_prover tac cc (genv, sigma) ep hm l =
+  let thy_prover tac cc err (genv, sigma) ep hm l =
     let l = List.sort_uniq compare_atom l in
     match search (fun ((ck, x), _) -> ck = CC && subset_clause x l) !cc with
     | None -> (
@@ -1006,7 +1006,7 @@ module Theory = struct
       | None -> (
         (* Really run the prover *)
         match find_unsat_core ep l tac genv sigma with
-        | NoCore r -> CErrors.user_err (pp_no_core genv !sigma r)
+        | NoCore r -> err := r @ !err ; None
         | UnsatCore (core, prf) ->
           if debug then
             Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
@@ -1019,7 +1019,7 @@ module Theory = struct
       Some (hm, snd core)
 end
 
-let run_prover tac cc (genv, sigma) ep f =
+let run_prover tac cc err (genv, sigma) ep f =
   let is_dec i =
     try
       let d = Env.AMap.find (Uint63.hash i) !ep.Env.amap in
@@ -1030,7 +1030,7 @@ let run_prover tac cc (genv, sigma) ep f =
   thy_time := 0.;
   let res =
     P.prover_formula is_dec
-      (Theory.thy_prover tac cc (genv, sigma) ep)
+      (Theory.thy_prover tac cc err (genv, sigma) ep)
       true m
       (nat_of_int (10 * !ep.Env.fresh))
       f
@@ -1155,9 +1155,10 @@ let collect_conflict_clauses tac gl =
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
     flush stdout );
   let cc = ref [] in
+  let err = ref [] in
   let sigma = ref sigma in
   let env = ref env in
-  match run_prover tac cc (genv, sigma) env form with
+  match run_prover tac cc err (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
       List.map
@@ -1177,7 +1178,9 @@ let collect_conflict_clauses tac gl =
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
         hyps );
     Some (!sigma, cc, hyps)
-  | _ -> None
+  | _ ->
+     CErrors.user_err (Theory.pp_no_core genv !sigma !err)
+
 
 let assert_conflict_clauses tac =
   Proofview.Goal.enter (fun gl ->
@@ -1250,7 +1253,7 @@ let change_goal =
           with Not_found -> false
         in
         match
-          run_prover Tacticals.New.tclIDTAC (ref [])
+          run_prover Tacticals.New.tclIDTAC (ref []) (ref [])
             (genv, ref sigma)
             (ref env)
             (P.hlform (P.BForm.to_hformula has_bool form))
