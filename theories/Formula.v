@@ -2577,8 +2577,7 @@ Inductive op :=
       clauses := clauses st
     |}).
 
-  Inductive failure := OutOfFuel | HasModel | Error.
-
+  Inductive failure := OutOfFuel | Stuck | HasModel | Error.
 
   Inductive result (A B: Type):=
   | Fail (f: failure)
@@ -8094,8 +8093,19 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       /\
       wf_pset m d.
 
-  
 
+  Definition is_correct_prover_progress (Prover : ProverT) (st st': state) :=
+    forall (g: option HFormula)
+             (WFS : wf_state  st)
+             (HASF: has_oform (hconsmap st) g)
+           (PRF : Prover st g  = Progress st'),
+      ((eval_state st' -> eval_annot_state st' -> eval_ohformula g) ->
+      (eval_state st -> eval_annot_state st -> eval_ohformula g))
+      /\
+      (eval_annot_state st -> eval_annot_state st') /\
+      (wf_state st -> wf_state st')
+      /\
+      hmap_order (hconsmap st) (hconsmap st').
 
   Section P.
 
@@ -8225,7 +8235,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Fixpoint prover_arrows (l : list literal) (st: state) (g : option HFormula)   :
       result state  (hmap * list conflict_clause * LitSet.t) :=
       match l with
-      | nil => Fail HasModel
+      | nil => Fail Stuck
       | e::l =>
         let f := form_of_literal e in
         match  prover_intro (reset_arrows l st) (Some f)  with
@@ -8236,15 +8246,15 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail (OutOfFuel | Error) as e => e
-        | Fail HasModel  | Progress _ =>  prover_arrows l st g
+        | Fail (OutOfFuel | Error | Stuck  ) as e => e
+        | Fail HasModel   | Progress _ =>  prover_arrows l st g
         end
       end.
 
     Lemma prover_arrows_rew : forall (g : option HFormula) (st: state) (l : list literal),
         prover_arrows l st g  =
       match l with
-      | nil => Fail HasModel
+      | nil => Fail Stuck
       | e::l =>
         let f := form_of_literal e in
         match  prover_intro (reset_arrows l st) (Some f)  with
@@ -8255,7 +8265,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail (OutOfFuel | Error) as e => e
+        | Fail (OutOfFuel | Error | Stuck) as e => e
         | Fail HasModel  | Progress _ =>  prover_arrows l st g
         end
       end.
@@ -8263,8 +8273,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 
 
     Variable ProverCorrect : forall st, is_correct_prover Prover st.
-
-
 
 
     Lemma prover_intro_correct : forall st, is_correct_prover prover_intro st.
@@ -9426,7 +9434,71 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 
   Section Prover.
 
-  Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+    Definition seq_prover (p : ProverT) (q: ProverT) : ProverT :=
+      fun st f  =>
+        match p st f with
+        | Success(h,l, d) => Success(h,l,d)
+        | Progress st'   => q st' f
+        | Fail Stuck  => q st f
+        | Fail _ as e => e
+        end.
+
+    Fixpoint seq_provers (l: list ProverT) : ProverT :=
+      match l with
+      | nil  => fun st f => Fail HasModel
+      | p :: nil => p
+      | p::l => seq_prover p (seq_provers l)
+      end.
+
+    Definition prover_case_split (P: ProverT) (st:state) (g: option HFormula) :=
+      match find_split (units st) (is_classic g) (clauses st) with
+      | None => Fail Stuck
+      | Some cl => case_split_ann P st g (Annot.deps cl)  (Annot.elt cl)
+      end.
+
+    Definition  prover_thy (P: ProverT) (thy: Thy) (use_prover: bool) (st: state) (g: option HFormula) :=
+      if use_prover
+      then run_thy_prover P thy st g
+      else Fail HasModel.
+
+
+    Definition prover_unit (n:nat) (st:state) (g : option HFormula) : result state (hmap * list conflict_clause * LitSet.t) :=
+      match unit_propagation n  g st with
+      | Success (hm,d) => Success (hm,nil,d)
+      | Progress st'   => Progress st'
+      | Fail f      => Fail f
+      end.
+
+    Definition prover_impl_arrows (P:ProverT) st g :=
+      prover_arrows P (find_arrows st (arrows st)) st g.
+
+    Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+      match n with
+      | O => Fail OutOfFuel
+      | S n => let ProverRec := prover thy use_prover n in
+               seq_prover (prover_unit n)
+                          (seq_prover (prover_case_split ProverRec)
+                                      (seq_prover (prover_impl_arrows ProverRec)
+                                                  (prover_thy ProverRec thy use_prover))) st g
+      end.
+
+
+    Lemma prover_rew : forall thy up n,
+        prover thy up (n:nat)     =
+        match n with
+      | O => fun _ _ => Fail OutOfFuel
+      | S n => let ProverRec := prover thy up n in
+               seq_prover (prover_unit n)
+                          (seq_prover (prover_case_split ProverRec)
+                                      (seq_prover (prover_impl_arrows ProverRec)
+                                                  (prover_thy ProverRec thy up)))
+        end.
+    Proof.
+      destruct n ; reflexivity.
+    Qed.
+
+(*
+  Fixpoint prover2  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
     match unit_propagation n  g st with
     | Success (h,d) => Success (h,nil,d)
     | Progress st' => match n with
@@ -9434,23 +9506,24 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
                   | S n =>
                     match find_split (units st') (is_classic g) (clauses st') with
                     | None =>
-                      match prover_arrows (prover thy use_prover n) (find_arrows st' (arrows st')) st' g   with
+                      match prover_arrows (prover2 thy use_prover n) (find_arrows st' (arrows st')) st' g   with
                       | Success prf => Success prf
                       | Fail HasModel  =>
                         if use_prover
-                        then run_thy_prover (prover thy use_prover n) thy st' g
+                        then run_thy_prover (prover2 thy use_prover n) thy st' g
                         else Fail HasModel
                       | Progress st => Progress st
                       | e  => e
                       end
-                    | Some cl => case_split_ann (prover thy use_prover n) st' g (Annot.deps cl)  (Annot.elt cl)
+                    | Some cl => case_split_ann (prover2 thy use_prover n) st' g (Annot.deps cl)  (Annot.elt cl)
                     end
                   end
     | Fail d => Fail d
     end.
 
-  Lemma prover_rew : forall thy up n g st,
-      prover thy up (n:nat)  (st:state) (g : option HFormula)   =
+
+  Lemma prover2_rew : forall thy up n g st,
+      prover2 thy up (n:nat)  (st:state) (g : option HFormula)   =
     match unit_propagation n  g st with
     | Success (h,d) => Success (h,nil,d)
     | Progress st' => match n with
@@ -9458,16 +9531,16 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
                   | S n =>
                     match find_split (units st') (is_classic g) (clauses st') with
                     | None =>
-                      match prover_arrows (prover thy up n) (find_arrows st' (arrows st')) st' g   with
+                      match prover_arrows (prover2 thy up n) (find_arrows st' (arrows st')) st' g   with
                       | Success prf => Success prf
                       | Fail HasModel  =>
                         if up
-                        then run_thy_prover (prover thy up n) thy st' g
+                        then run_thy_prover (prover2 thy up n) thy st' g
                         else Fail HasModel
                       | Progress st => Progress st
                       |  e  =>  e
                       end
-                    | Some cl => case_split_ann (prover thy up n) st' g (Annot.deps cl)  (Annot.elt cl)
+                    | Some cl => case_split_ann (prover2 thy up n) st' g (Annot.deps cl)  (Annot.elt cl)
                     end
                   end
     | Fail d => Fail d
@@ -9475,6 +9548,37 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Proof.
     destruct n ; reflexivity.
   Qed.
+
+
+
+
+  Goal forall thy b n st g,
+      prover thy b n st g = prover2 thy b n st g.
+  Proof.
+    induction n.
+    - simpl. reflexivity.
+    - rewrite prover_rew.
+      intros.
+      rewrite prover2_rew.
+      unfold seq_prover.
+      unfold prover_unit.
+      assert (unit_propagation n g st = unit_propagation (S n) g st) by admit.
+      rewrite H.
+      destruct (unit_propagation (S n) g st); auto.
+      +  destruct f; auto.
+         admit.
+      + destruct r; auto.
+      + unfold prover_case_split.
+        destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:EQ.
+        admit.
+
+
+      simpl.
+      unfold
+
+*)
+
+  
 
   Lemma eval_literal_list_classic :
     forall m l
@@ -9550,28 +9654,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-(*
-  Lemma eval_find_clause_in_map :
-    forall m g u ln
-           (WF : wf_map ln)
-           (WFU : wf_units_lit u m)
-           (EU : eval_units m u)
-           (WL : IntMapForall (check_annot has_watched_clause m) ln)
-           (EV : IntMapForall (Annot.lift eval_watched_clause)  ln)
-           (EVAL : ohold (Annot.lift eval_or) (find_clause_in_map (is_classic g) u ln) -> eval_ohformula g),
-      eval_ohformula g.
-  Proof.
-    unfold find_clause_in_map.
-    intros.
-    destruct ((IntMap.search (select_clause (is_classic g) u) ln)) eqn:SEARCH; simpl in * ; auto.
-    apply IntMap.search_some with (opt:= None) in SEARCH; auto.
-    destruct SEARCH as (k&v&G&S).
-    change (ohold (Annot.lift eval_or) (Some t0) -> eval_ohformula g) in EVAL.
-    rewrite <- S in EVAL. clear S.
-    revert EVAL.
-    eapply eval_select_clause; eauto.
-  Qed.
- *)
 
   Lemma subset_reduce_lits :
     forall u m (WFU: wf_units_lit u m) cl an
@@ -9736,54 +9818,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-(*
-  Lemma eval_annot_find_clause_in_map :
-    forall m g u ln
-           (WF : wf_map ln)
-           (WFU : wf_units_lit u m)
-           (EU : eval_annot_units u m)
-           (WL : IntMapForall (check_annot has_watched_clause m) ln)
-           (EV : IntMapForall (eval_annot eval_watched_clause m)  ln)
-           (EVAL : ohold (eval_annot eval_or m) (find_clause_in_map (is_classic g) u ln) -> eval_ohformula g),
-      eval_ohformula g.
-  Proof.
-    unfold find_clause_in_map.
-    intros.
-    destruct ((IntMap.search (select_clause (is_classic g) u) ln)) eqn:SEARCH; simpl in * ; auto.
-    apply IntMap.search_some with (opt:= None) in SEARCH; auto.
-    destruct SEARCH as (k&v&G&S).
-    change (ohold (eval_annot eval_or m) (Some t0) -> eval_ohformula g) in EVAL.
-    rewrite <- S in EVAL. clear S.
-    revert EVAL.
-    apply eval_annot_select_clause; auto.
-    apply EV in G; auto.
-    apply WL in G; auto.
-  Qed.
-
-  Lemma wf_find_clause_in_map :
-    forall m b u ln
-           (WF : wf_map ln)
-           (WFU: wf_units_lit u m)
-           (WL : IntMapForall (check_annot has_watched_clause m) ln),
-      ohold (check_annot has_conflict_clause m) (find_clause_in_map b u ln).
-  Proof.
-    unfold find_clause_in_map.
-    intros.
-    destruct ((IntMap.search (select_clause b u) ln)) eqn:EQ; simpl ; auto.
-    eapply IntMap.search_some in EQ; eauto.
-    destruct EQ as (k&v&G&S).
-    change (ohold (check_annot has_conflict_clause m) (Some t0)).
-    rewrite <- S.
-    unfold select_clause.
-    destruct_in_goal R; simpl; auto.
-    lift_if.
-    apply WL in G ; auto.
-    destruct G ; auto.
-    split ; intros; [|simpl; auto].
-    rewrite <- R.
-    apply wf_reduce_lits; auto.
-  Qed.
- *)
 
   Lemma check_annot_reduce_lits :
     forall m u l an
@@ -9828,31 +9862,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     simpl. auto.
   Qed.
 
-  (*
-  Lemma check_annot_find_clause_in_map :
-    forall m b u ln
-           (WF : wf_map ln)
-           (WFU : wf_units_lit u m)
-           (WL : IntMapForall (check_annot has_watched_clause  m) ln),
-      ohold (check_annot has_conflict_clause  m) (find_clause_in_map b u ln).
-  Proof.
-    unfold find_clause_in_map.
-    intros.
-    destruct ((IntMap.search (select_clause b u) ln)) eqn:EQ; simpl ; auto.
-    eapply IntMap.search_some in EQ; eauto.
-    destruct EQ as (k&v&G&S).
-    change (ohold (check_annot has_conflict_clause m) (Some t0)).
-    rewrite <- S.
-    unfold select_clause.
-    destruct_in_goal R; simpl; auto.
-    lift_if.
-    apply WL in G ; auto.
-    destruct G ; auto.
-    split ; intros; [|simpl; auto].
-    rewrite <- R.
-    apply wf_reduce_lits; auto.
-  Qed.
-*)
 
   Lemma ForallWatchedClauseAND : forall P Q cls,
       ForallWatchedClause P cls -> ForallWatchedClause Q cls ->
@@ -10028,33 +10037,101 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     destruct H; constructor ; auto.
   Qed.
 
+  Lemma is_correct_prover_seq :
+    forall P Q
+           (CP : forall st, is_correct_prover P st)
+           (CPP : forall st st', is_correct_prover_progress P st st')
+           (CQ : forall st, is_correct_prover Q st),
+    forall st, is_correct_prover (seq_prover P Q) st.
+  Proof.
+    intros.
+    unfold seq_prover.
+    unfold is_correct_prover.
+    intros.
+    destruct (P st g) eqn:EQ ; try congruence.
+    - destruct f ; try congruence.
+      eapply CQ ; eauto.
+    - destruct r. destruct p.
+      inv PRF.
+      eapply CP ; eauto.
+    - eapply CPP in EQ ; eauto.
+      eapply CQ in PRF.
+      split_and; try tauto.
+      + intuition.
+        eapply hmap_order_trans; eauto.
+      + tauto.
+      + eapply has_oform_mono ; eauto.
+        tauto.
+  Qed.
+
+  Definition never_progress (Prover : ProverT) (st: state) :=
+    forall (g: option HFormula) st'
+           (PRF : Prover st g  = Progress st'), False.
+
+  Lemma never_progress_seq : forall P Q,
+      (forall st, never_progress Q st) ->
+      forall st,  never_progress (seq_prover P Q) st.
+  Proof.
+    unfold never_progress, seq_prover.
+    intros.
+    destruct (P st g) ; try congruence.
+    destruct f ; try congruence.
+    eapply H ; eauto.
+    destruct r. destruct p ; try congruence.
+    eapply H ; eauto.
+  Qed.
 
 
-  Lemma prover_correct : forall thy b n st, is_correct_prover (prover thy b n) st.
+
+
+  Lemma prover_correct : forall thy b n st, is_correct_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
   Proof.
     induction n.
     - unfold is_correct_prover. simpl ; auto.
-      congruence.
-    - unfold is_correct_prover.
-      intros.
-      rewrite prover_rew in PRF.
-      assert (UPC := unit_propagation_correct (S n) _ _  WFS HASF).
-      assert (UPA := eval_annot_unit_propagation (S n) _ _ WFS HASF).
-      assert (UPWF := wf_unit_propagation (S n) _ _  WFS HASF).
-      assert (UPM := hconsmap_unit_propagation (S n) g st).
-      unfold hconsmap_progress in UPM.
-      destruct (unit_propagation (S n)  g st); try discriminate.
-      + destruct r.
-        inv PRF.
+      split ; try congruence.
+    -
+      rewrite prover_rew.
+      remember (prover thy b n) as P.
+      simpl.
+      split.
+      repeat apply is_correct_prover_seq.
+      + unfold is_correct_prover.
+        intros.
+        unfold prover_unit in PRF.
+        assert (UPC := unit_propagation_correct n _ _  WFS HASF).
+        assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
+        assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
+        assert (UPM := hconsmap_unit_propagation n g st0).
+        unfold hconsmap_progress in UPM.
+        destruct (unit_propagation n g st0) ; try discriminate.
+        simpl in UPM.
+        destruct r. inv PRF.
         split_and; auto with wf.
-        simpl in UPM. intuition congruence.
-      + simpl in UPM.
+        rewrite UPM by auto.
+        apply hmap_order_refl.
+      +  unfold is_correct_prover_progress.
+        intros.
+        unfold prover_unit in PRF.
+        assert (UPC := unit_propagation_correct n _ _  WFS HASF).
+        assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
+        assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
+        assert (UPM := hconsmap_unit_propagation n g st0).
+        unfold hconsmap_progress in UPM.
+        destruct (unit_propagation n g st0) ; try discriminate.
+        simpl in UPM.
+        destruct r. inv PRF. inv PRF.
+        split_and; auto with wf.
+        simpl in UPM. rewrite UPM by auto.
+        apply hmap_order_refl.
+      + unfold is_correct_prover.
+        intros.
+        unfold prover_case_split in PRF.
         destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:FD ; try congruence.
         *
           assert (FDC : eval_state st0 -> (ohold (Annot.lift eval_or) (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
                   eval_ohformula g).
           {
-            intro ES'. destruct ES' ; destruct UPWF.
+            intro ES'. destruct ES' ; destruct WFS.
             apply eval_find_split with (m:=(hconsmap st0)); auto.
           }
           assert (FDC' :
@@ -10062,23 +10139,16 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
                       eval_pset (hconsmap st0) (Annot.deps t0) ->
                         (eval_or (Annot.elt t0) -> eval_ohformula g) -> eval_ohformula g).
           {
-            intro ES'. destruct ES' ; destruct UPWF.
+            intro ES'. destruct ES' ; destruct WFS.
             intros.
             eapply eval_annot_find_split in ev_an_clauses0; eauto.
             rewrite FD. simpl. unfold eval_annot ; auto.
           }
-
-          (*          eval_annot_state st0 -> (ohold (eval_annot  eval_or (hconsmap st0)) (find_split (units st0) (is_classic g) (clauses st0)) -> eval_ohformula g) ->
-                  eval_ohformula g).
-          {
-            intro ES'. destruct ES' ; destruct UPWF.
-            apply eval_annot_find_split ; auto.
-          } *)
           rewrite FD in FDC.
           simpl in FDC.
           assert (WFD : (ohold (check_annot has_conflict_clause  (hconsmap st0)) (find_split (units st0) (is_classic g) (clauses st0)))).
           {
-            destruct UPWF.
+            destruct WFS.
             apply wf_find_split; auto.
           }
           rewrite FD in WFD.
@@ -10091,51 +10161,67 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           }
           simpl in WFD.
           destruct WFD as (AN & WFD).
-          simpl in UPWF.
           unfold Annot.lift in *.
-          generalize (case_split_ann_correct (prover thy b n) IHn
-                                             st0 g (Annot.deps t0) (Annot.elt t0) _ prf  d UPWF PRF FDC FDC' AN WFD HF0).
-          intros.
-          split_and; try tauto.
-          intuition.
-          eapply hmap_order_trans; eauto.
-          intuition congruence.
-        * (* Prover arrows *)
-          assert (Forall (has_literal (hconsmap st0)) (find_arrows st0 (arrows st0))).
+          eapply case_split_ann_correct; eauto.
+          apply IHn.
+      + intros.
+        unfold is_correct_prover_progress.
+        unfold prover_case_split.
+        intros.
+        destruct_in_hyp PRF F; try discriminate.
+        unfold case_split_ann in PRF.
+        destruct_in_hyp PRF C; try discriminate.
+      + unfold is_correct_prover; intros.
+        unfold prover_impl_arrows in PRF.
+        assert (Forall (has_literal (hconsmap st0)) (find_arrows st0 (arrows st0))).
           {
             apply has_find_arrows.
-            destruct UPWF ; auto.
+            destruct WFS ; auto.
           }
           set (l := (find_arrows st0 (arrows st0))) in *.
           clearbody l.
-          destruct (prover_arrows (prover thy b n) l st0 g)eqn:EQ; try congruence.
-          {
-          destruct f ; try congruence.
-          destruct b ; try congruence.
-          apply run_thy_prover_correct in PRF; auto.
-          repeat split_and ; try tauto.
-          { simpl in *. (* Why intuition congruence ? *)
-            rewrite <- UPM by tauto.
-            tauto.
-          }
-          { revert HASF.
-            eapply has_oform_mono;eauto.
-            simpl in *.
-            rewrite UPM by tauto.
-            auto with wf.
-          }
-          }
-          {
-            inv PRF.
-            simpl in UPM.
-            apply prover_arrows_correct in EQ ; auto.
-            split_and ; try tauto.
-            rewrite <- UPM by tauto.
-            tauto.
-            revert HASF.
-            apply has_oform_mono;auto.
-            rewrite UPM by tauto. auto with wf.
-          }
+          apply prover_arrows_correct in PRF ; auto.
+          apply IHn.
+      + unfold is_correct_prover_progress.
+        intros.
+        unfold prover_impl_arrows in PRF.
+        exfalso.
+        induction ((find_arrows st0 (arrows st0))).
+        discriminate.
+        simpl in PRF.
+        destruct   (intro_state (reset_arrows l st0) (elt (form_of_literal a))
+                                (form_of_literal a)).
+        destruct f ; try congruence.
+        destruct r. unfold augment_clauses in PRF.
+        simpl in PRF.
+        eapply IHn ; eauto.
+        destruct st1.
+        destruct (P s o) ; try discriminate.
+        destruct f ; try discriminate.
+        tauto.
+        destruct r.
+        destruct p.
+        destruct_in_hyp PRF A; try discriminate.
+        destruct r ; discriminate.
+        eapply IHn; eauto.
+        tauto.
+      + intros.
+        unfold is_correct_prover.
+        unfold prover_thy.
+        destruct b ; try congruence.
+        apply run_thy_prover_correct.
+        apply IHn ; auto.
+      +
+        repeat apply never_progress_seq.
+        unfold never_progress, prover_thy.
+        destruct b ; try congruence.
+        unfold run_thy_prover.
+        intros.
+        destruct (thy_prover thy (hconsmap st0) (generate_conflict_clause st0 g)); try congruence.
+        destruct p.
+        destruct_in_hyp PRF H ; try congruence.
+        destruct r ; try congruence.
+        eapply IHn ; eauto.
   Qed.
 
 
