@@ -147,22 +147,14 @@ Inductive op :=
   |IsProp
   |IsBool.
 
-  Inductive BFormula  : kind -> Type :=
-  | BTT   : forall (k: kind), BFormula k
-  | BFF   : forall (k: kind), BFormula k
-  | BAT   : forall (k: kind), int -> BFormula k
-  | BOP   : forall (k: kind), op -> HCons.t (BFormula k) ->
-                             HCons.t (BFormula k) -> (BFormula k)
-  | BIT   : (BFormula IsBool) -> BFormula IsProp.
+  Inductive BForm  : kind -> Type :=
+  | BTT   : forall (k: kind), BForm k
+  | BFF   : forall (k: kind), BForm k
+  | BAT   : forall (k: kind), int -> BForm k
+  | BOP   : forall (k: kind), op -> HCons.t (BForm k) ->
+                             HCons.t (BForm k) -> (BForm k)
+  | BIT   : (BForm IsBool) -> BForm IsProp.
 
-
-
-(*  Inductive Formula  : Type :=
-  | TT  : Formula
-  | FF  : Formula
-  | AT  : int -> Formula
-  | OP  : op -> HCons.t Formula -> HCons.t Formula -> Formula.
-*)
 
   Inductive lop := LAND | LOR.
 
@@ -9462,7 +9454,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       else Fail HasModel.
 
 
-    Definition prover_unit (n:nat) (st:state) (g : option HFormula) : result state (hmap * list conflict_clause * LitSet.t) :=
+    Definition prover_unit_propagation (n:nat) (st:state) (g : option HFormula) : result state (hmap * list conflict_clause * LitSet.t) :=
       match unit_propagation n  g st with
       | Success (hm,d) => Success (hm,nil,d)
       | Progress st'   => Progress st'
@@ -9476,7 +9468,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       match n with
       | O => Fail OutOfFuel
       | S n => let ProverRec := prover thy use_prover n in
-               seq_prover (prover_unit n)
+               seq_prover (prover_unit_propgation n)
                           (seq_prover (prover_case_split ProverRec)
                                       (seq_prover (prover_impl_arrows ProverRec)
                                                   (prover_thy ProverRec thy use_prover))) st g
@@ -9488,7 +9480,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         match n with
       | O => fun _ _ => Fail OutOfFuel
       | S n => let ProverRec := prover thy up n in
-               seq_prover (prover_unit n)
+               seq_prover (prover_unit_propgation n)
                           (seq_prover (prover_case_split ProverRec)
                                       (seq_prover (prover_impl_arrows ProverRec)
                                                   (prover_thy ProverRec thy up)))
@@ -9496,89 +9488,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Proof.
       destruct n ; reflexivity.
     Qed.
-
-(*
-  Fixpoint prover2  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
-    match unit_propagation n  g st with
-    | Success (h,d) => Success (h,nil,d)
-    | Progress st' => match n with
-                  | O => Fail OutOfFuel
-                  | S n =>
-                    match find_split (units st') (is_classic g) (clauses st') with
-                    | None =>
-                      match prover_arrows (prover2 thy use_prover n) (find_arrows st' (arrows st')) st' g   with
-                      | Success prf => Success prf
-                      | Fail HasModel  =>
-                        if use_prover
-                        then run_thy_prover (prover2 thy use_prover n) thy st' g
-                        else Fail HasModel
-                      | Progress st => Progress st
-                      | e  => e
-                      end
-                    | Some cl => case_split_ann (prover2 thy use_prover n) st' g (Annot.deps cl)  (Annot.elt cl)
-                    end
-                  end
-    | Fail d => Fail d
-    end.
-
-
-  Lemma prover2_rew : forall thy up n g st,
-      prover2 thy up (n:nat)  (st:state) (g : option HFormula)   =
-    match unit_propagation n  g st with
-    | Success (h,d) => Success (h,nil,d)
-    | Progress st' => match n with
-                  | O => Fail OutOfFuel
-                  | S n =>
-                    match find_split (units st') (is_classic g) (clauses st') with
-                    | None =>
-                      match prover_arrows (prover2 thy up n) (find_arrows st' (arrows st')) st' g   with
-                      | Success prf => Success prf
-                      | Fail HasModel  =>
-                        if up
-                        then run_thy_prover (prover2 thy up n) thy st' g
-                        else Fail HasModel
-                      | Progress st => Progress st
-                      |  e  =>  e
-                      end
-                    | Some cl => case_split_ann (prover2 thy up n) st' g (Annot.deps cl)  (Annot.elt cl)
-                    end
-                  end
-    | Fail d => Fail d
-    end.
-  Proof.
-    destruct n ; reflexivity.
-  Qed.
-
-
-
-
-  Goal forall thy b n st g,
-      prover thy b n st g = prover2 thy b n st g.
-  Proof.
-    induction n.
-    - simpl. reflexivity.
-    - rewrite prover_rew.
-      intros.
-      rewrite prover2_rew.
-      unfold seq_prover.
-      unfold prover_unit.
-      assert (unit_propagation n g st = unit_propagation (S n) g st) by admit.
-      rewrite H.
-      destruct (unit_propagation (S n) g st); auto.
-      +  destruct f; auto.
-         admit.
-      + destruct r; auto.
-      + unfold prover_case_split.
-        destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:EQ.
-        admit.
-
-
-      simpl.
-      unfold
-
-*)
-
-  
 
   Lemma eval_literal_list_classic :
     forall m l
@@ -10097,7 +10006,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       repeat apply is_correct_prover_seq.
       + unfold is_correct_prover.
         intros.
-        unfold prover_unit in PRF.
+        unfold prover_unit_propgation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
         assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
         assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
@@ -10111,7 +10020,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         apply hmap_order_refl.
       +  unfold is_correct_prover_progress.
         intros.
-        unfold prover_unit in PRF.
+        unfold prover_unit_propgation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
         assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
         assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
@@ -10438,7 +10347,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 Module BForm.
 
 
-  Definition HBFormula := HCons.t (BFormula IsProp).
+  Definition HBForm := HCons.t (BForm IsProp).
 
 
   Section S.
@@ -10469,7 +10378,7 @@ Module BForm.
       | IMPL => eval_binop (fun x y => x -> y) implb k
       end.
 
-    Fixpoint eval_bformula (k:kind) (f: BFormula k) : eval_kind k :=
+    Fixpoint eval_bformula (k:kind) (f: BForm k) : eval_kind k :=
       match f with
       | BTT k => eval_TT k
       | BFF k => eval_FF k
@@ -10498,7 +10407,7 @@ Module BForm.
       | IsBool => has_bool i
       end.
 
-    Fixpoint to_formula (pol:bool) (k:kind) (f:BFormula k) : LForm :=
+    Fixpoint to_formula (pol:bool) (k:kind) (f:BForm k) : LForm :=
       match f with
       | BTT k => TT
       | BFF k => FF
@@ -10596,7 +10505,7 @@ Module BForm.
 
 
 
-    Fixpoint aux_to_formula_correct (pol:bool) (k:kind) (f:BFormula k) {struct f} :
+    Fixpoint aux_to_formula_correct (pol:bool) (k:kind) (f:BForm k) {struct f} :
       if pol
       then eval_formula (eval_atom IsProp) (to_formula pol k f) -> hold k (eval_bformula k f)
       else hold k (eval_bformula k f) -> eval_formula (eval_atom IsProp) (to_formula pol k f).
@@ -10643,20 +10552,20 @@ Module BForm.
         + simpl. tauto.
     Qed.
 
-    Lemma to_formula_correct : forall (f:BFormula IsProp),
+    Lemma to_formula_correct : forall (f:BForm IsProp),
         eval_formula (eval_atom IsProp) (to_formula true IsProp f) ->
         eval_bformula IsProp f.
     Proof.
       apply (aux_to_formula_correct true IsProp).
     Qed.
 
-    Definition to_hformula (f : HBFormula) :=
+    Definition to_hformula (f : HBForm) :=
       map_hcons (to_formula true IsProp) f.
 
-    Definition eval_hbformula  (f: HBFormula) :=
+    Definition eval_hbformula  (f: HBForm) :=
       eval_bformula  IsProp f.(elt).
 
-    Lemma to_hformula_correct : forall (f:HBFormula),
+    Lemma to_hformula_correct : forall (f:HBForm),
         eval_hformula (eval_atom IsProp) (to_hformula  f) ->
         eval_hbformula  f.
     Proof.
@@ -10770,12 +10679,12 @@ Register LOP as cdcl.Formula.OP.
 Import BForm.
 Register IsProp as cdcl.kind.IsProp.
 Register IsBool as cdcl.kind.IsBool.
-Register BFormula as cdcl.BFormula.type.
-Register BTT as cdcl.BFormula.BTT.
-Register BFF as cdcl.BFormula.BFF.
-Register BAT as cdcl.BFormula.BAT.
-Register BOP as cdcl.BFormula.BOP.
-Register BIT as cdcl.BFormula.BIT.
+Register BForm as cdcl.BForm.type.
+Register BTT as cdcl.BForm.BTT.
+Register BFF as cdcl.BForm.BFF.
+Register BAT as cdcl.BForm.BAT.
+Register BOP as cdcl.BForm.BOP.
+Register BIT as cdcl.BForm.BIT.
 
 Register eval_hformula as cdcl.eval_hformula.
 Register eval_hbformula as cdcl.eval_hbformula.
@@ -10826,7 +10735,7 @@ Definition hlform (hf : HFormula) :=
   nform lform hf.
 
 
-Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:Thy (eval_is_dec m) (eval_prop m IsProp)) (n:nat) (f: BForm.HBFormula) :=
+Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:Thy (eval_is_dec m) (eval_prop m IsProp)) (n:nat) (f: BForm.HBForm) :=
     hcons_prover (eval_is_dec m) (eval_prop m IsProp) thy n (hlform (BForm.to_hformula (has_bool m) f)).
 
 Lemma eval_hformula_hlform : forall am f,
@@ -10842,7 +10751,7 @@ Proof.
   exact (fun _ => true). (* bizarre2 *)
 Qed.
 
-Lemma hcons_bprover_correct : forall n (f:BForm.HBFormula) am,
+Lemma hcons_bprover_correct : forall n (f:BForm.HBForm) am,
     hcons_bprover am (empty_thy (eval_is_dec am) (eval_prop am IsProp)) n f = true ->
     BForm.eval_hbformula  (eval_prop am)  f.
 Proof.
