@@ -49,12 +49,12 @@ let coq_int = lazy (constr_of_ref "num.int63.type")
 (* Boolean formula terms *)
 let coq_IsBool = lazy (constr_of_ref "cdcl.kind.IsBool")
 let coq_IsProp = lazy (constr_of_ref "cdcl.kind.IsProp")
-let coq_BFormula = lazy (constr_of_ref "cdcl.BFormula.type")
-let coq_BTT = lazy (constr_of_ref "cdcl.BFormula.BTT")
-let coq_BFF = lazy (constr_of_ref "cdcl.BFormula.BFF")
-let coq_BAT = lazy (constr_of_ref "cdcl.BFormula.BAT")
-let coq_BOP = lazy (constr_of_ref "cdcl.BFormula.BOP")
-let coq_BIT = lazy (constr_of_ref "cdcl.BFormula.BIT")
+let coq_BForm = lazy (constr_of_ref "cdcl.BForm.type")
+let coq_BTT = lazy (constr_of_ref "cdcl.BForm.BTT")
+let coq_BFF = lazy (constr_of_ref "cdcl.BForm.BFF")
+let coq_BAT = lazy (constr_of_ref "cdcl.BForm.BAT")
+let coq_BOP = lazy (constr_of_ref "cdcl.BForm.BOP")
+let coq_BIT = lazy (constr_of_ref "cdcl.BForm.BIT")
 
 (* Evaluation *)
 let coq_eval_is_dec = lazy (constr_of_ref "cdcl.eval_is_dec")
@@ -609,7 +609,7 @@ let constr_of_kind = function
 let constr_of_bformula f =
   let tt k = EConstr.mkApp (Lazy.force coq_BTT, [|constr_of_kind k|]) in
   let ff k = EConstr.mkApp (Lazy.force coq_BFF, [|constr_of_kind k|]) in
-  let ftyp k = EConstr.mkApp (Lazy.force coq_BFormula, [|constr_of_kind k|]) in
+  let ftyp k = EConstr.mkApp (Lazy.force coq_BForm, [|constr_of_kind k|]) in
   let at k i =
     EConstr.mkApp (Lazy.force coq_BAT, [|constr_of_kind k; EConstr.mkInt i|])
   in
