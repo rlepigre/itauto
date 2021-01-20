@@ -9468,7 +9468,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       match n with
       | O => Fail OutOfFuel
       | S n => let ProverRec := prover thy use_prover n in
-               seq_prover (prover_unit_propgation n)
+               seq_prover (prover_unit_propagation n)
                           (seq_prover (prover_case_split ProverRec)
                                       (seq_prover (prover_impl_arrows ProverRec)
                                                   (prover_thy ProverRec thy use_prover))) st g
@@ -9480,7 +9480,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         match n with
       | O => fun _ _ => Fail OutOfFuel
       | S n => let ProverRec := prover thy up n in
-               seq_prover (prover_unit_propgation n)
+               seq_prover (prover_unit_propagation n)
                           (seq_prover (prover_case_split ProverRec)
                                       (seq_prover (prover_impl_arrows ProverRec)
                                                   (prover_thy ProverRec thy up)))
@@ -10006,7 +10006,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       repeat apply is_correct_prover_seq.
       + unfold is_correct_prover.
         intros.
-        unfold prover_unit_propgation in PRF.
+        unfold prover_unit_propagation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
         assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
         assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
@@ -10020,7 +10020,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         apply hmap_order_refl.
       +  unfold is_correct_prover_progress.
         intros.
-        unfold prover_unit_propgation in PRF.
+        unfold prover_unit_propagation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
         assert (UPA := eval_annot_unit_propagation n _ _ WFS HASF).
         assert (UPWF := wf_unit_propagation n _ _  WFS HASF).
