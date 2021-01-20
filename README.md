@@ -57,8 +57,8 @@ and move to the `itauto` directory.
 
 ### Using opam
 
-`opam pin add dune https://github.com/ocaml/dune.git#master`
-`opam pin add coq https://github.com/coq/coq.git#master`
+<!-- `opam pin add dune https://github.com/ocaml/dune.git#master` -->
+<!-- `opam pin add coq https://github.com/coq/coq.git#master` -->
 
 `opam install .`
 

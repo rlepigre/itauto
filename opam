@@ -16,7 +16,7 @@ remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
   "ocaml" {>= "4.9~"}
   "dune" {= "2.7.1"}
-  "coq" {= "dev" }
+  "coq" {>= "8.13~" }
   "ocamlbuild" {build }
 ]
 depopts: [ "ocamlformat" {build} ]
