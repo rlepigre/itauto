@@ -209,7 +209,7 @@ let intro_state st f hf =
     f
  *)
 (** *)
-let unit_propagation n st concl =
+(*let unit_propagation n st concl =
   Printf.printf "(unit_propagation\n";
   let res = unit_propagation n st concl in
   ( match res with
@@ -217,6 +217,7 @@ let unit_propagation n st concl =
   | Fail _ -> Printf.printf "KO)"
   | Progress st -> Printf.printf " ⊢\n%a\n)" output_state st );
   res
+ *)
 (** *)
 
 (*let select_clause b l acc k cl =
@@ -251,13 +252,21 @@ let progress_arrow l st  =
  *)
 
 (** *)
-let find_arrows st l =
+(*let find_arrows st l =
   let res = find_arrows st l in
   Printf.printf "find_arrows %a -> %a\n" (output_list output_lit) l
     (output_list output_lit) res;
-  res
+  res *)
 (** *)
+let prover_intro p st g =
+  let res = prover_intro p st g in
+  ( match res with
+    | Success (_,d) ->
+       deps := LitSet.union d !deps;
+  | _ -> () ) ; res
 
+(** *)  
+    (*
 let case_split prover l st g =
   let prover = fun st g ->
     Printf.printf "(Starting prover %a\n" output_lit (List.hd st.unit_stack).Annot.elt;
@@ -267,9 +276,9 @@ let case_split prover l st g =
   let res = case_split prover l st g  in
   Printf.printf ")"; flush stdout;
   res
-
+ *)
 (** *)
-let prover_intro p st g =
+(*let prover_intro p st g =
   let prover st g =
     Printf.printf "(Starting prover %a %a\n" output_state st (output_option output_hform "⊥") g;
     let res = p st g in
@@ -283,4 +292,4 @@ let prover_intro p st g =
   | _ -> Printf.fprintf stdout " ⊬ %a\n)" output_oform g );
   flush stdout; res
 
-                  (** *)
+ *)

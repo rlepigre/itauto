@@ -2463,7 +2463,7 @@ Inductive op :=
     clauses := clauses st
     |}.
 
-  Definition reset_arrows (ar : list  literal) (st: state) :=
+(*  Definition reset_arrows (ar : list  literal) (st: state) :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
@@ -2474,6 +2474,40 @@ Inductive op :=
     unit_stack := unit_stack st;
     clauses := clauses st
     |}.
+ *)
+
+  Fixpoint removeb [A: Type] (P : A -> bool) (l:list A) :=
+    match l with
+    | nil => nil
+    | e::l => if P e then l else e :: (removeb P l)
+    end.
+
+  Definition eq_literal (l1: literal) :=
+    match l1 with
+    | POS {| id := i ; |} =>
+      fun l2 => match l2 with
+                | POS f' => f'.(id) =? i
+                | NEG _  => false
+                end
+    | NEG {| id := i ; |} =>
+      fun l2 => match l2 with
+                | NEG f' => f'.(id) =? i
+                | POS _  => false
+                end
+    end.
+
+  Definition remove_arrow (ar : literal) (st:state) :=
+    {|
+    fresh_clause_id := fresh_clause_id st;
+    hconsmap := hconsmap st;
+    wneg := wneg st;
+    defs := defs st;
+    arrows := removeb (eq_literal ar) (arrows st);
+    units  := units st;
+    unit_stack := unit_stack st;
+    clauses := clauses st
+    |}.
+
 
 
   Definition neg_bool (o : option (Annot.t bool)) : option (Annot.t bool) :=
@@ -8230,7 +8264,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | nil => Fail Stuck
       | e::l =>
         let f := form_of_literal e in
-        match  prover_intro (reset_arrows l st) (Some f)  with
+        match  prover_intro (remove_arrow e st) (Some f)  with
         | Success (m,prf,d)  =>
           let st'' := insert_unit (annot_lit  f) st  in
           (* let st'' := insert_unit (Annot.mk f d) st in (* To track hyps used in the proof... *) *)
@@ -8250,7 +8284,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | nil => Fail Stuck
       | e::l =>
         let f := form_of_literal e in
-        match  prover_intro (reset_arrows l st) (Some f)  with
+        match  prover_intro (remove_arrow e st) (Some f)  with
         | Success (m,prf,d)  =>
           let st'' := insert_unit (annot_lit  f) st  in
           match augment_clauses  prf (set_hmap m st'')with
@@ -8536,18 +8570,28 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           apply has_clauses_mono; auto.
     Qed.
 
-  Lemma reset_arrows_correct : forall l st,
+    Lemma Forall_removeb : forall [A: Type] (P : A -> Prop) (R: A-> bool) l,
+        Forall P l ->
+        Forall P (removeb R l).
+    Proof.
+      intros. induction H.
+      - constructor.
+      - simpl. destruct (R x); auto.
+    Qed.
+
+  Lemma remove_arrow_correct : forall e st,
         wf_state st ->
-        Forall (has_literal (hconsmap st)) l ->
-        wf_state (reset_arrows l st) /\
-        (eval_state st -> eval_state (reset_arrows l st)) /\
-        (eval_annot_state st -> eval_annot_state (reset_arrows l st)) /\
-        hconsmap (reset_arrows l st) = hconsmap st.
+        wf_state (remove_arrow e st) /\
+        (eval_state st -> eval_state (remove_arrow e st)) /\
+        (eval_annot_state st -> eval_annot_state (remove_arrow e st)) /\
+        hconsmap (remove_arrow e st) = hconsmap st.
     Proof.
       intros.
       destruct H.
       split_and.
       - constructor ; auto.
+        unfold remove_arrow. simpl.
+        apply Forall_removeb; auto.
       - intro H ; destruct H ; constructor ; auto.
       - intro H ; destruct H ; constructor ; auto.
       - reflexivity.
@@ -8606,9 +8650,9 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       - repeat intro.
         rewrite prover_arrows_rew in PRF.
         inv ALL.
-        generalize (reset_arrows_correct l st WFS H2).
+        generalize (remove_arrow_correct a st WFS).
         intros (WFR & EVAL & EVALA & HC).
-        set (st' := reset_arrows l st) in *; clearbody st'.
+        set (st' := remove_arrow a st) in *; clearbody st'.
         set (f := form_of_literal a) in *.
         unfold f in PRF.
         destruct (prover_intro st' (Some (form_of_literal a))) eqn:P; try congruence.
@@ -9642,7 +9686,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       induction l; simpl.
       reflexivity.
       intros.
-      destruct (intro_state (reset_arrows l st) (elt (form_of_literal a))
+      destruct (intro_state (remove_arrow a st) (elt (form_of_literal a))
         (form_of_literal a)); try reflexivity.
       destruct f; try reflexivity.
       apply IHl; auto.
@@ -10133,20 +10177,21 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       destruct (progress_arrow a st); auto.
   Qed.
 
-  Lemma wf_reset_arrows :
-    forall l st,
-           Forall (has_literal (hconsmap st)) l ->
+  Lemma wf_remove_arrow :
+    forall e st,
            wf_state st ->
-      wf_state (reset_arrows l st).
+      wf_state (remove_arrow e st).
   Proof.
     intros.
-    destruct H0; constructor ; auto.
+    destruct H; constructor ; auto.
+    unfold remove_arrow. simpl.
+    apply Forall_removeb ;auto.
   Qed.
 
-  Lemma eval_reset_arrows :
+  Lemma eval_remove_arrow :
     forall l st,
       eval_state  st ->
-      eval_state (reset_arrows l st).
+      eval_state (remove_arrow l st).
   Proof.
     intros.
     destruct H; constructor ; auto.
@@ -10304,7 +10349,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         induction ((find_arrows st0 (arrows st0))).
         discriminate.
         simpl in PRF.
-        destruct   (intro_state (reset_arrows l st0) (elt (form_of_literal a))
+        destruct   (intro_state (remove_arrow a st0) (elt (form_of_literal a))
                                 (form_of_literal a)).
         destruct f ; try congruence.
         destruct r. unfold augment_clauses in PRF.
