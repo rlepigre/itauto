@@ -10,7 +10,7 @@ let show_theory_time =
     ~value:false
 
 let thy_time = ref 0.
-let debug = true
+let debug = false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
