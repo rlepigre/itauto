@@ -10,7 +10,7 @@ let show_theory_time =
     ~value:false
 
 let thy_time = ref 0.
-let debug = false
+let debug = true
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -1152,12 +1152,14 @@ let collect_conflict_clauses tac gl =
   in
   let form = P.hlform (P.BForm.to_hformula has_bool bform) in
   if debug then (
+    Printf.printf "\nBFormula : %a\n" P.output_hbformula bform;
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
     flush stdout );
   let cc = ref [] in
   let err = ref [] in
   let sigma = ref sigma in
   let env = ref env in
+  P.deps := P.LitSet.empty ;
   match run_prover tac cc err (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
@@ -1169,15 +1171,16 @@ let collect_conflict_clauses tac gl =
           , prf ))
         !cc
     in
-    let hyps =
+    let d = P.LitSet.union d !P.deps in
+    let hyps' =
       map_filter (fun (h, f) -> if needed_hyp f d then Some h else None) hyps
     in
     if debug then (
       Printf.printf "Deps %a\n" output_pset d;
       Printf.printf "Hyps %a\n"
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
-        hyps );
-    Some (!sigma, cc, hyps)
+        hyps' );
+    Some (!sigma, cc, hyps')
   | _ ->
      CErrors.user_err (Theory.pp_no_core genv !sigma !err)
 

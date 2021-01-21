@@ -3,6 +3,8 @@ open Prover
 
 (** val empty_state *)
 
+let deps = ref LitSet.empty
+
 let lift_printer (p : out_channel -> 'a -> unit) o v = p o (Annot.elt v)
 let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
 let string_lop = function LAND -> "∧" | LOR -> "∨"
@@ -30,9 +32,9 @@ and output_formula o = function
 let rec dbg_output_op_list o l =
   match l with
   | [] -> ()
-  | [f] -> dbg_output_formula o f.HCons.elt
+  | [f] -> dbg_output_hform o f
   | f1 :: l ->
-    Printf.fprintf o "%a ; %a" dbg_output_formula  f1.HCons.elt
+    Printf.fprintf o "%a ; %a" dbg_output_hform  f1
       (dbg_output_op_list) l
 
 and dbg_output_formula o = function
@@ -40,23 +42,21 @@ and dbg_output_formula o = function
   | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
   | LOP (op, l) -> Printf.fprintf o "[%s %a]" (string_lop op) (dbg_output_op_list ) l
   | LIMPL (l, r) ->
-    Printf.fprintf o "(%s [%a] %a)" (string_op IMPL)(dbg_output_op_list ) l  dbg_output_formula
-      r.HCons.elt
-
-
+    Printf.fprintf o "(%s [%a] %a)" (string_op IMPL)(dbg_output_op_list ) l  dbg_output_hform  r
+and dbg_output_hform o f = Printf.printf "{%a}.(%i)" dbg_output_formula f.HCons.elt (Uint63.hash f.HCons.id)
 
 let rec output_bformula o = function
   | BTT _ -> output_string o "⊤"
   | BFF _ -> output_string o "⊥"
   | BAT (_, i) -> Printf.fprintf o "p%i" (Uint63.hash i)
   | BOP (_, op, f1, f2) ->
-    Printf.fprintf o "(%a.(%i) %s %a.(%i))" output_bformula f1.HCons.elt
+    Printf.fprintf o "({%a}.(%i) %s {%a}.(%i))" output_bformula f1.HCons.elt
       (Uint63.hash f1.HCons.id) (string_op op) output_bformula f2.HCons.elt
       (Uint63.hash f2.HCons.id)
   | BIT _ -> ()
 
 let output_hbformula o f =
-  Printf.fprintf o "%a.(%i)" output_bformula f.HCons.elt
+  Printf.fprintf o "{%a}.(%i)" output_bformula f.HCons.elt
     (Uint63.hash f.HCons.id)
 
 let output_lit o = function
@@ -64,8 +64,6 @@ let output_lit o = function
   | NEG p -> Printf.fprintf o "~[%a]" output_formula p.HCons.elt
 
 let output_hform o f = Printf.fprintf o "%a" output_formula f.HCons.elt
-
-let dbg_output_hform o f = Printf.fprintf o "%a" dbg_output_formula f.HCons.elt
 
 
 let output_oform o f =
@@ -268,11 +266,11 @@ let forall_dis prover st g l =
  *)
 
 (** *)
-(*
 let prover_intro p st g =
   let res = prover_intro p st g in
   ( match res with
-  | Success _ -> Printf.fprintf stdout "prover ⊢ %a\n" output_oform g
-  | _ -> Printf.fprintf stdout "prover ⊬ %a\n" output_oform g );
-  flush stdout; res
- *)
+  | Success ((_,_),d) -> deps := LitSet.union d !deps
+  | _ -> ())
+  ; res
+
+
