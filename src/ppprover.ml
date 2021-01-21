@@ -10,6 +10,10 @@ let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
 let string_lop = function LAND -> "∧" | LOR -> "∨"
 let op_of_lop = function LAND -> AND | LOR -> OR
 
+let output_option p s o = function
+    None -> output_string o s
+  | Some v -> p o v
+
 let rec output_op_list op o l =
   match l with
   | [] ->
@@ -137,13 +141,15 @@ let output_wneg hm o m =
   IntMap.fold' (fun _ i b -> out_elt i b) m ()
 
 let output_state o st =
+  Printf.fprintf o "{|";
   Printf.fprintf o "Arrows : %a\n" (output_list output_lit) st.arrows;
   Printf.fprintf o "WNEG : %a\n" (output_wneg st.hconsmap) st.wneg;
   Printf.fprintf o "Lit : %a\n"
     (output_list (lift_printer output_lit))
     st.unit_stack;
   Printf.fprintf o "Units : %a\n" (output_units st.hconsmap) st.units;
-  Printf.fprintf o "Clauses : %a\n" output_clauses st.clauses
+  Printf.fprintf o "Clauses : %a\n" output_clauses st.clauses;
+  Printf.fprintf o "|}\n"
 
 let output_plit o hm p =
   LitSet.fold
@@ -203,14 +209,14 @@ let intro_state st f hf =
     f
  *)
 (** *)
-(*let unit_propagation n st concl =
+let unit_propagation n st concl =
+  Printf.printf "(unit_propagation\n";
   let res = unit_propagation n st concl in
   ( match res with
-  | Success _ -> Printf.printf "OK"
-  | Fail _ -> Printf.printf "KO"
-  | Progress st -> Printf.printf "unit_propagation ⊢\n%a\n" output_state st );
+  | Success _ -> Printf.printf "OK)"
+  | Fail _ -> Printf.printf "KO)"
+  | Progress st -> Printf.printf " ⊢\n%a\n)" output_state st );
   res
- *)
 (** *)
 
 (*let select_clause b l acc k cl =
@@ -245,32 +251,36 @@ let progress_arrow l st  =
  *)
 
 (** *)
-(*
 let find_arrows st l =
   let res = find_arrows st l in
   Printf.printf "find_arrows %a -> %a\n" (output_list output_lit) l
     (output_list output_lit) res;
   res
- *)
 (** *)
-(*
-let forall_dis prover st g l =
+
+let case_split prover l st g =
   let prover = fun st g ->
     Printf.printf "(Starting prover %a\n" output_lit (List.hd st.unit_stack).Annot.elt;
     let res = prover st g in
     Printf.printf ")"; flush stdout; res  in
   Printf.printf "( Case analysing %a\n" (output_list output_lit) l ;
-  let res = forall_dis prover st g l in
+  let res = case_split prover l st g  in
   Printf.printf ")"; flush stdout;
   res
- *)
 
 (** *)
 let prover_intro p st g =
-  let res = prover_intro p st g in
+  let prover st g =
+    Printf.printf "(Starting prover %a %a\n" output_state st (output_option output_hform "⊥") g;
+    let res = p st g in
+    Printf.printf ")"; flush stdout; res  in
+  Printf.printf "(Starting intro %a\n" (output_option output_hform "⊥") g;  
+  let res = prover_intro prover st g in
   ( match res with
-  | Success ((_,_),d) -> deps := LitSet.union d !deps
-  | _ -> ())
-  ; res
+    | Success (_,d) ->
+       deps := LitSet.union d !deps;
+       Printf.fprintf stdout " ⊢ %a\n)" output_oform g
+  | _ -> Printf.fprintf stdout " ⊬ %a\n)" output_oform g );
+  flush stdout; res
 
-
+                  (** *)

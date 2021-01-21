@@ -2569,7 +2569,7 @@ Inductive op :=
       clauses := clauses st
     |}).
 
-  Inductive failure := OutOfFuel | Stuck | HasModel | Error.
+  Inductive failure := OutOfFuel | Stuck | HasModel.
 
   Inductive result (A B: Type):=
   | Fail (f: failure)
@@ -8239,8 +8239,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail (OutOfFuel | Error | Stuck  ) as e => e
-        | Fail HasModel   | Progress _ =>  prover_arrows l st g
+        | Fail OutOfFuel as e => e
+        | Fail (HasModel | Stuck)  | Progress _ =>  prover_arrows l st g
         end
       end.
 
@@ -8258,8 +8258,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => Prover st'' g
           | Fail f        => Fail f
           end
-        | Fail (OutOfFuel | Error | Stuck) as e => e
-        | Fail HasModel  | Progress _ =>  prover_arrows l st g
+        | Fail OutOfFuel as e => e
+        | Fail (HasModel | Stuck)  | Progress _ =>  prover_arrows l st g
         end
       end.
     Proof. destruct l; reflexivity. Qed.
@@ -8613,6 +8613,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         unfold f in PRF.
         destruct (prover_intro st' (Some (form_of_literal a))) eqn:P; try congruence.
         + destruct f0 ; try congruence.
+          eapply IHl; eauto.
           eapply IHl; eauto.
         + destruct r as (p,a').
           destruct p as (m',prf').
@@ -9504,6 +9505,24 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
                end
       end.
 
+    Lemma prover_opt_rew : forall  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula),
+        prover_opt thy use_prover n st g = 
+        match n with
+      | O => Fail OutOfFuel
+      | S n => let ProverRec := prover_opt thy use_prover n in
+               match unit_propagation n g st with
+               | Success (hm,d) => Success(hm,nil,d)
+               | Progress st'   =>
+                 (seq_prover (prover_case_split ProverRec)
+                             (seq_prover (prover_impl_arrows ProverRec)
+                                         (prover_thy ProverRec thy use_prover))) st' g
+               | Fail f => Fail f
+               end
+      end.
+    Proof.
+      destruct n ; reflexivity.
+    Qed.
+      
     Lemma shorten_clauses_not_stuck : forall u st,
         shorten_clauses u st = Fail Stuck -> False.
     Proof.
@@ -9626,6 +9645,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       destruct (intro_state (reset_arrows l st) (elt (form_of_literal a))
         (form_of_literal a)); try reflexivity.
       destruct f; try reflexivity.
+      apply IHl; auto.
       apply IHl; auto.
       destruct r; try reflexivity.
       destruct_in_goal M1; try reflexivity.
@@ -10293,6 +10313,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         destruct st1.
         destruct (P s o) ; try discriminate.
         destruct f ; try discriminate.
+        tauto.
         tauto.
         destruct r.
         destruct p.
