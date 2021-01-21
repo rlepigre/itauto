@@ -1,3 +1,4 @@
+(* Encoding of Pigeon Hole Principle *)
 Require Import List.
 
 Axiom Pigeon_In_Hole : nat -> nat -> Prop.
