@@ -266,6 +266,7 @@ Inductive op :=
     end.
 
 
+
   Definition mk_impl (l : list HFormula) (r : HFormula) : LForm :=
     match r.(elt) with
     | LIMPL l' r' => LIMPL (rev_append l l') r'
@@ -292,23 +293,19 @@ Inductive op :=
   Definition mklform  (f : HFormula)  : HFormula :=
     if is_TT f.(elt) then hTT else f.
 
+  (* nform recomputes [is_dec] *)
+
   Definition nform (F: LForm -> LForm) (f: HFormula) :=
     match F (elt f) with
     | LFF => hFF
     | LOP LAND nil => hTT
+    | LOP o  (e::nil) => e
     | LAT i        => HCons.mk i (is_dec f) (LAT i)
-    |   r          => HCons.mk (id f) (is_dec f) r
+    | LOP o l      => HCons.mk (id f) (List.forallb is_dec l) (LOP o l)
+    | LIMPL nil r  => r
+    | LIMPL l r    => HCons.mk (id f) (List.forallb is_dec l && is_dec r) (LIMPL l r)
     end.
 
-  Definition mk_op (o: lop) (l: list HFormula) :=
-    match l with
-    | nil => match o with
-             | LOR => LFF
-             |  _  => LOP o l
-             end
-    | e::nil => e.(elt)
-    |   _    => LOP  o l
-    end.
 
 
   Fixpoint lform (f : LForm) :=
@@ -700,6 +697,38 @@ Inductive op :=
                           end
       end.
 
+    Lemma chkHc_rew : forall (m: hmap) (f:LForm) (i:int) (b:bool),
+        chkHc m f i b =
+        match f with
+      | LFF   => match IntMap.get' i m with
+                 | Some(b',LFF) => Bool.eqb b b'
+                 |  _   => false
+                 end
+      | LAT a => match IntMap.get' i m with
+                 | Some(b',LAT a') => (a =? a') && Bool.eqb b (AT_is_dec a) && Bool.eqb b b'
+                 |  _   => false
+                 end
+      | LOP o l => List.forallb (fun f => chkHc m f.(elt) f.(id) f.(is_dec)) l
+                  &&
+                  match IntMap.get' i m with
+                  | Some (b',LOP o' l') =>
+                    lop_eqb o o' &&
+                    Bool.eqb b (forallb (fun f => f.(is_dec)) l) &&
+                    Bool.eqb b b' && chkHc_list l l'
+                  | _ => false
+                  end
+      | LIMPL l r => List.forallb (fun f => chkHc m f.(elt) f.(id) f.(is_dec)) l
+                       && chkHc m r.(elt) r.(id) r.(is_dec)
+                       && match IntMap.get' i m with
+                          | Some (b',LIMPL l' r') =>
+                            Bool.eqb b ((forallb is_dec l) && (is_dec r)) &&
+                            Bool.eqb b b' && chkHc_list l l' && HCons.eq_hc r r'
+                          | _ => false
+                          end
+      end.
+    Proof.
+      destruct f; reflexivity.
+    Qed.
 
   Record wf (m: IntMap.ptrie (bool * LForm)) : Prop :=
     {
@@ -1323,12 +1352,26 @@ Inductive op :=
     destruct (lform (elt f)).
     - simpl. tauto.
     - simpl. tauto.
-    - destruct l.
-      destruct l0.
-      + simpl. tauto.
-      + unfold elt. tauto.
-      + unfold elt. tauto.
-    - unfold elt. tauto.
+    - simpl.
+      destruct l.
+      simpl.
+      rewrite eval_and_list_eq.
+      + destruct l0.
+        * simpl. tauto.
+        * destruct l0. simpl. tauto.
+          unfold elt.
+          rewrite eval_formula_rew.
+          unfold eval_op_list.
+          rewrite eval_and_list_eq.
+          tauto.
+      + destruct l0.
+        * simpl. tauto.
+        * destruct l0. simpl. tauto.
+          unfold elt.
+          rewrite eval_formula_rew.
+          tauto.
+    - destruct l. simpl. tauto.
+      unfold elt. tauto.
   Defined.
 
   Lemma eval_op_list_lform_app :
@@ -1578,6 +1621,17 @@ Inductive op :=
         *);
       }.
 
+  Inductive failure := OutOfFuel | Stuck | HasModel.
+
+  Inductive result (A B: Type):=
+  | Fail (f: failure)
+  | Success (r : B)
+  | Progress (st : A).
+
+  Arguments Fail {A B}.
+  Arguments Success {A B}.
+  Arguments Progress {A B}.
+
   Definition empty_state m :=
     {|
     fresh_clause_id := 0;
@@ -1589,6 +1643,8 @@ Inductive op :=
     unit_stack := nil;
     clauses := empty_watch_map
     |}.
+
+
 
 
   Definition find_clauses (v:int) (cls : watch_map) :=
@@ -2603,16 +2659,6 @@ Inductive op :=
       clauses := clauses st
     |}).
 
-  Inductive failure := OutOfFuel | Stuck | HasModel.
-
-  Inductive result (A B: Type):=
-  | Fail (f: failure)
-  | Success (r : B)
-  | Progress (st : A).
-
-  Arguments Fail {A B}.
-  Arguments Success {A B}.
-  Arguments Progress {A B}.
 
 
   Definition dresult := result state (hmap * LitSet.t).

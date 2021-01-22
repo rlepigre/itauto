@@ -711,9 +711,13 @@ module Theory = struct
     | Name.Anonymous -> raise Not_found
     | Name.Name id -> id
 
-  let rec intros_proof evd binders c =
+  let rec intros_proof evd cl binders c =
     match EConstr.kind evd c with
-    | Lambda (c, t, e) -> intros_proof evd ((name_of_binder c, t) :: binders) e
+    | Lambda (b, t, e) ->
+       let n = name_of_binder b in
+       if List.exists (Names.Id.equal n) cl
+       then intros_proof evd cl ((n, t) :: binders) e
+       else (binders,c)
     | _ -> (binders, c)
 
   module ISet = Set.Make (Int)
@@ -728,7 +732,7 @@ module Theory = struct
     in
     select 1 l
 
-  let deps_of_proof evd c =
+  let deps_of_proof evd cl c =
     let rec deps_rec depth (acc : ISet.t) (c : Constr.constr) =
       match Constr.kind c with
       | Constr.Rel i ->
@@ -737,7 +741,8 @@ module Theory = struct
       | _ -> fold_constr_with_binders succ deps_rec depth acc c
     in
     let deps c = deps_rec 0 ISet.empty c in
-    let binders, prf = intros_proof evd [] c in
+    let cl = List.map id_of_literal cl in
+    let binders, prf = intros_proof evd cl [] c in
     ( binders
     , hyps_of_rels
         (deps (EConstr.to_constr ~abort_on_undefined_evars:false evd prf))
@@ -781,16 +786,26 @@ module Theory = struct
       | NEG _ -> concl_of_clause_dec l
       | POS _ -> if List.for_all lit_is_dec cl then [] else cl )
 
+  (* TODO l' may contain more than literals (goal with quantifiers? *)
   let rec get_used_hyps l' cl =
     match l' with
     | [] -> concl_of_clause_dec cl
     | (e, t) :: l' -> (
       match cl with
-      | [] -> failwith "get_used_hyps"
+      | [] -> []
       | at :: cl ->
         if Names.Id.equal e (id_of_literal at) then at :: get_used_hyps l' cl
         else get_used_hyps ((e, t) :: l') cl )
 
+(*  let get_used_hyps l' cl =
+    Printf.printf "get_used_hyps:\n";
+    List.iter (fun (i,_) -> Printf.printf "%s " (Names.Id.to_string i)) l';
+    Printf.printf "\n";
+    List.iter (fun i -> Printf.printf "%s " (Names.Id.to_string (id_of_literal i))) cl; flush stdout ;
+    get_used_hyps l' cl
+ *)  
+    
+  
   type 'a core = UnsatCore of (P.literal list * EConstr.t) | NoCore of 'a
 
   let rec mkLambdas l t =
@@ -799,7 +814,7 @@ module Theory = struct
     | (x, u) :: l -> EConstr.mkLambda (Context.nameR x, u, mkLambdas l t)
 
   let reduce_proof sigma cl prf =
-    let binders, used_binders, prf' = deps_of_proof sigma prf in
+    let binders, used_binders, prf' = deps_of_proof sigma cl prf in
     let rused = List.rev used_binders in
     let core = get_used_hyps rused cl in
     let prf_core =
@@ -1138,11 +1153,15 @@ let collect_conflict_clauses tac gl =
   let hyps = Tacmach.New.pf_hyps_types gl in
   let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
   if debug then
-    output_list
+    begin
+      Printf.printf "Hypotheses:\n";
+      output_list
       (fun o (h, f) ->
         Printf.fprintf o "%s : %a\n" (Names.Id.to_string h)
           ProverPatch.output_hbformula f)
       stdout hyps;
+      Printf.printf "Conclusion %a:\n" ProverPatch.output_hbformula concl
+    end;
   let bform, env = make_formula env (List.rev hyps) concl in
   let has_bool i =
     try
@@ -1181,8 +1200,10 @@ let collect_conflict_clauses tac gl =
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
         hyps' );
     Some (!sigma, cc, hyps')
-  | _ ->
-     CErrors.user_err (Theory.pp_no_core genv !sigma !err)
+  | _ ->flush stdout;
+     match !err with
+     | [] -> CErrors.user_err Pp.(str "Not a tautology")
+     | l  -> CErrors.user_err (Theory.pp_no_core genv !sigma l)
 
 
 let assert_conflict_clauses tac =
@@ -1261,7 +1282,8 @@ let change_goal =
             (ref env)
             (P.hlform (P.BForm.to_hformula has_bool form))
         with
-        | P.Progress _ | P.Fail _ -> failwith "Failure with conflict clauses"
+        | P.Progress _ -> Feedback.msg_debug Pp.(str "Prover Progress")
+        | P.Fail f -> Feedback.msg_debug Pp.(str "Prover Failure" ++ str (P.string_of_failure f))
         | P.Success _ -> Feedback.msg_debug Pp.(str "Prover success") );
       let change =
         EConstr.mkLetIn

@@ -10,6 +10,11 @@ let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
 let string_lop = function LAND -> "∧" | LOR -> "∨"
 let op_of_lop = function LAND -> AND | LOR -> OR
 
+let string_of_failure = function
+  | OutOfFuel ->"OutOfFuel"
+  | Stuck -> "Stuck"
+  | HasModel -> "HasModel"
+
 let output_option p s o = function
     None -> output_string o s
   | Some v -> p o v
@@ -257,14 +262,6 @@ let progress_arrow l st  =
   Printf.printf "find_arrows %a -> %a\n" (output_list output_lit) l
     (output_list output_lit) res;
   res *)
-(** *)
-let prover_intro p st g =
-  let res = prover_intro p st g in
-  ( match res with
-    | Success (_,d) ->
-       deps := LitSet.union d !deps;
-  | _ -> () ) ; res
-
 (** *)  
     (*
 let case_split prover l st g =
@@ -291,5 +288,13 @@ let case_split prover l st g =
        Printf.fprintf stdout " ⊢ %a\n)" output_oform g
   | _ -> Printf.fprintf stdout " ⊬ %a\n)" output_oform g );
   flush stdout; res
-
  *)
+
+let prover_intro p st g =
+  let res = prover_intro p st g in
+  ( match res with
+    | Success (_,d) ->
+       deps := LitSet.union d !deps;
+  | _ -> () ) ; res
+
+
