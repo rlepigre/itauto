@@ -135,7 +135,12 @@ module Env = struct
 
 
   let check_atom env evd = function
-    | AtomProp _ -> ()
+    | AtomProp (p,_) ->
+       if is_prop env evd p then ()
+       else  Feedback.msg_debug
+           Pp.(
+             str "check_atom is well typed "
+             ++ Printer.pr_econstr_env env evd p)
     | AtomBool {constr_bool; constr_prop; constr_iff} ->
       (let ty = Retyping.get_type_of env evd constr_bool in
        if EConstr.eq_constr evd ty (constr_of_ref "core.bool.type") then ()
@@ -469,7 +474,8 @@ let reify_formula genv env k (f : EConstr.t) =
         (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec) (mkop k op f1 f2), env)
       with Not_found -> var env k f )
     | Prod (t, f1, f2)
-      when t.Context.binder_name = Anonymous || EConstr.Vars.noccurn evd 1 f2 ->
+         when is_prop genv evd f1 &&
+                (t.Context.binder_name = Anonymous || EConstr.Vars.noccurn evd 1 f2) ->
       let f1, env = reify_formula env P.IsProp f1 in
       let f2, env = reify_formula env P.IsProp f2 in
       let env, i = Env.hcons_op env P.IMPL f1.P.HCons.id f2.P.HCons.id in
@@ -1169,9 +1175,11 @@ let collect_conflict_clauses tac gl =
       Env.has_bool d
     with Not_found -> false
   in
-  let form = P.hlform (P.BForm.to_hformula has_bool bform) in
+  let form1 = (P.BForm.to_hformula has_bool bform) in
+  let form = P.hlform form1 in
   if debug then (
     Printf.printf "\nBFormula : %a\n" P.output_hbformula bform;
+    Printf.printf "\nFormula1 : %a\n" P.dbg_output_hform form1;
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
     flush stdout );
   let cc = ref [] in

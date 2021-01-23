@@ -299,6 +299,7 @@ Inductive op :=
     match F (elt f) with
     | LFF => hFF
     | LOP LAND nil => hTT
+    | LOP LOR  nil => hFF
     | LOP o  (e::nil) => e
     | LAT i        => HCons.mk i (is_dec f) (LAT i)
     | LOP o l      => HCons.mk (id f) (List.forallb is_dec l) (LOP o l)
@@ -315,11 +316,23 @@ Inductive op :=
     | LOP o l => LOP o (lform_app o nil (List.map (nform lform) l))
     | LIMPL l r => mk_impl
                      (lform_app LAND nil (List.map (nform lform) l))
-                     (HCons.map lform r)
+                     (nform lform r)
     end.
+
+  Lemma lform_rew : forall f,
+      lform f = match f with
+                | LFF   => LFF
+                | LAT i => LAT i
+                | LOP o l => LOP o (lform_app o nil (List.map (nform lform) l))
+                | LIMPL l r => mk_impl
+                                 (lform_app LAND nil (List.map (nform lform) l))
+                                 (nform lform r)
+    end.
+  Proof. destruct f ; reflexivity. Qed.
 
 
   Open Scope int63.
+
 
 
   Definition op_eqb (o o': op) : bool :=
@@ -1459,10 +1472,13 @@ Inductive op :=
       auto.
     -
       rewrite <- eval_mk_impl.
-      simpl.
+      symmetry.
+      rewrite eval_formula_rew at 1.
+      symmetry.
       apply eval_impl_list_iff.
       apply (eval_op_list_lform_app eval_formula_lform LAND).
-      auto.
+      change (eval_hformula t0 <-> eval_hformula (nform lform t0)).
+      rewrite eval_nform. tauto. auto.
   Qed.
 
   Lemma Forall_Forall : forall {T:Type} (P Q:T -> Prop) l,
@@ -10735,6 +10751,12 @@ Module BForm.
         end
       | BIT f =>  (to_formula pol IsBool f)
       end.
+
+
+
+
+
+
 
     Definition hold (k:kind) : eval_kind k ->  Prop :=
       match k with

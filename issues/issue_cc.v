@@ -20,6 +20,32 @@ Proof.
   itauto congruence.
 Qed.
 
+Goal  (False -> False \/ False) /\ (False \/ False -> False).
+Proof.
+  itauto idtac.
+Qed.
+
+(* Set as left hand side -> ignored *)
+Goal true = true <-> (Z -> False <-> False).
+Proof.
+  split;intros.
+  itauto reflexivity.
+  itauto reflexivity.
+Qed.
+
+Goal forall (A: Prop) (B:Type),
+True <-> (forall l' : B, False -> A).
+Proof.
+  intros.
+  let t := itauto idtac in
+  itauto t.
+Qed.
+
+Goal forall (A: Prop),
+    False <-> False /\ A.
+Proof.
+  itauto idtac.
+Qed.
 
 Goal forall (mem: Type) (block: Type) (perm_kind permission: Type)
             (perm : mem -> block -> Z -> perm_kind -> permission -> Prop)
