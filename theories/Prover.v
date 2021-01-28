@@ -22,4 +22,4 @@ Require Import Cdcl.Formula.
 
 (* This extracts at the right place only if Pwd is itauto top-level
 directory *)
-Extraction "src/prover.ml" hcons_bprover LitSet.fold LitSet.mem.
+Extraction "src/prover.ml" hcons_bprover LitSet.is_empty LitSet.fold LitSet.mem.

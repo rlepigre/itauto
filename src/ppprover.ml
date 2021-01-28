@@ -182,6 +182,15 @@ let cnf pol is_classic cp cm ar acc f hf =
  *)
 (** *)
 
+let is_unsat lit l =
+  let res = is_unsat lit l in
+  (match res with
+  | None -> ()
+  | Some d -> deps := LitSet.union d !deps);
+  res
+
+(** *)
+
 (*let reduce lit cl =
   let res = reduce lit cl in
   ( match res with
@@ -214,13 +223,13 @@ let intro_state st f hf =
     f
  *)
 (** *)
-(*let unit_propagation n st concl =
+(*let unit_propagation n concl st =
   Printf.printf "(unit_propagation\n";
-  let res = unit_propagation n st concl in
+  let res = unit_propagation n concl st  in
   ( match res with
   | Success _ -> Printf.printf "OK)"
   | Fail _ -> Printf.printf "KO)"
-  | Progress st -> Printf.printf " ⊢\n%a\n)" output_state st );
+  | Progress st' -> Printf.printf "%a ⊢\n%a\n)" output_state st output_state st' );
   res
  *)
 (** *)

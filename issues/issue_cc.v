@@ -27,18 +27,14 @@ Qed.
 
 (* Set as left hand side -> ignored *)
 Goal true = true <-> (Z -> False <-> False).
-Proof.
-  split;intros.
-  itauto reflexivity.
-  itauto reflexivity.
+  itautor reflexivity.
 Qed.
 
 Goal forall (A: Prop) (B:Type),
 True <-> (forall l' : B, False -> A).
 Proof.
   intros.
-  let t := itauto idtac in
-  itauto t.
+  itautor idtac.
 Qed.
 
 Goal forall (A: Prop),
@@ -89,3 +85,50 @@ Qed.
 Goal (True -> False) -> False.
   itauto idtac.
 Qed.
+
+Goal forall
+    (ok : list Z -> Prop)
+    (x l h : Z)
+    (s : list Z)
+    (BOUNDS : l < h)
+    (H : ok s)
+    (l0 h0 : Z)
+    (g : h >= l0)
+    (g0 : h0 >= l),
+    Z.min l l0 <= x < Z.max h h0 \/ In x s <-> l0 <= x < h0 \/ l <= x < h \/ In x s.
+Proof.
+  intros.
+  let t := solve[lia|itauto lia] in
+  gen_conflicts t.
+  revert g0.
+  vitautog.
+Qed.
+
+
+Goal forall l x l0 s h h0,
+  (l <= x -> (Z.min l l0 <= x -> False) -> False) ->
+  (x < h -> (x < Z.max h h0 -> False) -> False) ->
+  (x < Z.max h h0 -> In x s \/ x < h0 \/ x < h) ->
+  (l < h -> h >= l0 -> Z.min l l0 <= x -> x < Z.max h h0 -> In x s \/ l0 <= x \/ x < h) ->
+  (l < h -> h0 >= l -> l0 <= x -> In x s \/ x < h0 \/ l <= x) ->
+  (l < h -> h >= l0 -> In x s \/ x < h0 \/ l <= x \/ x < h) ->
+  (Z.min l l0 <= x -> In x s \/ l0 <= x \/ l <= x) ->
+  (l < h -> Z.min l l0 <= x -> In x s \/ l0 <= x \/ l <= x \/ x < h) ->
+  (l < h -> h >= l0 -> In x s \/ l0 <= x \/ x < h0 \/ l <= x \/ x < h) ->
+  (l0 <= x -> (Z.min l l0 <= x -> False) -> False) ->
+  (x < h0 -> (x < Z.max h h0 -> False) -> False) ->
+  h0 >= l ->
+  h >= l0 ->
+  l < h ->
+  (Z.min l l0 <= x < Z.max h h0 \/ In x s -> l0 <= x < h0 \/ l <= x < h \/ In x s) /\
+  (l0 <= x < h0 \/ l <= x < h \/ In x s -> Z.min l l0 <= x < Z.max h h0 \/ In x s).
+Proof.
+  itauto idtac.
+Qed.
+
+Ltac mp :=
+  repeat match goal with
+         | H : ?A -> ?B , H1 : ?A |- _ => specialize (H H1)
+         end.
+
+

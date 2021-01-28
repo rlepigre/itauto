@@ -1186,7 +1186,8 @@ let collect_conflict_clauses tac gl =
   let err = ref [] in
   let sigma = ref sigma in
   let env = ref env in
-  P.deps := P.LitSet.empty ;
+  let save_deps = !P.deps in
+  P.deps := P.LitSet.empty ; (* In case of recursive call *)
   match run_prover tac cc err (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
@@ -1207,8 +1208,9 @@ let collect_conflict_clauses tac gl =
       Printf.printf "Hyps %a\n"
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
         hyps' );
+    P.deps := save_deps;
     Some (!sigma, cc, hyps')
-  | _ ->flush stdout;
+  | _ -> P.deps := save_deps; 
      match !err with
      | [] -> CErrors.user_err Pp.(str "Not a tautology")
      | l  -> CErrors.user_err (Theory.pp_no_core genv !sigma l)
