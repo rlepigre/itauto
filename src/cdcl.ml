@@ -10,7 +10,11 @@ let show_theory_time =
     ~value:false
 
 let thy_time = ref 0.
-let debug = false
+
+let debug = Goptions.declare_bool_option_and_ref ~depr:false
+    ~key:["Itauto"; "Debug"]
+    ~value:false
+
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
@@ -372,7 +376,7 @@ module Env = struct
 
   let hcons_atom genv env k v1 = 
     let res = hcons_atom genv env k v1 in
-    if debug then
+    if debug () then
       Feedback.msg_debug Pp.(str "hons_atom " ++
                                Printer.pr_econstr_env genv env.sigma v1 ++ str"->" ++
                                pp_atom_spec genv env.sigma (fst (snd res))) ;
@@ -410,6 +414,14 @@ module Env = struct
       | (e, i) :: l -> add i e (map_of_list l)
     in
     map_of_list env.vars
+
+  (* [all_literals] returns the list of all literals as a clause.
+     NB: is_dec is not correctly set. *)
+  let all_literals env =
+    List.map (fun (_,i) ->
+        let i' = Uint63.of_int i in 
+        P.NEG ({P.HCons.id = i'; P.HCons.is_dec = false; P.HCons.elt =  (P.LAT i')})) env.vars
+
 end
 
 let hcons i b f = P.HCons.{id = Uint63.of_int i; is_dec = b; elt = f}
@@ -828,11 +840,22 @@ module Theory = struct
     in
     (core, mkLambdas rused prf_core)
 
+  (** [dirty_intros] introduces the negative atoms of the clauses in the context.
+      We assume that there is no name conflict. *)
+
+  let dirty_intros cids =
+    Tacticals.New.tclTHEN 
+      (Tacticals.New.tclMAP Tactics.introduction cids)
+      (Tacticals.New.tclREPEAT Tactics.intro)
+
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause_dec !ep cl in
+    let cids = List.fold_right (fun x acc ->
+                   if P.is_positive_literal x then acc
+                   else id_of_literal x::acc) cl [] in
     let e, pv = Proofview.init !sigma [(env, gl)] in
     try
-      if debug then
+      if debug () then
         Feedback.msg_debug
           Pp.(str "Goal " ++ Printer.pr_econstr_env env !sigma gl);
       let _, pv, _, _ =
@@ -840,8 +863,9 @@ module Theory = struct
           ~name:(Names.Id.of_string "unsat_core")
           ~poly:false env
           (Tacticals.New.tclTHENLIST
-             [ Tactics.keep []
-             ; Tacticals.New.tclREPEAT Tactics.intro
+             [ (*Tactics.keep []
+             ; Tacticals.New.tclREPEAT Tactics.intro *)
+               dirty_intros cids
              ; Tacticals.New.tclCOMPLETE tac ])
           pv
       in
@@ -849,7 +873,7 @@ module Theory = struct
       | [prf] ->
         sigma := Proofview.return pv;
         let core, prf = reduce_proof !sigma cl prf in
-        if debug then begin
+        if debug () then begin
           Feedback.msg_debug
             Pp.(
               str "Literals"
@@ -865,7 +889,7 @@ module Theory = struct
         UnsatCore (core, prf)
       | _ -> failwith "Multiple proof terms"
     with e when CErrors.noncritical e ->
-      if debug then
+      if debug () then
         Feedback.msg_debug
           Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
       NoCore (CErrors.print e, gl)
@@ -1021,7 +1045,7 @@ module Theory = struct
     | None -> (
       match thy_prop_atoms cc (genv, sigma) ep l with
       | Some l ->
-        if debug then
+        if debug () then
           Printf.fprintf stdout "Thy ⊢p %a\n" P.output_literal_list l;
         Some (hcons_literals hm l, l) (* We did not augment hm... *)
       | None -> (
@@ -1029,16 +1053,31 @@ module Theory = struct
         match find_unsat_core ep l tac genv sigma with
         | NoCore r -> err := r @ !err ; None
         | UnsatCore (core, prf) ->
-          if debug then
+          if debug () then
             Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
           cc := ((CC, List.sort compare_atom core), (core, prf)) :: !cc;
           Some (hm, core) ) )
     | Some (core, prf) ->
-      if debug then
+      if debug () then
         Printf.fprintf stdout "Thy[Again] ⊢ %a\n" P.output_literal_list
           (snd core);
       Some (hm, snd core)
 end
+
+let get_env = Proofview.Goal.enter_one (fun gl ->
+                   Proofview.tclUNIT (Tacmach.New.pf_env gl))
+
+let dirty_clear ep (env, sigma) =
+  let gl = Theory.constr_of_clause ep (Env.all_literals ep) in
+  let (e,pv) = Proofview.init sigma [(env,gl)] in
+  let env,_,_,_ =  Proofview.apply
+                    ~name:(Names.Id.of_string "dirty_clear")
+                    ~poly:false env
+                    (Proofview.tclTHEN (Tactics.keep []) get_env)   pv in
+  env
+
+  
+
 
 let run_prover tac cc err (genv, sigma) ep f =
   let is_dec i =
@@ -1048,6 +1087,7 @@ let run_prover tac cc err (genv, sigma) ep f =
     with Not_found -> false
   in
   let m = P.hcons_form f in
+  let genv = dirty_clear !ep (genv,!sigma) in
   thy_time := 0.;
   let res =
     P.prover_formula is_dec
@@ -1158,7 +1198,7 @@ let collect_conflict_clauses tac gl =
   let concl = Tacmach.New.pf_concl gl in
   let hyps = Tacmach.New.pf_hyps_types gl in
   let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
-  if debug then
+  if debug () then
     begin
       Printf.printf "Hypotheses:\n";
       output_list
@@ -1177,7 +1217,7 @@ let collect_conflict_clauses tac gl =
   in
   let form1 = (P.BForm.to_hformula has_bool bform) in
   let form = P.hlform form1 in
-  if debug then (
+  if debug () then (
     Printf.printf "\nBFormula : %a\n" P.output_hbformula bform;
     Printf.printf "\nFormula1 : %a\n" P.dbg_output_hform form1;
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
@@ -1203,7 +1243,7 @@ let collect_conflict_clauses tac gl =
     let hyps' =
       map_filter (fun (h, f) -> if needed_hyp f d then Some h else None) hyps
     in
-    if debug then (
+    if debug () then (
       Printf.printf "Deps %a\n" output_pset d;
       Printf.printf "Hyps %a\n"
         (output_list (fun o h -> output_string o (Names.Id.to_string h)))
@@ -1277,7 +1317,7 @@ let change_goal =
       let m = Env.map_of_env env in
       let f = env.Env.fresh in
       let n = fresh_id (Names.Id.of_string "__n") gl in
-      if debug then (
+      if debug () then (
         flush stdout;
         Feedback.msg_debug Pp.(str "Running prover with conflict clauses");
         let has_bool i =
@@ -1304,7 +1344,7 @@ let change_goal =
               ( Lazy.force coq_eval_hbformula
               , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] ) )
       in
-      if debug then
+      if debug () then
         Feedback.msg_debug
           Pp.(str "change " ++ Printer.pr_econstr_env genv sigma change);
       Tacticals.New.tclTHENLIST [Tactics.change_concl change; generalize_env env])
