@@ -848,6 +848,8 @@ module Theory = struct
       (Tacticals.New.tclMAP Tactics.introduction cids)
       (Tacticals.New.tclREPEAT Tactics.intro)
 
+
+
   let find_unsat_core ep cl tac env sigma =
     let gl = constr_of_clause_dec !ep cl in
     let cids = List.fold_right (fun x acc ->
@@ -863,9 +865,7 @@ module Theory = struct
           ~name:(Names.Id.of_string "unsat_core")
           ~poly:false env
           (Tacticals.New.tclTHENLIST
-             [ (*Tactics.keep []
-             ; Tacticals.New.tclREPEAT Tactics.intro *)
-               dirty_intros cids
+             [ dirty_intros cids
              ; Tacticals.New.tclCOMPLETE tac ])
           pv
       in
@@ -1076,8 +1076,6 @@ let dirty_clear ep (env, sigma) =
                     (Proofview.tclTHEN (Tactics.keep []) get_env)   pv in
   env
 
-  
-
 
 let run_prover tac cc err (genv, sigma) ep f =
   let is_dec i =
@@ -1140,25 +1138,20 @@ let tclRETYPE c =
       let sigma, _ = Typing.type_of env sigma c in
       Unsafe.tclEVARS sigma)
 
-let assert_conflicts sigma l gl =
+let assert_conflicts  l gl =
   let rec assert_conflicts n l =
     match l with
     | [] -> Tacticals.New.tclIDTAC
     | (id, (c, prf)) :: l ->
       Tacticals.New.tclTHENLIST
-        [ Tactics.assert_by (Names.Name id) c
-            (Tacticals.New.tclTHENLIST
-               [ (*Tactics.keep [];*)
-                 (*tclRETYPE prf;*)
-                 Tactics.exact_no_check prf ])
+        [
+          Tactics.assert_by (Names.Name id) c  (Tactics.exact_no_check prf)
+        (*Tactics.pose_proof (Names.Name id)  prf -- need a cast*)
         ; assert_conflicts (n + 1) l ]
   in
-  let update_evar_and_assert s l =
-    Tacticals.New.tclTHEN (Proofview.Unsafe.tclEVARS s) (assert_conflicts 0 l)
-  in
   if show_theory_time () then
-    Proofview.tclTIME (Some "Assert conflicts") (update_evar_and_assert sigma l)
-  else update_evar_and_assert sigma l
+    Proofview.tclTIME (Some "Assert conflicts") (assert_conflicts 0  l)
+  else assert_conflicts 0 l
 
 let rec output_list p o l =
   match l with
@@ -1265,12 +1258,19 @@ let assert_conflict_clauses tac =
         let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
         let cc = List.combine ids cc in
         Tacticals.New.tclTHENLIST
-          [ (* Assert the conflict clauses *)
-            assert_conflicts sigma cc gl
-          ; (* Generalize the used hypotheses *)
-            Tactics.generalize (List.map EConstr.mkVar d)
-          ; (* Generalize the conflict clauses *)
-            Tactics.generalize (List.map EConstr.mkVar ids) ])
+          [
+            Proofview.Unsafe.tclEVARS sigma ; 
+            (* Generalize the used hypotheses *)
+            Tactics.generalize (List.map EConstr.mkVar d);
+            (* Assert the conflict clauses *)
+            assert_conflicts  cc gl
+            ; (* Generalize the conflict clauses *)
+              Tactics.revert ids;
+            Tactics.keep []
+    ])
+
+
+
 
 let generalize_prop =
   Proofview.Goal.enter (fun gl ->

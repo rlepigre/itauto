@@ -100,7 +100,6 @@ Proof.
   intros.
   let t := solve[lia|itauto lia] in
   gen_conflicts t.
-  revert g0.
   vitautog.
 Qed.
 

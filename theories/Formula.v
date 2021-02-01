@@ -300,7 +300,7 @@ Inductive op :=
     | LFF => hFF
     | LOP LAND nil => hTT
     | LOP LOR  nil => hFF
-    | LOP o  (e::nil) => e
+    | LOP _ (e::nil) => e
     | LAT i        => HCons.mk i (is_dec f) (LAT i)
     | LOP o l      => HCons.mk (id f) (List.forallb is_dec l) (LOP o l)
     | LIMPL nil r  => r
@@ -8408,7 +8408,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-  Definition is_correct_prover (Prover : ProverT) (st: state) :=
+  Definition sound_prover (Prover : ProverT) (st: state) :=
     forall (g: option HFormula) 
            (m: hmap) (prf : list conflict_clause) d
              (WFS : wf_state  st)
@@ -8427,7 +8427,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       wf_pset m d.
 
 
-  Definition is_correct_prover_progress (Prover : ProverT) (st st': state) :=
+  Definition sound_prover_progress (Prover : ProverT) (st st': state) :=
     forall (g: option HFormula)
              (WFS : wf_state  st)
              (HASF: has_oform (hconsmap st) g)
@@ -8443,7 +8443,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Section P.
 
 
-    Variable Prover : state -> option HFormula -> result state (hmap * list conflict_clause * LitSet.t).
+    Variable ProverT : state -> option HFormula -> result state (hmap * list conflict_clause * LitSet.t).
 
     Definition has_lit (h: literal) (s : LitSet.t) :=
       match LitSet.get (id_of_literal h) s with
@@ -8483,7 +8483,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       match cl with
       | nil => Backjump false (hconsmap st) nil LitSet.empty
       | f :: cl =>
-        match Prover (insert_unit (annot_hyp f) st) g with
+        match ProverT (insert_unit (annot_hyp f) st) g with
         | Success (m,prf,ann') =>
           if lazy_and (negb (has_lit f ann')) (fun _ =>  annot_holds (units st) ann')
           then Backjump true m prf ann'
@@ -8520,7 +8520,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       match cl with
       | nil => Backjump false (hconsmap st) nil LitSet.empty
       | f :: cl =>
-        match Prover (insert_unit (annot_hyp f) st) g with
+        match ProverT (insert_unit (annot_hyp f) st) g with
         | Success (m,prf,ann') =>
           if negb (has_lit f ann') && annot_holds (units st) ann'
           then Backjump true m prf ann'
@@ -8559,7 +8559,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | Some g => 
         match intro_state st g.(elt) g with
         | Success (h,d) => Success (h,nil,d)
-        | Progress (st',g') => Prover st' g'
+        | Progress (st',g') => ProverT st' g'
         | Fail f => Fail f
         end
       end.
@@ -8577,7 +8577,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           (* let st'' := insert_unit (Annot.mk f d) st in (* To track hyps used in the proof... *) *)
           match augment_clauses  prf (set_hmap m st'') with
           | Success (h,d) => Success (h,prf,d) (* CHECK *)
-          | Progress st'' => Prover st'' g
+          | Progress st'' => ProverT st'' g
           | Fail f        => Fail f
           end
         | Fail OutOfFuel as e => e
@@ -8596,7 +8596,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           let st'' := insert_unit (annot_lit  f) st  in
           match augment_clauses  prf (set_hmap m st'')with
           | Success (h,d) => Success (h,prf,d) (* CHECK *)
-          | Progress st'' => Prover st'' g
+          | Progress st'' => ProverT st'' g
           | Fail f        => Fail f
           end
         | Fail OutOfFuel as e => e
@@ -8606,10 +8606,10 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Proof. destruct l; reflexivity. Qed.
 
 
-    Variable ProverCorrect : forall st, is_correct_prover Prover st.
+    Variable ProverTCorrect : forall st, sound_prover ProverT st.
 
 
-    Lemma prover_intro_correct : forall st, is_correct_prover prover_intro st.
+    Lemma prover_intro_correct : forall st, sound_prover prover_intro st.
     Proof.
       repeat intro.
       unfold prover_intro in PRF.
@@ -8629,7 +8629,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         + auto.
       - destruct st0 as (st',g').
         destruct WF as (WF' & HF).
-        destruct (ProverCorrect _ _ _ _ _ WF' HF PRF) as
+        destruct (ProverTCorrect _ _ _ _ _ WF' HF PRF) as
             (P1 & P2 & P3 & P4 & P5 & P6).
         split_and; auto.
         + intros.
@@ -8949,7 +8949,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Lemma prover_arrows_correct :
       forall l st
              (ALL : Forall (has_literal (hconsmap st)) l),
-             is_correct_prover (prover_arrows l) st.
+             sound_prover (prover_arrows l) st.
     Proof.
       induction l.
       - repeat intro.
@@ -9028,7 +9028,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
               auto with wf.
           }
           {
-            apply ProverCorrect in PRF; auto.
+            apply ProverTCorrect in PRF; auto.
             destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5).
             unfold eval_hformula in *.
             assert (ELA := eval_annot_lit (hconsmap st) la).
@@ -9198,7 +9198,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       -
         intros.
         rewrite case_split_rew in EQ.
-        unfold is_correct_prover in ProverCorrect.
+        unfold sound_prover in ProverTCorrect.
         inv HASL. rename H1 into HASA .
         rename H2 into HASL.
         assert (WFI:= wf_insert_unit (annot_hyp a) st WF (check_annot_hyp HASA)).
@@ -9214,7 +9214,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         }
         set (st':= insert_unit (annot_hyp a) st) in *.
         clearbody st'.
-        destruct (Prover st' g) eqn:PRF; try congruence.
+        destruct (ProverT st' g) eqn:PRF; try congruence.
         destruct r as (p & ann').
         destruct p as (m',prf').
         destruct (negb (has_lit a ann') && annot_holds (units st) ann') eqn:CHECK.
@@ -9223,7 +9223,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           destruct CHECK as (C1 & HOLD).
           inv EQ.
           clear IHl.
-          apply ProverCorrect in PRF.
+          apply ProverTCorrect in PRF.
           destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6).
           assert (HOLD' : eval_state st -> eval_pset m d).
           {
@@ -9248,7 +9248,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           * auto.
           * auto.
         + (* Normal case / no backjump *)
-          generalize (ProverCorrect st' g m' prf' ann' WFI HASG' PRF).
+          generalize (ProverTCorrect st' g m' prf' ann' WFI HASG' PRF).
           intros (EVAL' & EVALA & EPRF & ORD' & HASC& WFP).
           assert (LE: hmap_order (hconsmap st) m').
           {
@@ -9459,7 +9459,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         revert PRF6. apply wf_pset_mono; auto with wf.
     Qed.
 
-  Section ThyProver.
+  Section ThyProverT.
     Variable thy: Thy.
 
     (** From a context,
@@ -9535,7 +9535,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | Some (h',cl') =>
         match augment_with_clause cl'  (set_hmap h' st) with
         | Success (h',d) => Success (h',cl'::nil,d)
-        | Progress st' => Prover st' g
+        | Progress st' => ProverT st' g
         | Fail f       => Fail f
         end
       end.
@@ -9724,9 +9724,9 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-  Lemma run_thy_prover_correct : forall st, is_correct_prover run_thy_prover  st.
+  Lemma run_thy_prover_correct : forall st, sound_prover run_thy_prover  st.
     Proof.
-      unfold is_correct_prover.
+      unfold sound_prover.
       intros.
       unfold run_thy_prover in PRF.
       specialize (wf_generate_conflict_clause WFS HASF).
@@ -9754,7 +9754,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           apply ForallMono.
           apply has_literal_mono.
           subst. auto with wf.
-      -  apply ProverCorrect in PRF; auto.
+      -  apply ProverTCorrect in PRF; auto.
          simpl in *.
          destruct PRF as (PRF1 & PRF2 & PRF3 & PRF4 & PRF5 & PRF6).
          split_and ; try tauto.
@@ -9770,14 +9770,14 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
            auto with wf.
     Qed.
 
-    End ThyProver.
+    End ThyProverT.
 
 
 
 
   End P.
 
-  Section Prover.
+  Section ProverT.
 
     Definition seq_prover (p : ProverT) (q: ProverT) : ProverT :=
       fun st f  =>
@@ -9820,11 +9820,11 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
-      | S n => let ProverRec := prover thy use_prover n in
+      | S n => let ProverTRec := prover thy use_prover n in
                seq_prover (prover_unit_propagation n)
-                          (seq_prover (prover_case_split ProverRec)
-                                      (seq_prover (prover_impl_arrows ProverRec)
-                                                  (prover_thy ProverRec thy use_prover))) st g
+                          (seq_prover (prover_case_split ProverTRec)
+                                      (seq_prover (prover_impl_arrows ProverTRec)
+                                                  (prover_thy ProverTRec thy use_prover))) st g
       end.
 
 
@@ -9832,11 +9832,11 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         prover thy up (n:nat)     =
         match n with
       | O => fun _ _ => Fail OutOfFuel
-      | S n => let ProverRec := prover thy up n in
+      | S n => let ProverTRec := prover thy up n in
                seq_prover (prover_unit_propagation n)
-                          (seq_prover (prover_case_split ProverRec)
-                                      (seq_prover (prover_impl_arrows ProverRec)
-                                                  (prover_thy ProverRec thy up)))
+                          (seq_prover (prover_case_split ProverTRec)
+                                      (seq_prover (prover_impl_arrows ProverTRec)
+                                                  (prover_thy ProverTRec thy up)))
         end.
     Proof.
       destruct n ; reflexivity.
@@ -9845,13 +9845,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Fixpoint prover_opt  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
-      | S n => let ProverRec := prover_opt thy use_prover n in
+      | S n => let ProverTRec := prover_opt thy use_prover n in
                match unit_propagation n g st with
                | Success (hm,d) => Success(hm,nil,d)
                | Progress st'   =>
-                 (seq_prover (prover_case_split ProverRec)
-                             (seq_prover (prover_impl_arrows ProverRec)
-                                         (prover_thy ProverRec thy use_prover))) st' g
+                 (seq_prover (prover_case_split ProverTRec)
+                             (seq_prover (prover_impl_arrows ProverTRec)
+                                         (prover_thy ProverTRec thy use_prover))) st' g
                | Fail f => Fail f
                end
       end.
@@ -9860,13 +9860,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         prover_opt thy use_prover n st g = 
         match n with
       | O => Fail OutOfFuel
-      | S n => let ProverRec := prover_opt thy use_prover n in
+      | S n => let ProverTRec := prover_opt thy use_prover n in
                match unit_propagation n g st with
                | Success (hm,d) => Success(hm,nil,d)
                | Progress st'   =>
-                 (seq_prover (prover_case_split ProverRec)
-                             (seq_prover (prover_impl_arrows ProverRec)
-                                         (prover_thy ProverRec thy use_prover))) st' g
+                 (seq_prover (prover_case_split ProverTRec)
+                             (seq_prover (prover_impl_arrows ProverTRec)
+                                         (prover_thy ProverTRec thy use_prover))) st' g
                | Fail f => Fail f
                end
       end.
@@ -10504,16 +10504,16 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     destruct H; constructor ; auto.
   Qed.
 
-  Lemma is_correct_prover_seq :
+  Lemma sound_prover_seq :
     forall P Q
-           (CP : forall st, is_correct_prover P st)
-           (CPP : forall st st', is_correct_prover_progress P st st')
-           (CQ : forall st, is_correct_prover Q st),
-    forall st, is_correct_prover (seq_prover P Q) st.
+           (CP : forall st, sound_prover P st)
+           (CPP : forall st st', sound_prover_progress P st st')
+           (CQ : forall st, sound_prover Q st),
+    forall st, sound_prover (seq_prover P Q) st.
   Proof.
     intros.
     unfold seq_prover.
-    unfold is_correct_prover.
+    unfold sound_prover.
     intros.
     destruct (P st g) eqn:EQ ; try congruence.
     - destruct f ; try congruence.
@@ -10551,18 +10551,18 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 
 
 
-  Lemma prover_correct : forall thy b n st, is_correct_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
+  Lemma prover_correct : forall thy b n st, sound_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
   Proof.
     induction n.
-    - unfold is_correct_prover. simpl ; auto.
+    - unfold sound_prover. simpl ; auto.
       split ; try congruence.
     -
       rewrite prover_rew.
       remember (prover thy b n) as P.
       simpl.
       split.
-      repeat apply is_correct_prover_seq.
-      + unfold is_correct_prover.
+      repeat apply sound_prover_seq.
+      + unfold sound_prover.
         intros.
         unfold prover_unit_propagation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
@@ -10576,7 +10576,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         split_and; auto with wf.
         rewrite UPM by auto.
         apply hmap_order_refl.
-      +  unfold is_correct_prover_progress.
+      +  unfold sound_prover_progress.
         intros.
         unfold prover_unit_propagation in PRF.
         assert (UPC := unit_propagation_correct n _ _  WFS HASF).
@@ -10590,7 +10590,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         split_and; auto with wf.
         simpl in UPM. rewrite UPM by auto.
         apply hmap_order_refl.
-      + unfold is_correct_prover.
+      + unfold sound_prover.
         intros.
         unfold prover_case_split in PRF.
         destruct (find_split (units st0) (is_classic g) (clauses st0)) eqn:FD ; try congruence.
@@ -10632,13 +10632,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           eapply case_split_ann_correct; eauto.
           apply IHn.
       + intros.
-        unfold is_correct_prover_progress.
+        unfold sound_prover_progress.
         unfold prover_case_split.
         intros.
         destruct_in_hyp PRF F; try discriminate.
         unfold case_split_ann in PRF.
         destruct_in_hyp PRF C; try discriminate.
-      + unfold is_correct_prover; intros.
+      + unfold sound_prover; intros.
         unfold prover_impl_arrows in PRF.
         assert (Forall (has_literal (hconsmap st0)) (find_arrows st0 (arrows st0))).
           {
@@ -10649,7 +10649,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           clearbody l.
           apply prover_arrows_correct in PRF ; auto.
           apply IHn.
-      + unfold is_correct_prover_progress.
+      + unfold sound_prover_progress.
         intros.
         unfold prover_impl_arrows in PRF.
         exfalso.
@@ -10674,7 +10674,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         eapply IHn; eauto.
         tauto.
       + intros.
-        unfold is_correct_prover.
+        unfold sound_prover.
         unfold prover_thy.
         destruct b ; try congruence.
         apply run_thy_prover_correct.
@@ -10804,12 +10804,12 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       congruence.
   Qed.
 
-  Lemma eq_is_correct_prover : forall P Q,
+  Lemma eq_sound_prover : forall P Q,
       eq_prover P Q ->
-      (forall st, is_correct_prover P st) ->
-      forall st : state, is_correct_prover Q st.
+      (forall st, sound_prover P st) ->
+      forall st : state, sound_prover Q st.
   Proof.
-    unfold is_correct_prover; intros.
+    unfold sound_prover; intros.
     rewrite <- H in PRF.
     eauto.
   Qed.
@@ -10856,7 +10856,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
        assert (ETT := eval_annot_hyp _ (POS hTT) HL) .
        tauto.
     -
-      apply eq_is_correct_prover with (P:= prover thy up n).
+      apply eq_sound_prover with (P:= prover thy up n).
       apply prover_op_eq.
       eapply prover_correct; eauto.
     - simpl.
@@ -10905,7 +10905,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-  End Prover.
+  End ProverT.
   End S.
 
 
