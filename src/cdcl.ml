@@ -1138,20 +1138,21 @@ let tclRETYPE c =
       let sigma, _ = Typing.type_of env sigma c in
       Unsafe.tclEVARS sigma)
 
-let assert_conflicts  l gl =
-  let rec assert_conflicts n l =
-    match l with
-    | [] -> Tacticals.New.tclIDTAC
-    | (id, (c, prf)) :: l ->
-      Tacticals.New.tclTHENLIST
-        [
-          Tactics.assert_by (Names.Name id) c  (Tactics.exact_no_check prf)
-        (*Tactics.pose_proof (Names.Name id)  prf -- need a cast*)
-        ; assert_conflicts (n + 1) l ]
-  in
-  if show_theory_time () then
-    Proofview.tclTIME (Some "Assert conflicts") (assert_conflicts 0  l)
-  else assert_conflicts 0 l
+let assert_conflicts  ids l gl =
+
+(*   let l' = List.rev_map2 (fun n (c,prf) -> ( (Locus.NoOccurrences,EConstr.mkCast(prf,DEFAULTcast,c))   , Names.Name n)) ids l in
+  Tactics.generalize_gen l'  *)
+
+  let cc = List.rev_map2
+             (fun id (c,prf) ->
+               Tactics.assert_by (Names.Name id) c  (Tactics.exact_no_check prf)) ids l in
+  Tacticals.New.tclTHEN
+    (Tacticals.New.tclTHENLIST cc)
+    (Tactics.revert ids) 
+
+  
+
+
 
 let rec output_list p o l =
   match l with
@@ -1256,16 +1257,13 @@ let assert_conflict_clauses tac =
       | None -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology")
       | Some (sigma, cc, d) ->
         let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
-        let cc = List.combine ids cc in
         Tacticals.New.tclTHENLIST
           [
             Proofview.Unsafe.tclEVARS sigma ; 
             (* Generalize the used hypotheses *)
-            Tactics.generalize (List.map EConstr.mkVar d);
+            Tactics.generalize (List.rev_map EConstr.mkVar d);
             (* Assert the conflict clauses *)
-            assert_conflicts  cc gl
-            ; (* Generalize the conflict clauses *)
-              Tactics.revert ids;
+            assert_conflicts  ids cc gl;
             Tactics.keep []
     ])
 
