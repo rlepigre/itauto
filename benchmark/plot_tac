@@ -1,0 +1,6 @@
+set logscale y 10
+set terminal pdf
+set key left top
+set xrange [0:9]
+set output "pigeon_tac.pdf"
+plot 'pigeon_itauto.tac' title "itauto", 'pigeon_tauto.tac' title "tauto", 'pigeon_rtauto.tac' title "rtauto"
