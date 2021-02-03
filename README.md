@@ -47,7 +47,7 @@ In other words, reuse learned theory clauses along the propositional proof searc
 
 ## Installation
 
-The development uses a fork of coq https://github.com/fajb/coq/tree/for_itauto
+<!-- The development uses a fork of coq https://github.com/fajb/coq/tree/for_itauto -->
 
 Clone the current repository:
 
@@ -82,18 +82,10 @@ A few relevant tests are found in the `test-suite` directory.
 
 The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia`.
 
-## Limitations
+## Bug report
 
-This is still an early prototype. Do not hesitate to report bugs by [email](mailto:frederic.besson@inria.fr) 
+Do not hesitate to report bugs by [email](mailto:frederic.besson@inria.fr) 
 or fill an issue https://gitlab.inria.fr/fbesson/itauto/-/issues .
-
-Know limitations:
-
-- Proofs may depend on unused section variables (see https://gitlab.inria.fr/fbesson/itauto/-/issues/3 ). 
-  A workaround is to instruct `itauto` to finish the proof using `tauto`. This may put some pressure on `tauto`.
-
-`Ltac itauto_use_tauto ::= constr:(true).` (false by default)
-
 
 ## Internals
 
