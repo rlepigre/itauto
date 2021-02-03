@@ -83,7 +83,7 @@ Using an ideal proof-assistant, proofs would be written at high-level
 and mundane proof tasks would be discharged by automated procedures.
 %
 However, automated reasoning is hard and even more so for
-\emph{skeptical}~\cite{HarrisonT98} proof-assistants: generating and
+\emph{sceptical}~\cite{HarrisonT98} proof-assistants: generating and
 verifying proofs at scale, even for decidable logic fragments, is a
 challenge requiring sophisticated implementation strategies.
 %
@@ -139,7 +139,7 @@ Lemma Ex2: forall (A:Type) (a b c:A), a = b -> b = c -> (a = c -> p) -> p.
 \end{minted}
   For \icoq{Ex1} and \icoq{Ex2}, \icoq{intuition lia} (resp. \icoq{intuition congruence}) fail whereas
   the goal can be decided using a combination of
-  propositional logic with the theory of linear arithmetics and
+  propositional logic with the theory of linear arithmetic and
   the theory of equality, respectively.
   %
   The reason is that the \icoq{intuition} part does nothing and
@@ -786,7 +786,7 @@ Fixpoint prover thy use_prover fuel st g :=
 \end{minted}
 If the \icoq{prover} does not run out of fuel, it calls in sequence
 the different provers described in the previous sections.  After
-performing \emph{unit propgation}, it performs a case-split and
+performing \emph{unit propagation}, it performs a case-split and
 recursively calls the prover. If no case-split is possible, it tries
 to prove one of the \emph{implication clause} by recursively calling
 the prover. Eventually, if no \emph{implication clause} can be
