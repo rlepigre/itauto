@@ -20,9 +20,10 @@ TACTIC EXTEND CDCL
 (*| [ "cdcl" tactic(t) ] -> {Cdcl.cdcl (Tacinterp.tactic_of_value ist t) }*)
 END
 
+(* needs some additional support
 TACTIC EXTEND NO
 | [ "purify" ]     -> { No.purify_tac }
 | [ "no"  tactic(t1) tactic(t2) ] ->
    { No.no_tac  (Tacinterp.tactic_of_value ist t1) (Tacinterp.tactic_of_value ist t2) }
 END
-
+*)

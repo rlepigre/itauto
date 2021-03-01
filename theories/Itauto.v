@@ -1,6 +1,6 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
-Require Import Cdcl.Formula.
+Require Import  Cdcl.Formula.
 Require Export Cdcl.ReifClasses Cdcl.ZArithDec.
 Require Import Lia.
 
@@ -53,10 +53,12 @@ Ltac itauto tac  :=
 
 Ltac itautor tac := let t := solve[tac | itauto tac] in itauto t.
 
+(*
 Ltac smt :=
   let tac := no congruence lia in
   (* zify of div mod generate propositional formulae *)
   Zify.zify ; itauto tac.
+ *)
 
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)

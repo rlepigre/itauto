@@ -12,8 +12,8 @@ endif
 
 
 all : src/proverPatch.ml
-	rm src/cdcl.ml.d
-	rm src/cdcl_plugin.mlpack.d
+	rm -f src/cdcl.ml.d
+	rm -f src/cdcl_plugin.mlpack.d
 	make -f CoqMakefile 
 
 coq : CoqMakefile
