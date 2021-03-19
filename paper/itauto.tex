@@ -135,7 +135,8 @@ illustrates the issue.
   Consider the following goals.
   \begin{minted}{coq}
 Lemma Ex1: forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
-Lemma Ex2: forall (A:Type) (a b c:A), a = b -> b = c -> (a = c -> p) -> p.
+Lemma Ex2: forall (A:Type) (p:Prop) (a b c:A),
+                  a = b -> b = c -> (a = c -> p) -> p.
 \end{minted}
   For \icoq{Ex1} and \icoq{Ex2}, \icoq{intuition lia} (resp. \icoq{intuition congruence}) fail whereas
   the goal can be decided using a combination of
@@ -166,7 +167,7 @@ This is illustrated by Example~\ref{ex:too-many-calls}.
   \label{ex:too-many-calls}
   Consider the following goal.
   \begin{minted}{coq}
-Lemma Ex3: forall (A:Type) (x y:A) (p q:Prop),
+Lemma Ex3: forall (A:Type) (x y t:A) (p q:Prop),
                   x = y -> p \/ q -> (p -> y = t) -> (q -> y = t) -> x = t.
   \end{minted}
   In this case, \icoq{intuition congruence} performs a case-split
@@ -577,7 +578,7 @@ the following propositional equivalences.
 \[
   \begin{array}{l}
   (\bigwedge_i p_i \to \bigvee_j q_j) \to \bot \equiv (\bigvee_i \neg p_i \lor \bigvee_j q_j) \to \bot\\
-    \bigwedge_i (p_1 \lor \neg p_i) \to ((\bigwedge_i p_i \to \bigvee_j q_j) \to g) \equiv (\bigvee_i p_i \lor \bigvee_j q_j) \to g
+    \bigwedge_i (p_1 \lor \neg p_i) \to ((\bigwedge_i p_i \to \bigvee_j q_j) \to g) \equiv (\bigvee_i \neg p_i \lor \bigvee_j q_j) \to g
   \end{array}
 \]
 A naive algorithm consists in doing a recursive call for each literal,
@@ -711,7 +712,7 @@ The interface of a theory reasoner is given below.
 Record Thy := {
  thy_prover : hmap -> list literal -> option (hmap * clause);
  thy_prover_sound : forall hm hm' cl cl',
-    thy_prover hm cl = Some (hm,cl') ->
+    thy_prover hm cl = Some (hm',cl') ->
     #$\llbracket$#cl'#$\rrbracket$#  #$\land$# hm #$\sqsubseteq$ #hm' #$\land$# #$\forall$# l #$\in$# cl', l #$\in$# hm'  }
 \end{minted}
 A \icoq{thy_prover} takes an input a hash-cons map \icoq{hm} and a
