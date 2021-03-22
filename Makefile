@@ -63,7 +63,7 @@ CoqMakefile CoqMakefile.conf : _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 
-TESTSUITE = arith.v no_test.v refl_bool.v
+TESTSUITE = arith.v  refl_bool.v # no_test.v
 ISSUES    = issue_0.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.v issue_10.v \
 	issue_11.v issue_12.v issue_13.v issue_14.v issue_15.v issue_16.v issue_19.v issue_20.v issue_21.v \
 	issue_22.v issue_23.v issue_cc.v
