@@ -137,6 +137,54 @@ Module IntMap  := PatriciaR.PTrie.
 
 Arguments IntMap.ptrie [key] A.
 
+Definition wf_map  {A: Type} (m : IntMap.ptrie A) := PTrie.wf None m.
+
+Lemma grspec : forall {A:Type} i j (m: IntMap.ptrie A)
+                      (WF: wf_map m),
+    IntMap.get' i (IntMap.remove' j m) =
+    if eqs i j then None else IntMap.get' i m.
+Proof.
+  intros.
+  destruct (eqs i j).
+  - subst. eapply  IntMap.grs'; eauto.
+  - eapply IntMap.gro'; eauto.
+Qed.
+
+Theorem gsspec:
+  forall (A: Type) (i j: int) (x: A) (m: IntMap.ptrie A)
+         (WF : wf_map m),
+    IntMap.get' i (IntMap.set' j x m) = if eqs i j then Some x else IntMap.get' i m.
+Proof.
+  intros; destruct (eqs i j).
+  - subst i; eapply IntMap.gss'; eauto.
+  - eapply IntMap.gso'; eauto.
+Qed.
+
+
+  Lemma wf_map_add : forall  {A: Type} x v (cls : IntMap.ptrie A)
+                             (WF : wf_map cls),
+      wf_map (IntMap.set' x v cls).
+  Proof.
+    intros.
+    eapply IntMap.wf_set'; eauto.
+    constructor.
+  Qed.
+
+  Hint Resolve wf_map_add : wf.
+
+  Lemma wf_map_remove :
+    forall {A: Type} x
+           (m : IntMap.ptrie A)
+           (WF: wf_map m),
+      wf_map (IntMap.remove' x m).
+  Proof.
+    intros.
+    apply IntMap.wf_remove'; auto.
+  Qed.
+
+  Hint Resolve wf_map_remove : wf.
+
+
 Inductive op :=
 | AND | OR | IMPL.
 (* IFF - is complicated.  The main reason is that the clausal encoding
@@ -364,8 +412,6 @@ Inductive op :=
   Inductive literal : Type :=
   | POS (f:HFormula)
   | NEG (f:HFormula).
-
-  Definition wf_map  {A: Type} (m : IntMap.ptrie A) := PTrie.wf None m.
 
   Module OBool.
     Definition t := option bool.
@@ -670,12 +716,551 @@ Inductive op :=
   End Prf.
 
 
+  Definition hmap_order (h h' : hmap) :=
+    forall k v, IntMap.get' k h = Some v -> IntMap.get' k h' = Some v.
+
+
+  Definition isMono {A: Type} (F : hmap -> A -> Prop) :=
+    forall m m' (OHM : hmap_order m m')
+           x  (Fm: F m x), F m' x.
+
+
+
   Fixpoint forall2b {A B: Type} (F : A -> B -> bool) (l1 : list A) (l2 : list B) : bool :=
     match l1 , l2 with
     | nil , nil => true
     | e1::l1', e2::l2' => F e1 e2 && forall2b F l1' l2'
     | _      , _       => false
     end.
+
+  Lemma empty_o : forall {T:Type} k,
+      IntMap.get' k (IntMap.empty T) = None.
+  Proof.
+    reflexivity.
+  Qed.
+
+  Definition IntMapForall {A:Type} (P: A -> Prop) (m: IntMap.ptrie A) :=
+    forall k r, IntMap.get' k m = Some r -> P r.
+
+  Lemma IntMapForall_Forall :
+    forall {A: Type} (P Q: A -> Prop) m,
+      (forall x, P x -> Q x) ->
+      IntMapForall P m ->
+      IntMapForall Q m.
+  Proof.
+    repeat intro.
+    apply H0 in H1.
+    auto.
+  Qed.
+
+  Lemma IntMapForallAnd : forall {A: Type} (P1 P2: A -> Prop) l,
+      IntMapForall P1 l -> IntMapForall P2 l ->
+      IntMapForall (fun x => P1 x /\ P2 x) l.
+  Proof.
+    repeat intro.
+    unfold IntMapForall in *.
+    split ; eauto.
+  Qed.
+
+
+
+  Lemma IntMapForallEmpty : forall {A: Type} {P: A -> Prop},
+      IntMapForall P (IntMap.empty A).
+  Proof.
+    unfold IntMapForall.
+    intros.
+    rewrite empty_o in H.
+    congruence.
+  Qed.
+
+  Lemma IntMapForallRemove : forall {A:Type} (P: A -> Prop) m x
+                                    (WF: wf_map m),
+      IntMapForall P m ->
+      IntMapForall P (IntMap.remove' x m).
+  Proof.
+    intros.
+    repeat intro.
+    rewrite grspec in H0; auto.
+    destruct (eqs k x); try discriminate.
+    eapply H  ;eauto.
+  Qed.
+
+  Lemma IntMapForallAdd : forall {A:Type} (P: A -> Prop) m i v
+                                 (WF: wf_map m),
+      IntMapForall P m ->
+      P v ->
+      IntMapForall P (IntMap.set' i v m).
+  Proof.
+    unfold IntMapForall.
+    repeat intro.
+    rewrite gsspec in H1;auto.
+    destruct (eqs k i); auto.
+    inv H1. auto.
+    eapply H ; eauto.
+  Qed.
+
+  Definition IntMapForall2 {A: Type} (P: A -> Prop) (m: IntMap.ptrie A* IntMap.ptrie A) :=
+    IntMapForall P (fst m) /\ IntMapForall P (snd m).
+
+  Lemma IntMapForall_mono :
+      forall {A: Type} (F:hmap -> A -> Prop) (m m' : hmap) (cl : IntMap.ptrie A)
+             (FMono : forall x, F m x -> F m' x),
+        hmap_order m m' ->
+             IntMapForall (F m) cl ->
+             IntMapForall (F m') cl.
+    Proof.
+      unfold IntMapForall.
+      intros.
+      apply H0 in H1.
+      apply FMono ; auto.
+    Qed.
+
+
+
+  Record watched_clause : Type :=
+    {
+    watch1 : literal;
+    watch2 : literal;
+    unwatched : list literal
+    }.
+
+
+
+
+  Definition form_of_literal (l: literal) : HFormula :=
+    match l with
+    | POS f => f
+    | NEG f => f
+    end.
+
+  Definition id_of_literal (l:literal) : int :=
+    (form_of_literal l).(id).
+
+  Definition is_positive_literal (l:literal) : bool :=
+    match l with
+    | POS _ => true
+    | NEG _ => false
+    end.
+
+
+  Lemma wf_map_empty : forall {A: Type},
+      wf_map (IntMap.empty A).
+  Proof.
+    unfold wf_map.
+    intros. constructor.
+  Qed.
+
+  Definition ForallPair {A: Type} (P : A -> Prop) (x : A * A) :=
+    P (fst x) /\ P (snd x).
+
+
+
+  Module WMap.
+    (* Watched map *)
+    Definition watch_map := (IntMap.ptrie (key:=int) (Annot.t watched_clause))%type.
+
+    Definition watch_map_elt := (watch_map * watch_map)%type.
+
+    Definition t := IntMap.ptrie (key:=int) watch_map_elt.
+
+    Definition empty  := IntMap.empty (key:=int) watch_map_elt.
+
+    Definition wf (m: t) :=
+      wf_map m /\
+      IntMapForall (fun x => wf_map (fst x) /\ wf_map (snd x)) m.
+
+    Definition find_clauses_p (v: int) (cls: t) :=
+      match IntMap.get' v cls with
+      | None => (IntMap.empty (Annot.t watched_clause),
+                 IntMap.empty (Annot.t watched_clause))
+      | Some r => r
+      end.
+
+    Definition find_clauses (v:literal) (cls : t) :=
+      match v with
+      | POS f =>
+        match IntMap.get' f.(id) cls with
+        | None => IntMap.empty (Annot.t watched_clause)
+        | Some r => fst r
+        end
+      | NEG f =>  match IntMap.get' f.(id) cls with
+                  | None => IntMap.empty (Annot.t watched_clause)
+                  | Some r => snd r
+                  end
+      end.
+
+    Definition add_clause (l:literal) (clause_id: int) (cl: Annot.t watched_clause) (cls : WMap.t) :=
+      let lid := id_of_literal l in
+      let (ln,lp) := find_clauses_p lid cls in
+      if is_positive_literal l
+      then IntMap.set' lid (ln,IntMap.set' clause_id cl lp) cls
+      else IntMap.set' lid (IntMap.set' clause_id cl ln,lp) cls
+    .
+
+    Definition remove_watched_id (l:literal) (id:int) (cl: WMap.t) :=
+      let lid := id_of_literal l in
+      let (ln,lp) := WMap.find_clauses_p lid cl in
+      if is_positive_literal l
+      then IntMap.set' lid (ln, IntMap.remove' id lp) cl
+      else IntMap.set' lid (IntMap.remove' id ln,lp) cl.
+
+    Definition Forall (F : Annot.t watched_clause -> Prop) (m : t) :=
+      IntMapForall (IntMapForall2 F) m.
+
+    Definition fold_watch_map {B:Type} (f : B -> int -> Annot.t watched_clause -> B) (m:watch_map) (acc:B) := IntMap.fold' f m acc.
+
+    Definition elements (m: watch_map) := IntMap.elements' m.
+
+    Lemma fold_elements :
+      forall (B : Type) (f : B -> int -> Annot.t watched_clause -> B)
+         (m : watch_map) (v : B),
+       fold_watch_map f m v =
+       fold_left (fun (a : B) (p : int * Annot.t watched_clause) => f a (fst p) (snd p))
+         (elements m nil) v.
+    Proof.
+      intros. apply IntMap.fold_elements'.
+    Qed.
+
+
+    Section SEARCH.
+
+      Context  {A: Type}.
+      Variable select : forall (k:int) (cl: Annot.t watched_clause), option A.
+
+      Definition  search_in_map  (m : IntMap.ptrie (Annot.t watched_clause))  :=
+        IntMap.search select  m.
+
+      Definition search_in_pair_map (pos : bool) (k:int) (e: IntMap.ptrie  (Annot.t watched_clause) * IntMap.ptrie (Annot.t watched_clause)) :=
+        if pos then search_in_map (snd e)
+        else search_in_map (fst e).
+
+      Definition search (only_pos:bool) (cl:WMap.t) :=
+        IntMap.search (search_in_pair_map only_pos) cl.
+
+      Lemma search_correct :
+      forall P b m r
+             (*(WF  : wf_map m) *)
+             (WFE : wf m)
+             (ALL: Forall P m)
+             (S  : search b m = Some r),
+             exists k c, P c /\ select k c = Some r.
+    Proof.
+      unfold search.
+      intros.
+      apply IntMap.search_some with (opt:= None) in S; auto.
+      destruct S as (k&v&G&S).
+      assert (G':= G).
+      apply ALL in G.  destruct G as (GF & GS).
+      apply WFE in G'. destruct G' as (WFF & WFS).
+      unfold search_in_pair_map in S.
+      destruct b.
+      - unfold search_in_map in S.
+        apply IntMap.search_some with (opt:= None) in S; auto.
+        destruct S as (k' & v' & G2 & S2).
+        exists k', v'; split; auto.
+        apply GS in G2 ; auto.
+      - unfold search_in_map in S.
+        apply IntMap.search_some with (opt:= None) in S; auto.
+        destruct S as (k' & v' & G2 & S2).
+        exists k', v'; split; auto.
+        apply GF in G2 ; auto.
+      - destruct WFE; auto.
+    Qed.
+
+  End SEARCH.
+
+    Lemma ForallAND : forall P Q cls,
+        Forall P cls -> Forall Q cls ->
+        Forall (fun cl : Annot.t watched_clause => P cl /\ Q cl) cls.
+    Proof.
+      intros.
+      unfold Forall in *.
+      specialize (IntMapForallAnd _ _ _  H H0).
+      apply IntMapForall_Forall.
+      intros.
+      destruct H1. destruct H1. destruct H2.
+      split.
+      apply IntMapForallAnd ; auto.
+      apply IntMapForallAnd ; auto.
+    Qed.
+
+    Lemma Forall_empty : forall P,
+        Forall P empty.
+    Proof.
+      intro.
+      apply IntMapForallEmpty.
+    Qed.
+
+    Lemma Forall_mono :
+      forall (F:hmap -> Annot.t watched_clause -> Prop)
+             (Mono: isMono F)
+      , isMono (fun m => Forall (F m) ).
+    Proof.
+      unfold WMap.Forall.
+      intros.
+      unfold isMono.
+      intros m m' ORD x.
+      set (G := fun m => IntMapForall2 (F m)).
+      change (IntMapForall (G m) x -> IntMapForall (G  m')x).
+      apply IntMapForall_mono; auto.
+      unfold G. intro.
+      unfold IntMapForall2.
+      intros.
+      destruct H.
+      split.
+      revert H. apply IntMapForall_mono; auto.
+      apply Mono; auto.
+      revert H0. apply IntMapForall_mono; auto.
+      apply Mono; auto.
+    Qed.
+
+    Definition Forall_watch_map (P: Annot.t watched_clause -> Prop)
+               (m:watch_map) :=
+      IntMapForall P m.
+
+    Lemma Forall_watch_map_ForallAnd :
+      forall  (P Q: Annot.t watched_clause -> Prop) m,
+        Forall_watch_map P m ->
+        Forall_watch_map Q m ->
+        Forall_watch_map (fun cl => P cl /\ Q cl) m.
+    Proof.
+     intros.
+     apply IntMapForallAnd; auto.
+    Qed.
+
+    Definition wf_watch_map (m:watch_map) := wf_map m.
+
+    Lemma in_elements :
+      forall P m
+             (WF : wf_watch_map m)
+             (PAll: Forall_watch_map P m)
+             x
+             (IN : In x (elements m nil)),
+        P (snd x).
+    Proof.
+      intros.
+      unfold IntMapForall in PAll.
+      apply PAll with (k:=fst x).
+      destruct x.
+      apply IntMap.in_elements' with (opt:= None) in IN; auto.
+      simpl in *. tauto.
+    Qed.
+
+    Lemma Forall_watch_map_Forall :
+      forall  (P Q: Annot.t watched_clause -> Prop) m,
+        (forall x, P x -> Q x) ->
+        Forall_watch_map P m ->
+        Forall_watch_map Q m.
+    Proof.
+      intros.
+      eapply IntMapForall_Forall; eauto.
+    Qed.
+
+    Lemma wf_find_clauses :
+      forall i cls  (WF   : wf cls),
+        wf_watch_map (find_clauses i cls).
+    Proof.
+      intros.
+      unfold find_clauses.
+      destruct i.
+      -
+        destruct (IntMap.get' (id f) cls) eqn:EQ.
+        +  apply WF in EQ; auto.
+           tauto.
+        + apply wf_map_empty.
+      - destruct (IntMap.get' (id f) cls) eqn:EQ.
+        +  apply WF in EQ; auto.
+           tauto.
+        + apply wf_map_empty.
+    Qed.
+
+
+
+    Lemma wf_find_clauses_p :
+      forall i cls ln lp
+             (WF   : WMap.wf cls)
+             (FD : find_clauses_p i cls = (ln, lp)),
+        wf_map ln /\ wf_map lp.
+    Proof.
+      intros.
+      unfold find_clauses_p in FD.
+      destruct (IntMap.get' i cls) eqn:EQ.
+      - subst.
+        apply WF in EQ; auto.
+      - inv FD.
+        split;
+          apply wf_map_empty.
+    Qed.
+
+
+    Lemma find_clauses_Forall : forall (P : Annot.t watched_clause -> Prop) (i : literal) (cls : t),
+        Forall P cls -> Forall_watch_map  P (find_clauses i cls).
+    Proof.
+      unfold find_clauses.
+      intros.
+      destruct i.
+      - destruct (IntMap.get' (id f) cls) eqn:EQ.
+      + apply H in EQ; auto. destruct EQ ; auto.
+      + apply IntMapForallEmpty.
+      - destruct (IntMap.get' (id f) cls) eqn:EQ.
+      + apply H in EQ; auto. destruct EQ ; auto.
+      + apply IntMapForallEmpty.
+    Qed.
+
+
+  Lemma wf_map_add_clause :
+    forall l id cl cls
+           (WF: wf_map cls),
+      wf_map (add_clause l id cl cls).
+  Proof.
+    unfold add_clause.
+    intros.
+    destruct (find_clauses_p (id_of_literal l) cls).
+    destruct (is_positive_literal l); auto with wf.
+  Qed.
+
+  Hint Resolve wf_map_add_clause : wf.
+
+  Lemma wf_add_clause :
+    forall l id cl cls
+           (WF: wf cls),
+      wf (add_clause l id cl cls).
+  Proof.
+    intros.
+    assert (WF':= WF).
+    unfold wf in WF. unfold wf.
+    destruct WF as (WFM & WF).
+    split. auto with wf.
+    unfold IntMapForall in *; intros.
+    unfold add_clause in H.
+    destruct (find_clauses_p (id_of_literal l) cls) eqn:EQ.
+    apply wf_find_clauses_p in EQ; auto.
+    destruct EQ as(WF1 & WF2).
+    destruct (is_positive_literal l);
+      rewrite gsspec in H ; auto;
+        destruct (eqs k (id_of_literal l)); eauto.
+    - inv H; simpl ; split ; auto with wf.
+    - inv H; simpl ; split ; auto with wf.
+  Qed.
+
+    Lemma Forall_find_clauses :
+    forall P i cl ln lp
+           (EC : Forall P  cl)
+           (FD : find_clauses_p i cl = (ln, lp)),
+      IntMapForall P ln /\
+      IntMapForall P lp.
+    Proof.
+      unfold find_clauses_p.
+      intros.
+      destruct (IntMap.get' i cl) eqn:EQ.
+      -  destruct w. inv FD.
+         apply EC in EQ; auto.
+      - inv FD.
+        split ; apply IntMapForallEmpty.
+    Qed.
+
+
+
+  Lemma Forall_add_clause :
+    forall (P: Annot.t watched_clause -> Prop) l i wc cls
+           (WFW : wf cls)
+           (PWC : P wc)
+           (ALL : Forall P cls),
+      Forall P (add_clause l i wc cls).
+  Proof.
+    unfold add_clause. intros.
+    destruct(find_clauses_p (id_of_literal l) cls) as (ln,lp) eqn:EQ.
+    assert (EQ':= EQ).
+    apply WMap.Forall_find_clauses with (P:=P) in EQ; auto.
+    destruct EQ as (LN & LP).
+    apply wf_find_clauses_p  in EQ'; auto.
+    destruct EQ' as (WLN & WLP).
+    destruct (is_positive_literal l).
+    apply IntMapForallAdd;auto.
+    destruct WFW;auto.
+    split ; simpl ; auto.
+    apply IntMapForallAdd;auto.
+    apply IntMapForallAdd;auto.
+    destruct WFW;auto.
+    split ; simpl ; auto.
+    apply IntMapForallAdd;auto.
+  Qed.
+
+  Lemma wf_set :
+  forall i t1 t2 cls
+         (WF: wf_map cls)
+         (WF1: wf_map t1)
+         (WF2: wf_map t2)
+         (WFW: wf  cls)
+  ,
+    wf (IntMap.set' i (t1,t2) cls).
+  Proof.
+    unfold WMap.wf.
+    split.
+    apply wf_map_add; auto.
+    repeat intro.
+    rewrite gsspec in H; auto.
+    destruct (eqs k i).
+    inv H ; simpl ; auto.
+    apply WFW in H.
+    auto.
+  Qed.
+
+  Lemma Forall_remove_watched_id :
+    forall (P : Annot.t watched_clause -> Prop) l i cls
+           (WF: wf cls)
+           (ALL : Forall P cls),
+      Forall P (remove_watched_id l i cls).
+  Proof.
+    unfold remove_watched_id.
+    intros.
+    destruct (find_clauses_p (id_of_literal l) cls) eqn: FID.
+    assert (FID':= FID).
+    apply Forall_find_clauses with (P:=P) in FID.
+    apply wf_find_clauses_p in FID'; auto.
+    destruct FID, FID'.
+    destruct (is_positive_literal l).
+    apply IntMapForallAdd; auto.
+    destruct WF ;auto.
+    split ; simpl ; auto.
+    apply IntMapForallRemove;auto.
+    apply IntMapForallAdd; auto.
+    destruct WF;auto.
+    split ; simpl ; auto.
+    apply IntMapForallRemove;auto.
+    auto.
+  Qed.
+
+  Lemma wf_remove_watched_id :
+    forall l i cls
+           (WF: wf cls)
+    ,
+      wf (remove_watched_id l i cls).
+  Proof.
+    unfold remove_watched_id.
+    intros.
+    destruct (find_clauses_p (id_of_literal l) cls) eqn:FD.
+    apply wf_find_clauses_p in FD; auto.
+    destruct FD.
+    destruct (is_positive_literal l).
+    apply wf_set  ; auto.
+    destruct WF;auto.
+    apply IntMap.wf_remove';auto.
+    apply wf_set  ; auto.
+    destruct WF;auto.
+    apply IntMap.wf_remove';auto.
+  Qed.
+
+  Lemma wf_empty : wf empty.
+  Proof.
+    split.
+    apply wf_map_empty.
+    apply IntMapForallEmpty.
+  Qed.
+
+
+  End WMap.
+
 
   Section S.
 
@@ -1536,12 +2121,6 @@ Inductive op :=
       eapply IHf';eauto.
   Qed.
 
-  Record watched_clause : Type :=
-    {
-    watch1 : literal;
-    watch2 : literal;
-    unwatched : list literal
-    }.
 
 
   Inductive clause_kind :=
@@ -1597,8 +2176,6 @@ Inductive op :=
     | CLAUSE cl => eval_watched_clause cl
     end.
 
-  Definition hmap_order (h h' : hmap) :=
-    forall k v, IntMap.get' k h = Some v -> IntMap.get' k h' = Some v.
 
 
   Record Thy : Type :=
@@ -1614,11 +2191,6 @@ Inductive op :=
       }.
 
 
-  Definition watch_map_elt := (IntMap.ptrie (key:=int) (Annot.t watched_clause) * IntMap.ptrie (key:=int) (Annot.t watched_clause) )%type.
-
-  Definition watch_map := IntMap.ptrie (key:=int) watch_map_elt.
-
-  Definition empty_watch_map  := IntMap.empty (key:=int) watch_map_elt.
 
   Definition iset := IntMap.ptrie (key:=int) unit.
 
@@ -1636,7 +2208,7 @@ Inductive op :=
         units : IntMap.ptrie (key:=int) (Annot.t bool);
         unit_stack : list (Annot.t literal);
         (* unit_list is a stack of unit clauses to be processed *)
-        clauses : watch_map
+        clauses : WMap.t
        (* An entry clause(v) returns the set of clauses starting by v.
         *);
       }.
@@ -1661,42 +2233,8 @@ Inductive op :=
     defs := (IntMap.empty unit , IntMap.empty unit);
     units := IntMap.empty (Annot.t bool);
     unit_stack := nil;
-    clauses := empty_watch_map
+    clauses := WMap.empty
     |}.
-
-
-
-
-  Definition find_clauses (v:int) (cls : watch_map) :=
-    match IntMap.get' v cls with
-    | None => (IntMap.empty (Annot.t watched_clause),IntMap.empty (Annot.t watched_clause))
-    | Some r => r
-    end.
-
-    Definition form_of_literal (l: literal) : HFormula :=
-    match l with
-    | POS f => f
-    | NEG f => f
-    end.
-
-  Definition id_of_literal (l:literal) : int :=
-    (form_of_literal l).(id).
-
-
-  Definition is_positive_literal (l:literal) : bool :=
-    match l with
-    | POS _ => true
-    | NEG _ => false
-    end.
-
-  Definition add_clause (l:literal) (clause_id: int) (cl: Annot.t watched_clause) (cls : watch_map) :=
-    let lid := id_of_literal l in
-    let (ln,lp) := find_clauses (id_of_literal l) cls in
-    if is_positive_literal l
-    then IntMap.set' lid (ln,IntMap.set' clause_id cl lp) cls
-    else IntMap.set' lid (IntMap.set' clause_id cl ln,lp) cls
-  .
-
 
   Definition is_impl (o: op) : bool :=
     match o with
@@ -1737,19 +2275,6 @@ Inductive op :=
 
   Definition add_wneg_wcl (wn : iset) (cl:watched_clause) : iset :=
     add_wneg_lit (watch2 cl) (add_wneg_lit  (watch1 cl) wn) .
-
-  Definition insert_lit_clause (l:literal) (clause_id: int) (cl: Annot.t watched_clause) (st : state) : state :=
-    {|
-    fresh_clause_id := fresh_clause_id st;
-    hconsmap := hconsmap st;
-    defs   := defs st;
-    wneg   := add_wneg_wcl (wneg st) cl.(Annot.elt);
-    arrows := arrows st ;
-    units := units st;
-    unit_stack := unit_stack st;
-    clauses := add_clause l clause_id cl (clauses st)
-    |}.
-
 
 
   Definition is_cons (id: int) (l : IntMap.ptrie unit) :=
@@ -2636,33 +3161,6 @@ Inductive op :=
               end
     end.
 
-  (** shorten_lits is a bit too agressive.
-  Fixpoint shorten_lits (lit: IntMap.ptrie (Annot.t bool)) (ann: LitSet.t) (cl : list literal) :=
-    match cl with
-    | nil => Annot.mk TRUE LitSet.empty
-    | e::l => match find_lit e lit with
-              | None => reduce lit ann e cl
-              | Some b => if Annot.elt b then Annot.mk TRUE LitSet.empty
-                          else shorten_lits lit (LitSet.union (Annot.deps b) ann) l
-              end
-    end.
-
-
-  Lemma shorten_lits_rew : forall  (lit: IntMap.ptrie (Annot.t bool)) (ann: LitSet.t) (cl : list literal),
-      shorten_lits lit ann cl =
-      match cl with
-      | nil => Annot.mk TRUE LitSet.empty
-      | e::l => match find_lit e lit with
-                | None => reduce lit ann e cl
-                | Some b => if Annot.elt b then Annot.mk TRUE LitSet.empty
-                            else shorten_lits lit (LitSet.union (Annot.deps b) ann) l
-                end
-      end.
-  Proof.
-    destruct cl;auto.
-  Qed.
-
-*)
 
   Fixpoint no_dup_clause (cl : list literal) :=
     match cl with
@@ -2685,6 +3183,9 @@ Inductive op :=
                 else reduce lit (LitSet.union (Annot.deps b) ann) (watch2 cl) (unwatched cl)
     end.
 
+
+
+
   (** The watched clause may be ill-formed *)
   Definition normalise_watched_clause (lit : IntMap.ptrie (Annot.t bool)) (ann : LitSet.t) (cl : watched_clause) :=
     match no_dup_clause (watch1 cl:: watch2 cl :: unwatched cl) with
@@ -2698,8 +3199,8 @@ Inductive op :=
     let w1 := watch1 cl in
     let w2 := watch2 cl in
     let mcl := clauses st in
-    let mcl := add_clause w1 id acl mcl in
-    let mcl := add_clause w2 id acl mcl in
+    let mcl := WMap.add_clause w1 id acl mcl in
+    let mcl := WMap.add_clause w2 id acl mcl in
     {|
       fresh_clause_id := fresh_clause_id st;
       hconsmap := hconsmap st;
@@ -2737,7 +3238,6 @@ Inductive op :=
     end.
 
   Definition insert_watched_clause (id: int) (cl: Annot.t watched_clause) (st: state)  : dresult :=
-    (*insert_normalised_clause id (shorten_clause (units st) (Annot.deps cl) (Annot.elt cl)) st . *)
     insert_normalised_clause id (normalise_watched_clause (units st) (Annot.deps cl) (Annot.elt cl)) st.
 
   Definition insert_fresh_watched_clause (cl: watched_clause) (st: state) :=
@@ -2840,7 +3340,7 @@ Inductive op :=
   Qed.
 
 
-  Definition remove_clauses (l:literal) (st: state) : state :=
+(*  Definition remove_clauses (l:literal) (st: state) : state :=
     {|
     fresh_clause_id := fresh_clause_id st;
     hconsmap := hconsmap st;
@@ -2851,7 +3351,7 @@ Inductive op :=
     unit_stack := unit_stack st;
     clauses := IntMap.remove' (id_of_literal l) (clauses st)
     |}.
-
+*)
 
   Definition add_literal (l:Annot.t literal) (lit : IntMap.ptrie (Annot.t bool)) :=
     IntMap.set' (id_of_literal (Annot.elt l)) (Annot.map is_positive_literal l) lit.
@@ -2961,15 +3461,9 @@ Inductive op :=
 
 
 
-  Definition remove_watched_id (l:literal) (id:int) (cl: watch_map) :=
-    let lid := id_of_literal l in
-    let (ln,lp) := find_clauses lid cl in
-    if is_positive_literal l
-    then IntMap.set' lid (ln, IntMap.remove' id lp) cl
-    else IntMap.set' lid (IntMap.remove' id ln,lp) cl.
 
   Definition remove_watched_clause (id:int) (cl:watched_clause) (st: state) :=
-    let cls := remove_watched_id (watch2 cl) id (remove_watched_id (watch1 cl) id (clauses st)) in
+    let cls := WMap.remove_watched_id (watch2 cl) id (WMap.remove_watched_id (watch1 cl) id (clauses st)) in
     {|
       fresh_clause_id := fresh_clause_id st;
       hconsmap := hconsmap st;
@@ -2989,8 +3483,8 @@ Inductive op :=
     | Progress st => insert_watched_clause id cl (remove_watched_clause id (Annot.elt cl) st)
     end.
 
-  Definition shorten_clauses (cl : IntMap.ptrie (Annot.t watched_clause)) (st:state) :=
-    IntMap.fold' (fun acc i k => update_watched_clause i k acc) cl (Progress st).
+  Definition shorten_clauses (cl : WMap.watch_map) (st:state) :=
+    WMap.fold_watch_map (fun acc i k => update_watched_clause i k acc) cl (Progress st).
 
   Fixpoint unit_propagation (n:nat)  (concl: option HFormula) (st: state) : dresult :=
     match n with
@@ -3004,10 +3498,7 @@ Inductive op :=
         | None =>
           let st := insert_literal l st in
           let lelt := Annot.elt l in
-          let (ln,lp) := find_clauses (id_of_literal lelt) (clauses st) in
-          let lc := match lelt with
-                    | POS _ => ln
-                    | NEG _ => lp end in
+          let lc := WMap.find_clauses lelt (clauses st) in
           match shorten_clauses lc st with
           | Success d => Success d
           | Progress st => unit_propagation n concl st
@@ -3030,10 +3521,7 @@ Inductive op :=
         | None =>
           let st := insert_literal l st in
           let lelt := Annot.elt l in
-          let (ln,lp) := find_clauses (id_of_literal lelt) (clauses st) in
-          let lc := match lelt with
-                    | POS _ => ln
-                    | NEG _ => lp end in
+          let lc := WMap.find_clauses lelt (clauses st) in
           match shorten_clauses lc st with
           | Success d => Success d
           | Progress st => unit_propagation n concl st
@@ -3060,105 +3548,9 @@ Inductive op :=
   Definition eval_stack (lst : list (Annot.t literal)) : Prop :=
     List.Forall (Annot.lift eval_literal) lst.
 
-  Definition IntMapForall {A:Type} (P: A -> Prop) (m: IntMap.ptrie A) :=
-    forall k r, IntMap.get' k m = Some r -> P r.
 
-  Definition IntMapForall2 {A: Type} (P: A -> Prop) (m: IntMap.ptrie A* IntMap.ptrie A) :=
-    IntMapForall P (fst m) /\ IntMapForall P (snd m).
-
-  Lemma empty_o : forall {T:Type} k,
-      IntMap.get' k (IntMap.empty T) = None.
-  Proof.
-    reflexivity.
-  Qed.
-
-  Lemma IntMapForallEmpty : forall {A: Type} {P: A -> Prop},
-      IntMapForall P (IntMap.empty A).
-  Proof.
-    unfold IntMapForall.
-    intros.
-    rewrite empty_o in H.
-    congruence.
-  Qed.
-
-  Lemma grspec : forall {A:Type} i j (m: IntMap.ptrie A)
-                          (WF: wf_map m),
-      IntMap.get' i (IntMap.remove' j m) =
-      if eqs i j then None else IntMap.get' i m.
-  Proof.
-    intros.
-    destruct (eqs i j).
-    - subst. eapply  IntMap.grs'; eauto.
-    - eapply IntMap.gro'; eauto.
-  Qed.
-
-  Theorem gsspec:
-    forall (A: Type) (i j: int) (x: A) (m: IntMap.ptrie A)
-           (WF : wf_map m),
-      IntMap.get' i (IntMap.set' j x m) = if eqs i j then Some x else IntMap.get' i m.
-  Proof.
-    intros; destruct (eqs i j).
-    - subst i; eapply IntMap.gss'; eauto.
-    - eapply IntMap.gso'; eauto.
-  Qed.
-
-
-
-  Lemma IntMapForallRemove : forall {A:Type} (P: A -> Prop) m x
-                                    (WF: wf_map m),
-      IntMapForall P m ->
-      IntMapForall P (IntMap.remove' x m).
-  Proof.
-    intros.
-    repeat intro.
-    rewrite grspec in H0; auto.
-    destruct (eqs k x); try discriminate.
-    eapply H  ;eauto.
-  Qed.
-
-
-  Lemma IntMapForallAdd : forall {A:Type} (P: A -> Prop) m i v
-                                 (WF: wf_map m),
-      IntMapForall P m ->
-      P v ->
-      IntMapForall P (IntMap.set' i v m).
-  Proof.
-    unfold IntMapForall.
-    repeat intro.
-    rewrite gsspec in H1;auto.
-    destruct (eqs k i); auto.
-    inv H1. auto.
-    eapply H ; eauto.
-  Qed.
-
-  Lemma wf_map_add : forall  {A: Type} x v (cls : IntMap.ptrie A)
-                             (WF : wf_map cls),
-      wf_map (IntMap.set' x v cls).
-  Proof.
-    intros.
-    eapply IntMap.wf_set'; eauto.
-    constructor.
-  Qed.
-
-  Hint Resolve wf_map_add : wf.
-
-  Lemma wf_map_remove :
-    forall {A: Type} x
-           (m : IntMap.ptrie A)
-           (WF: wf_map m),
-      wf_map (IntMap.remove' x m).
-  Proof.
-    intros.
-    apply IntMap.wf_remove'; auto.
-  Qed.
-
-  Hint Resolve wf_map_remove : wf.
-
-  Definition ForallWatchedClause (F : Annot.t watched_clause -> Prop) (m : watch_map) :=
-    IntMapForall (IntMapForall2 F) m.
-
-  Definition eval_clauses  (h : watch_map) :=
-    ForallWatchedClause (Annot.lift eval_watched_clause) h.
+  Definition eval_clauses  (h : WMap.t) :=
+    WMap.Forall (Annot.lift eval_watched_clause) h.
 
   Definition order_map ( m m' : IntMap.ptrie LForm) : Prop :=
     forall i f, IntMap.get' i m = Some f -> IntMap.get' i m' = Some f.
@@ -3166,9 +3558,6 @@ Inductive op :=
   Definition order_dom {A B:Type} (m : IntMap.ptrie A) (m': IntMap.ptrie B) : Prop :=
     forall i, IntMap.get' i m <> None -> IntMap.get' i m' <> None.
 
-
-  Definition wf_watch_map (m : watch_map) :=
-    IntMapForall (fun x => wf_map (fst x) /\ wf_map (snd x)) m.
 
   Definition valid_index (hm : hmap) (i : int) :=
     exists f, has_form hm f /\ f.(id) = i.
@@ -3221,8 +3610,8 @@ Inductive op :=
     wf_elt  : Annot.lift (C h) a;
     }.
 
-  Definition has_clauses (m : hmap) (cl : watch_map) :=
-    ForallWatchedClause (check_annot  has_watched_clause m) cl.
+  Definition has_clauses (m : hmap) (cl : WMap.t) :=
+    WMap.Forall (check_annot  has_watched_clause m) cl.
 
   Record wf_state  (st : state) : Prop :=
     {
@@ -3234,8 +3623,7 @@ Inductive op :=
     wf_stack   : List.Forall (check_annot  has_literal  (hconsmap st)) (unit_stack st);
     wf_clauses : has_clauses  (hconsmap st) (clauses st);
     wf_units_m : wf_map (units st);
-    wf_clauses_m1 : wf_map (clauses st);
-    wf_clauses_m2 : wf_watch_map (clauses st);
+    wf_clauses_m : WMap.wf (clauses st);
     }.
 
   Definition eval_obool (b:OBool.t) (f : HFormula) :=
@@ -3256,8 +3644,8 @@ Inductive op :=
   Definition eval_annot_units  (u: IntMap.ptrie (Annot.t bool)) (m: hmap) : Prop :=
     forall_units (eval_annot eval_literal m) m u.
 
-  Definition eval_annot_clauses  (m: hmap) (cl : watch_map) :=
-    ForallWatchedClause (eval_annot  eval_watched_clause m) cl.
+  Definition eval_annot_clauses  (m: hmap) (cl : WMap.t) :=
+    WMap.Forall (eval_annot  eval_watched_clause m) cl.
 
   Record eval_annot_state (st: state) : Prop :=
     {
@@ -3718,7 +4106,7 @@ Inductive op :=
     destruct ES ; constructor ; simpl ; auto.
   Qed.
 
-  Lemma wf_remove_clauses :
+(*  Lemma wf_remove_clauses :
     forall l st
            (WF : wf_state st),
       wf_state (remove_clauses l st).
@@ -3728,7 +4116,7 @@ Inductive op :=
     - unfold has_clauses in *.
       apply IntMapForallRemove; auto.
     - apply IntMap.wf_remove'; auto.
-    - unfold wf_watch_map in *.
+    - unfold WMap.wf in *.
       unfold IntMapForall in *.
       intros.
       rewrite grspec in H; auto.
@@ -3761,22 +4149,7 @@ Inductive op :=
     apply IntMapForallRemove;auto.
     destruct WF ; auto.
   Qed.
-
-  Lemma ForallWatchedClause_find_clauses :
-    forall P i cl ln lp
-           (EC : ForallWatchedClause P  cl)
-           (FD : find_clauses i cl = (ln, lp)),
-      IntMapForall P ln /\
-      IntMapForall P lp.
-  Proof.
-    unfold find_clauses.
-    intros.
-    destruct (IntMap.get' i cl) eqn:EQ.
-    -  destruct w. inv FD.
-       apply EC in EQ; auto.
-    - inv FD.
-      split ; apply IntMapForallEmpty.
-  Qed.
+*)
 
 
 
@@ -4231,49 +4604,8 @@ Inductive op :=
   Qed.
 
 
-  Lemma wf_map_empty : forall {A: Type},
-      wf_map (IntMap.empty A).
-  Proof.
-    unfold wf_map.
-    intros. constructor.
-  Qed.
 
-  Lemma wf_find_clauses2 :
-    forall i cls ln lp
-           (WF   : wf_watch_map cls)
-           (FD : find_clauses i cls = (ln, lp)),
-      wf_map ln /\ wf_map lp.
-  Proof.
-    intros.
-    unfold find_clauses in FD.
-    destruct (IntMap.get' i cls) eqn:EQ.
-    - subst.
-      apply WF in EQ; auto.
-    - inv FD.
-      split;
-      apply wf_map_empty.
-  Qed.
 
-  Lemma wf_find_clauses :
-    forall m i cls ln lp
-           (WF   : wf_watch_map cls)
-           (WFCL : has_clauses m cls)
-           (FD : find_clauses i cls = (ln, lp)),
-      IntMapForall2 (check_annot has_watched_clause m) (ln,lp) /\
-      wf_map ln /\ wf_map lp.
-  Proof.
-    intros.
-    split.
-    - unfold has_clauses in WFCL.
-      unfold IntMapForall in WFCL.
-      unfold find_clauses in FD.
-      destruct (IntMap.get' i cls) eqn:EQ.
-      subst.
-      apply WFCL in EQ; auto.
-      inv FD.
-      split; apply IntMapForallEmpty.
-    - apply wf_find_clauses2 in FD;auto.
-  Qed.
 
   Lemma has_form_find : forall m f,
       has_form m f -> IntMap.get' f.(id) m <> None.
@@ -4282,101 +4614,58 @@ Inductive op :=
   Qed.
 
 
-  Lemma wf_map_add_clause :
-    forall l id cl cls
-           (WF: wf_map cls),
-      wf_map (add_clause l id cl cls).
-  Proof.
-    unfold add_clause.
-    intros.
-    destruct (find_clauses (id_of_literal l) cls).
-    destruct (is_positive_literal l); auto with wf.
-  Qed.
-
-  Hint Resolve wf_map_add_clause : wf.
-
-
-  Lemma wf_watch_map_add_clause :
-    forall l id cl cls
-           (WFM: wf_map cls)
-           (WF: wf_watch_map cls),
-      wf_watch_map (add_clause l id cl cls).
-  Proof.
-    intros.
-    unfold wf_watch_map in *.
-    unfold IntMapForall in *; intros.
-    unfold add_clause in H.
-    destruct (find_clauses (id_of_literal l) cls) eqn:EQ.
-    apply wf_find_clauses2 in EQ; auto.
-    destruct EQ as(WF1 & WF2).
-    destruct (is_positive_literal l);
-      rewrite gsspec in H ; auto;
-        destruct (eqs k (id_of_literal l)); eauto.
-    - inv H; simpl ; split ; auto with wf.
-    - inv H; simpl ; split ; auto with wf.
-  Qed.
-
-  Lemma ForallWatchedClause_add_clause :
-    forall (P: Annot.t watched_clause -> Prop) l i wc cls
-           (WFM : wf_map cls)
-           (WFW : wf_watch_map cls)
-           (PWC : P wc)
-           (ALL : ForallWatchedClause P cls),
-      ForallWatchedClause P (add_clause l i wc cls).
-  Proof.
-    unfold add_clause. intros.
-    destruct(find_clauses (id_of_literal l) cls) as (ln,lp) eqn:EQ.
-    assert (EQ':= EQ).
-    apply ForallWatchedClause_find_clauses with (P:=P) in EQ; auto.
-    destruct EQ as (LN & LP).
-    apply wf_find_clauses2  in EQ'; auto.
-    destruct EQ' as (WLN & WLP).
-    destruct (is_positive_literal l).
-    apply IntMapForallAdd;auto.
-    split ; simpl ; auto.
-    apply IntMapForallAdd;auto.
-    apply IntMapForallAdd;auto.
-    split ; simpl ; auto.
-    apply IntMapForallAdd;auto.
-  Qed.
-
   Lemma wf_add_clause :
     forall m l i wc cls
-           (WF: wf_map cls)
-           (WFW : wf_watch_map cls)
+           (WFW : WMap.wf cls)
            (WF : has_clauses m cls)
            (WCL : check_annot has_watched_clause m wc),
-      has_clauses m (add_clause l i wc cls).
+      has_clauses m (WMap.add_clause l i wc cls).
   Proof.
     unfold has_clauses.
     intros.
-    apply ForallWatchedClause_add_clause; auto.
+    apply WMap.Forall_add_clause; auto.
   Qed.
+
+  Lemma wf_find_clauses :
+    forall m i cls
+           (WF   : WMap.wf cls)
+           (WFCL : has_clauses m cls),
+      (WMap.Forall_watch_map (check_annot has_watched_clause m)
+                             (WMap.find_clauses i cls))
+      /\
+        WMap.wf_watch_map (WMap.find_clauses i cls).
+  Proof.
+    intros.
+    split.
+    - apply WMap.find_clauses_Forall.
+      auto.
+    - apply WMap.wf_find_clauses;auto.
+  Qed.
+
+
 
   Lemma eval_add_clause :
     forall l i wc cls
-           (WFM : wf_map cls)
-           (WF: wf_watch_map cls)
+           (WF: WMap.wf cls)
            (EC: eval_clauses cls)
            (EW: Annot.lift eval_watched_clause wc),
-      eval_clauses (add_clause l i wc cls).
+      eval_clauses (WMap.add_clause l i wc cls).
   Proof.
     unfold eval_clauses.
     intros.
-    apply ForallWatchedClause_add_clause; auto.
+    apply WMap.Forall_add_clause; auto.
   Qed.
 
   Lemma eval_annot_add_clause :
     forall m l i wc cls
-           (WFM : wf_map cls)
-           (WF: wf_watch_map cls)
+           (WF: WMap.wf cls)
            (EC: eval_annot_clauses m cls)
            (EW: eval_annot eval_watched_clause m wc),
-      eval_annot_clauses m (add_clause l i wc cls).
+      eval_annot_clauses m (WMap.add_clause l i wc cls).
   Proof.
     unfold eval_annot_clauses.
     intros.
-    apply ForallWatchedClause_add_clause; auto.
+    apply WMap.Forall_add_clause; auto.
   Qed.
 
 
@@ -4434,48 +4723,6 @@ Inductive op :=
     intros.
     apply wf_map_add_wneg_lit;auto.
     apply wf_map_add_wneg_lit;auto.
-  Qed.
-
-
-  Lemma wf_insert_lit_clause :
-    forall l id cl st
-           (WFS : wf_state st)
-           (WFL : has_literal (hconsmap st) l)
-           (WFC : check_annot  has_watched_clause (hconsmap st) cl),
-           wf_state (insert_lit_clause l id cl st).
-  Proof.
-    intros.
-    destruct WFS ; simpl in *.
-    constructor ; simpl ; auto with wf.
-    - apply wf_map_add_wneg_wcl;auto.
-    - apply wf_add_wneg_wcl ; auto.
-      destruct WFC ; auto.
-    - apply wf_add_clause; auto.
-    - apply wf_watch_map_add_clause; auto.
-  Qed.
-
-  Lemma eval_insert_lit_clause :
-    forall u id cl st
-           (WF : wf_state st)
-           (ES : eval_state st)
-           (ECL : Annot.lift eval_watched_clause cl),
-      eval_state (insert_lit_clause u id cl st).
-  Proof.
-    unfold insert_lit_clause.
-    intros. destruct st ; destruct ES ; destruct WF ; constructor ; simpl in *; auto.
-    apply eval_add_clause;auto.
-  Qed.
-
-  Lemma eval_annot_insert_lit_clause :
-    forall u id cl st
-           (WF : wf_state st)
-           (ES : eval_annot_state st)
-           (ECL : eval_annot eval_watched_clause (hconsmap st) cl),
-      eval_annot_state (insert_lit_clause u id cl st).
-  Proof.
-    unfold insert_lit_clause.
-    intros. destruct st ; destruct ES ; destruct WF ; constructor ; simpl in *; auto.
-    apply eval_annot_add_clause;auto.
   Qed.
 
 
@@ -4863,9 +5110,6 @@ Definition hconsmap_progress  (F: state -> dresult) (st:state) :=
   Qed.
 
 
-Definition isMono {A: Type} (F : hmap -> A -> Prop) :=
-  forall m m' (OHM : hmap_order m m')
-         x  (Fm: F m x), F m' x.
 
   Lemma ForallMono : forall {A: Type} (F: hmap -> A -> Prop) (M : isMono F),
       isMono (fun hm l => Forall (F hm) l).
@@ -4982,13 +5226,11 @@ Qed.
       apply wf_map_add_wneg_lit; auto.
     - simpl.
     apply wf_add_clause; auto with wf.
-    apply wf_watch_map_add_clause;auto.
+    apply WMap.wf_add_clause;auto.
     apply wf_add_clause; auto with wf.
     - simpl.
-    apply wf_map_add_clause ;auto with wf.
-    - simpl.
-    apply wf_watch_map_add_clause ;auto with wf.
-    apply wf_watch_map_add_clause ;auto with wf.
+    apply WMap.wf_add_clause ;auto with wf.
+    apply WMap.wf_add_clause ;auto with wf.
   Qed.
 
   Lemma eval_add_watched_clause :
@@ -5002,7 +5244,7 @@ Qed.
     destruct ES ; destruct WF ; constructor ; auto.
     simpl.
     apply eval_add_clause;auto with wf.
-    apply wf_watch_map_add_clause;auto.
+    apply WMap.wf_add_clause;auto.
     apply eval_add_clause;auto.
   Qed.
 
@@ -5017,7 +5259,7 @@ Qed.
     destruct ES ; destruct WF ; constructor ; auto.
     simpl.
     apply eval_annot_add_clause;auto with wf.
-    apply wf_watch_map_add_clause;auto.
+    apply WMap.wf_add_clause;auto.
     apply eval_annot_add_clause;auto.
   Qed.
 
@@ -5491,21 +5733,11 @@ Lemma eval_annot_get_fresh_clause : forall st,
     rewrite FN. auto.
   Qed.
 
-  Lemma IntMapForall_Forall :
-    forall {A: Type} (P Q: A -> Prop) m,
-      (forall x, P x -> Q x) ->
-      IntMapForall P m ->
-      IntMapForall Q m.
-  Proof.
-    repeat intro.
-    apply H0 in H1.
-    auto.
-  Qed.
-
   Lemma fold_lemma :
-    forall {A E: Type} (UP: A -> int -> E -> A) (P: A -> E -> Prop) Q m acc
-           (WFm  : wf_map m)
-           (Pacc : IntMapForall (P acc) m)
+    forall {A: Type} (UP: A -> int -> (Annot.t watched_clause) -> A)
+           (P: A -> Annot.t watched_clause -> Prop) Q m acc
+           (WFm  : WMap.wf_watch_map m)
+           (Pacc : WMap.Forall_watch_map (P acc) m)
            (PUP  : forall acc i e e',
                P acc e ->
                P acc e' ->
@@ -5513,53 +5745,49 @@ Lemma eval_annot_get_fresh_clause : forall st,
                P (UP acc i e) e')
            (UPOK : forall acc a,
                Q acc ->
-               IntMapForall (P acc) m ->
+               WMap.Forall_watch_map (P acc) m ->
                P acc (snd a) ->
                Q (UP acc (fst a) (snd a)))
            (Qacc : Q acc)
     ,
-           Q (IntMap.fold' UP m acc).
+           Q (WMap.fold_watch_map UP m acc).
 Proof.
   intros.
-  rewrite PTrie.fold_elements'.
-  assert (ALL : forall x, In x (IntMap.elements' m  nil) -> P acc (snd x)).
+  rewrite WMap.fold_elements.
+  assert (ALL : forall x, In x (WMap.elements m  nil) -> P acc (snd x)).
   {
     intros.
-    unfold IntMapForall in Pacc.
-    apply Pacc with (k:=fst x).
-    destruct x.
-    apply IntMap.in_elements' with (opt:= None) in H; auto.
-    simpl in *. tauto.
+    eapply WMap.in_elements; eauto.
   }
   revert acc Qacc Pacc ALL.
-  induction ((IntMap.elements' m nil)).
+  induction ((WMap.elements m nil)).
   - simpl.
     auto.
   - simpl; intros.
     assert (ALLA := ALL _  (or_introl eq_refl)).
     apply IHl; auto.
     revert Pacc.
-    repeat intro.
-    apply Pacc in H.
-    eapply PUP; eauto.
+    apply WMap.Forall_watch_map_Forall. auto.
 Qed.
 
-Lemma fold_up : forall {A: Type} (P: hmap -> A -> Prop) (Q:  dresult -> Prop)
+
+
+Lemma fold_up : forall  (P: hmap -> Annot.t watched_clause -> Prop) (Q:  dresult -> Prop)
                          (WPI : forall m m', hmap_order m m' -> forall x,
                                P  m x -> P  m' x)
-                         (UP : int -> A -> dresult -> dresult)
+                         (UP : int -> Annot.t watched_clause -> dresult -> dresult)
                          (QOUT : forall f, Q (Fail f) -> False)
                          (UPSuccess : forall i x d, UP  i x (Success d) = Success d)
                          (UPOK :  forall i  cl st ,
                              Q (Progress st) ->  P (hconsmap st) cl  ->
                              hconsmap_progress_r (UP  i cl) (Progress st) /\
                              Q (UP  i cl (Progress st)))
-                         (cl: IntMap.ptrie A)
+                         cl
     (st: state)
-    (WF: wf_map cl)
-    (CL : IntMapForall (P (hconsmap st)) cl)
+    (WF: WMap.wf_watch_map cl)
+    (CL : WMap.Forall_watch_map (P (hconsmap st)) cl)
     (ES : Q (Progress st)),
-      Q (IntMap.fold' (fun acc k el => UP k el acc) cl (Progress st)).
+      Q (WMap.fold_watch_map (fun acc k el => UP k el acc) cl (Progress st)).
 Proof.
   intros.
   set (P':= fun (o:dresult) cl => match o with Progress st => P (hconsmap st) cl | Success (h,_) => P h cl | _ => True end).
@@ -5584,7 +5812,7 @@ Proof.
 Qed.
 
 
-
+(*
 Lemma fold_slemma :
     forall {A E: Type} (UP: A -> int -> E -> A) (P: E -> Prop) Q m acc
            (UPOK : forall acc i v,
@@ -5616,109 +5844,20 @@ Proof.
     assert (ALLA := ALL _  (or_introl eq_refl)).
     apply IHl; auto.
 Qed.
-
+*)
 
 
 
 
 Lemma wf_remove_watched_id :
   forall m l i cls
-         (WF  : wf_map cls)
-         (WFW : wf_watch_map cls)
+         (WFW : WMap.wf cls)
          (WF : has_clauses m cls),
-  has_clauses m (remove_watched_id l i cls).
+  has_clauses m (WMap.remove_watched_id l i cls).
 Proof.
-  unfold remove_watched_id.
-  intros.
-  destruct (find_clauses (id_of_literal l) cls) eqn:EQ.
-  unfold has_clauses.
-  apply wf_find_clauses with (m:=m) in EQ; auto.
-  destruct EQ ; simpl  in * ; auto.
-  destruct H ; simpl in *.
-  destruct (is_positive_literal l); apply IntMapForallAdd;auto.
-  split ; simpl; auto.
-  apply IntMapForallRemove;tauto.
-  split ; simpl; auto.
-  apply IntMapForallRemove;tauto.
+  unfold has_clauses. intros.
+  apply WMap.Forall_remove_watched_id; auto.
 Qed.
-
-Lemma wf_map_remove_watched_id :
-  forall l i cls
-         (WF: wf_map cls)
-         (WFW : wf_watch_map cls),
-    wf_map (remove_watched_id l i cls).
-Proof.
-  unfold remove_watched_id.
-  intros.
-  destruct (find_clauses (id_of_literal l) cls) eqn:FD.
-  apply wf_find_clauses2 in FD; auto.
-  destruct (is_positive_literal l);
-    apply wf_map_add; auto.
-Qed.
-
-Lemma wf_watch_map_set :
-  forall i t1 t2 cls
-         (WF: wf_map cls)
-         (WF1: wf_map t1)
-         (WF2: wf_map t2)
-         (WFW: wf_watch_map  cls)
-  ,
-  wf_watch_map (IntMap.set' i (t1,t2) cls).
-Proof.
-  unfold wf_watch_map.
-  intros. repeat intro.
-  rewrite gsspec in H; auto.
-  destruct (eqs k i).
-  inv H ; simpl ; auto.
-  apply WFW in H.
-  auto.
-Qed.
-
-Lemma ForallWatchedClause_remove_watched_id :
-  forall (P : Annot.t watched_clause -> Prop) l i cls
-         (WFM: wf_map cls)
-         (WF: wf_watch_map cls)
-         (ALL : ForallWatchedClause P cls),
-    ForallWatchedClause P (remove_watched_id l i cls).
-Proof.
-  unfold remove_watched_id.
-  intros.
-  destruct (find_clauses (id_of_literal l) cls) eqn: FID.
-  assert (FID':= FID).
-  apply ForallWatchedClause_find_clauses with (P:=P) in FID.
-  apply wf_find_clauses2 in FID'; auto.
-  destruct FID, FID'.
-  destruct (is_positive_literal l).
-  apply IntMapForallAdd; auto.
-  split ; simpl ; auto.
-  apply IntMapForallRemove;auto.
-  apply IntMapForallAdd; auto.
-  split ; simpl ; auto.
-  apply IntMapForallRemove;auto.
-  auto.
-Qed.
-
-
-
-Lemma wf_watch_map_remove_watched_id :
-  forall l i cls
-         (WFM: wf_map cls)
-         (WF: wf_watch_map cls)
-  ,
-    wf_watch_map (remove_watched_id l i cls).
-Proof.
-  unfold remove_watched_id.
-  intros.
-  destruct (find_clauses (id_of_literal l) cls) eqn:FD.
-  apply wf_find_clauses2 in FD; auto.
-  destruct FD.
-  destruct (is_positive_literal l).
-  apply wf_watch_map_set  ; auto.
-  apply IntMap.wf_remove';auto.
-  apply wf_watch_map_set  ; auto.
-  apply IntMap.wf_remove';auto.
-Qed.
-
 
 Lemma wf_remove_watched_clause :
   forall i cl s
@@ -5728,15 +5867,10 @@ Lemma wf_remove_watched_clause :
 Proof.
   intros. destruct WF ; constructor ; simpl ; auto.
   apply wf_remove_watched_id ; auto.
-  apply wf_map_remove_watched_id;auto.
-  apply wf_watch_map_remove_watched_id  ; auto.
+  apply WMap.wf_remove_watched_id  ; auto.
   apply wf_remove_watched_id ; auto.
-  apply wf_map_remove_watched_id;auto.
-  apply wf_map_remove_watched_id;auto.
-  apply wf_watch_map_remove_watched_id  ; auto.
-  apply wf_watch_map_remove_watched_id  ; auto.
-  apply wf_map_remove_watched_id;auto.
-  apply wf_watch_map_remove_watched_id  ; auto.
+  apply WMap.wf_remove_watched_id  ; auto.
+  apply WMap.wf_remove_watched_id  ; auto.
 Qed.
 
 Definition hconsmap_eq  (F: state ->state)  :=
@@ -5749,10 +5883,6 @@ Proof.
   unfold hconsmap_eq.
   simpl; reflexivity.
 Qed.
-
-
-
-
 
 
 Lemma wf_update_watched_clause : forall i cl st
@@ -5862,8 +5992,8 @@ Qed.
 
 Lemma wf_shorten_clauses :
   forall l st
-         (WFM: wf_map l)
-         (ALL: IntMapForall (check_annot has_watched_clause (hconsmap st)) l)
+         (WFM: WMap.wf_watch_map l)
+         (ALL: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st)) l)
          (WF: wf_state st),
         wf_result_state (shorten_clauses l st).
 Proof.
@@ -5908,24 +6038,24 @@ Proof.
 Qed.
 
 Lemma hconsmap_fold  :
-  forall {A: Type} (F: int -> A -> dresult -> dresult) cl st
+  forall  (F: int -> Annot.t watched_clause -> dresult -> dresult) cl st
          (FOK : forall i k st, hconsmap_progress_r (F i k) st)
          (NOTFAIL : forall i k st, ~ is_fail st -> ~ is_fail (F i k st))
   ,
 
     hconsmap_progress (fun  (st : state) =>
-                         IntMap.fold'
-                           (fun (acc : dresult) (i : int) (k : A) =>
+                         WMap.fold_watch_map
+                           (fun (acc : dresult) (i : int) (k : Annot.t watched_clause) =>
                               F i k acc) cl (Progress st)) st.
 Proof.
   unfold hconsmap_progress.
   intros.
   assert (ACC: ~ is_fail ((Progress st):dresult) /\ hconsmap_result (Progress st : dresult) = (hconsmap st)).
   { simpl. tauto. }
-  rewrite PTrie.fold_elements' in *.
+  rewrite WMap.fold_elements in *.
   revert H ACC.
   generalize (Progress st : dresult).
-  induction (PTrie.elements' cl nil).
+  induction (WMap.elements cl nil).
   - simpl.  tauto.
   - simpl in *; intros.
     eapply IHl ; eauto.
@@ -5998,17 +6128,10 @@ Proof.
          set (sti :=  (insert_literal t0 s)) in * ; clearbody sti.
          simpl in *.
          intros.
-         destruct (find_clauses (id_of_literal (Annot.elt t0)) (clauses sti)) as (ln & lp).
-         generalize (hconsmap_shorten_clauses match Annot.elt t0 with
-                      | POS _ => ln
-                      | NEG _ => lp
-                                              end sti).
+         set (lc := (WMap.find_clauses (Annot.elt t0) (clauses sti))) in *.
+         generalize (hconsmap_shorten_clauses lc sti).
          unfold hconsmap_progress.
-         set (sts :=       shorten_clauses match Annot.elt t0 with
-                      | POS _ => ln
-                      | NEG _ => lp
-                      end sti
-             ) in *.
+         set (sts :=  shorten_clauses lc sti) in *.
          clearbody sts.
          destruct sts ; simpl in *  ; intuition try congruence.
          rewrite IHn;auto.
@@ -6016,7 +6139,7 @@ Proof.
     +  reflexivity.
 Qed.
 
-  Definition wf_result_state'  (st: dresult) :=
+Definition wf_result_state'  (st: dresult) :=
     match st with
     | Progress st => wf_state  st
     | Success (hm,d)   => wf_pset hm d
@@ -6087,16 +6210,10 @@ Lemma wf_unit_propagation :
         destruct WFA ;auto.
         destruct WFST';auto.
       +
-        destruct (find_clauses (id_of_literal (Annot.elt l)) (clauses st')) as (ln,lp) eqn:FD.
-        set (L := match Annot.elt l with
-                          | POS _ => ln
-                          | NEG _ => lp
-                          end) in *.
-        assert (WFLL: IntMapForall (check_annot has_watched_clause (hconsmap st')) L /\ wf_map L).
+        set (L := WMap.find_clauses (Annot.elt l) (clauses st')) in *.
+        assert (WFLL: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st')) L /\ WMap.wf_watch_map L).
         {
-          apply wf_find_clauses with (m:=(hconsmap st')) in FD; auto.
-          destruct FD as ((FD1 & FD2) & (WF1 & WF2)).
-          destruct (Annot.elt l) ; tauto.
+          apply wf_find_clauses with (m:=(hconsmap st')); auto.
           destruct WFST' ; auto.
           destruct WFST' ; auto.
         }
@@ -6120,38 +6237,28 @@ Lemma wf_unit_propagation :
   Qed.
 
 
-  Lemma IntMapForallAnd : forall {A: Type} (P1 P2: A -> Prop) l,
-      IntMapForall P1 l -> IntMapForall P2 l ->
-      IntMapForall (fun x => P1 x /\ P2 x) l.
-  Proof.
-    repeat intro.
-    unfold IntMapForall in *.
-    split ; eauto.
-  Qed.
 
   Lemma eval_remove_watched_id :
     forall l i cls
-           (WF: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (EC : eval_clauses cls),
   eval_clauses
-    (remove_watched_id l i cls).
+    (WMap.remove_watched_id l i cls).
   Proof.
     unfold eval_clauses.
     intros.
-    apply ForallWatchedClause_remove_watched_id;auto.
+    apply WMap.Forall_remove_watched_id;auto.
   Qed.
 
   Lemma eval_annot_remove_watched_id :
     forall m l i cls
-           (WF: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (EC : eval_annot_clauses m cls),
-  eval_annot_clauses m (remove_watched_id l i cls).
+  eval_annot_clauses m (WMap.remove_watched_id l i cls).
   Proof.
     unfold eval_annot_clauses.
     intros.
-    apply ForallWatchedClause_remove_watched_id;auto.
+    apply WMap.Forall_remove_watched_id;auto.
   Qed.
 
   Lemma eval_remove_watched_clause :
@@ -6164,8 +6271,7 @@ Lemma wf_unit_propagation :
     unfold remove_watched_clause.
     intros. destruct ES ; destruct WS; constructor ; simpl ; auto.
     eapply eval_remove_watched_id;eauto.
-    apply wf_map_remove_watched_id ; auto.
-    apply wf_watch_map_remove_watched_id;auto.
+    apply WMap.wf_remove_watched_id;auto.
     eapply eval_remove_watched_id;eauto.
   Qed.
 
@@ -6178,8 +6284,7 @@ Lemma wf_unit_propagation :
     unfold remove_watched_clause.
     intros. destruct ES ; destruct WS; constructor ; simpl ; auto.
     eapply eval_annot_remove_watched_id;eauto.
-    apply wf_map_remove_watched_id ; auto.
-    apply wf_watch_map_remove_watched_id;auto.
+    apply WMap.wf_remove_watched_id;auto.
     eapply eval_annot_remove_watched_id;eauto.
   Qed.
 
@@ -6265,9 +6370,9 @@ Lemma wf_unit_propagation :
 
   Lemma eval_shorten_clauses :
   forall l st
-         (WFL: wf_map l)
-         (ALL1: IntMapForall (Annot.lift eval_watched_clause) l)
-         (ALL2: IntMapForall (check_annot has_watched_clause (hconsmap st)) l)
+         (WFL: WMap.wf_watch_map l)
+         (ALL1: WMap.Forall_watch_map (Annot.lift eval_watched_clause) l)
+         (ALL2: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st)) l)
          (WF: wf_state st /\ eval_state  st),
     wf_result_state  (shorten_clauses l st) /\ eval_result_state  (shorten_clauses l st).
 Proof.
@@ -6275,7 +6380,7 @@ Proof.
   intros.
   set (Q := fun x =>   wf_result_state x /\
                        eval_result_state x).
-  change (Q (IntMap.fold' (fun (acc : dresult) (i : int) (k : Annot.t watched_clause) =>
+  change (Q (WMap.fold_watch_map (fun (acc : dresult) (i : int) (k : Annot.t watched_clause) =>
         update_watched_clause i k acc) l (Progress st))).
   eapply fold_lemma
     with (P:= fun (o: dresult) cl =>
@@ -6283,7 +6388,7 @@ Proof.
                   Success _ => True
                 | Fail _ => False
                 | Progress st => Annot.lift eval_watched_clause  cl /\ check_annot  has_watched_clause (hconsmap st) cl end);auto.
-  - apply IntMapForallAnd;auto.
+  - apply WMap.Forall_watch_map_ForallAnd;auto.
   - destruct acc ; simpl ; auto.
     intros.
     destruct_in_goal EQ; auto.
@@ -6321,9 +6426,9 @@ Qed.
 
   Lemma eval_annot_shorten_clauses :
   forall l st
-         (WFL: wf_map l)
-         (ALL1: IntMapForall (eval_annot  eval_watched_clause (hconsmap st)) l)
-         (ALL2: IntMapForall (check_annot has_watched_clause (hconsmap st)) l)
+         (WFL: WMap.wf_watch_map l)
+         (ALL1: WMap.Forall_watch_map (eval_annot  eval_watched_clause (hconsmap st)) l)
+         (ALL2: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st)) l)
          (WF: wf_state st /\ eval_annot_state  st),
     wf_result_state  (shorten_clauses l st) /\ eval_annot_result_state  (shorten_clauses l st).
 Proof.
@@ -6331,7 +6436,7 @@ Proof.
   intros.
   set (Q := fun x =>   wf_result_state x /\
                        eval_annot_result_state x).
-  change (Q (IntMap.fold' (fun (acc : dresult) (i : int) (k : Annot.t watched_clause) =>
+  change (Q (WMap.fold_watch_map (fun (acc : dresult) (i : int) (k : Annot.t watched_clause) =>
         update_watched_clause i k acc) l (Progress st))).
   eapply fold_lemma
     with (P:= fun (o: dresult) cl =>
@@ -6339,7 +6444,7 @@ Proof.
                   Success _ => True
                 | Fail _ => False
                 | Progress st => eval_annot eval_watched_clause (hconsmap st) cl /\ check_annot  has_watched_clause (hconsmap st) cl end);auto.
-  - apply IntMapForallAnd;auto.
+  - apply WMap.Forall_watch_map_ForallAnd;auto.
   - destruct acc ; simpl ; auto.
     intros.
     destruct_in_goal EQ; auto.
@@ -6376,18 +6481,13 @@ Proof.
 Qed.
 
 
-Lemma eval_find_clauses : forall i m ln lp,
-    ForallWatchedClause (Annot.lift eval_watched_clause) m ->
-    find_clauses i m = (ln,lp) ->
-    IntMapForall (Annot.lift eval_watched_clause) ln /\
-    IntMapForall (Annot.lift eval_watched_clause) lp.
+Lemma eval_find_clauses : forall i m,
+    WMap.Forall (Annot.lift eval_watched_clause) m ->
+    WMap.Forall_watch_map (Annot.lift eval_watched_clause) (WMap.find_clauses i m).
 Proof.
   intros.
-  eapply ForallWatchedClause_find_clauses in H ; eauto.
+  apply WMap.find_clauses_Forall; auto.
 Qed.
-
-
-
 
 Lemma unit_propagation_correct :
   forall n g st
@@ -6419,26 +6519,17 @@ Proof.
         eapply has_oform_mono;eauto. congruence.
         destruct WFA;auto.
       +
-        destruct (find_clauses (id_of_literal (Annot.elt l)) (clauses st')) as (ln,lp) eqn:FD.
-        set (L := match Annot.elt l with
-                          | POS _ => ln
-                          | NEG _ => lp
-                          end) in *.
-        assert (WFLL: IntMapForall (check_annot has_watched_clause (hconsmap st')) L /\  wf_map L).
+        set (L := WMap.find_clauses (Annot.elt l) (clauses st')) in *.
+        assert (WFLL: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st')) L /\  WMap.wf_watch_map L).
         {
-          apply wf_find_clauses with (m:= hconsmap st') in FD; auto.
-          destruct FD as ((FD1 & FD2)& WF1 & WF2).
-          destruct (Annot.elt l) ; tauto.
+          apply wf_find_clauses with (m:= hconsmap st') ; auto.
           destruct WFST';auto.
           destruct WFST';auto.
         }
         destruct WFLL as (WFL1 & WFL2).
-        assert (EVALL : IntMapForall (Annot.lift eval_watched_clause) L).
+        assert (EVALL : WMap.Forall_watch_map (Annot.lift eval_watched_clause) L).
         {
-          apply eval_find_clauses
-            in FD.
-          destruct (Annot.elt l) ; unfold L ; simpl in *.
-          tauto. tauto.
+          apply eval_find_clauses.
           destruct EST' ; auto.
         }
         assert (eval_result_state  (shorten_clauses L (insert_literal l st'))).
@@ -6468,14 +6559,12 @@ Proof.
   Qed.
 
 
-Lemma eval_annot_find_clauses : forall m i wc ln lp,
-    ForallWatchedClause (eval_annot eval_watched_clause m) wc ->
-    find_clauses i wc = (ln,lp) ->
-    IntMapForall (eval_annot eval_watched_clause m) ln /\
-    IntMapForall (eval_annot eval_watched_clause m) lp.
+Lemma eval_annot_find_clauses : forall m i wc,
+    WMap.Forall (eval_annot eval_watched_clause m) wc ->
+    WMap.Forall_watch_map (eval_annot eval_watched_clause m) (WMap.find_clauses i wc).
 Proof.
   intros.
-  eapply ForallWatchedClause_find_clauses in H ; eauto.
+  apply WMap.find_clauses_Forall; auto.
 Qed.
 
 Lemma eval_annot_unit_propagation :
@@ -6509,25 +6598,17 @@ Proof.
       { destruct WFA; auto. }
       { destruct EST'; auto. }
     +
-      destruct (find_clauses (id_of_literal (Annot.elt l)) (clauses st')) as (ln,lp) eqn:FD.
-      set (L := match Annot.elt l with
-                | POS _ => ln
-                | NEG _ => lp
-                end) in *.
-      assert (WFLL: IntMapForall (check_annot has_watched_clause (hconsmap st')) L /\  wf_map L).
+      set (L:=  (WMap.find_clauses (Annot.elt l) (clauses st'))) in *.
+      assert (WFLL: WMap.Forall_watch_map (check_annot has_watched_clause (hconsmap st')) L /\  WMap.wf_watch_map L).
         {
-          apply wf_find_clauses with (m:= hconsmap st') in FD; auto.
-          destruct FD as ((FD1 & FD2)& WF1 & WF2).
-          destruct (Annot.elt l) ; tauto.
+          apply wf_find_clauses;auto.
           destruct WFST';auto.
           destruct WFST';auto.
         }
         destruct WFLL as (WFL1 & WFL2).
-        assert (EVALL : IntMapForall (eval_annot eval_watched_clause (hconsmap st')) L).
+        assert (EVALL : WMap.Forall_watch_map (eval_annot eval_watched_clause (hconsmap st')) L).
         {
-          apply eval_annot_find_clauses with (m:= hconsmap st') in FD; eauto.
-          destruct (Annot.elt l) ; unfold L ; simpl in *.
-          tauto. tauto.
+          apply eval_annot_find_clauses with (m:= hconsmap st') ; eauto.
           destruct EST' ; auto.
         }
         assert (eval_annot_result_state  (shorten_clauses L (insert_literal l st'))).
@@ -7956,52 +8037,6 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
  *)
 
 
-  Section SEARCH.
-
-    Context  {A: Type}.
-    Variable search : forall (k:int) (cl: Annot.t watched_clause), option A.
-
-    Definition  search_in_map  (m : IntMap.ptrie (Annot.t watched_clause))  :=
-      IntMap.search search  m.
-
-    Definition search_in_pair_map (pos : bool) (k:int) (e: IntMap.ptrie  (Annot.t watched_clause) * IntMap.ptrie (Annot.t watched_clause)) :=
-      if pos then search_in_map (snd e)
-      else search_in_map (fst e).
-
-    Definition search_in_watch_map (only_pos:bool) (cl:watch_map) :=
-      IntMap.search (search_in_pair_map only_pos) cl.
-
-
-    Lemma search_in_watch_map_correct :
-      forall P b m r
-             (WF  : wf_map m)
-             (WFE : wf_watch_map m)
-             (ALL: ForallWatchedClause P m)
-             (S  : search_in_watch_map b m = Some r),
-             exists k c, P c /\ search k c = Some r.
-    Proof.
-      unfold search_in_watch_map.
-      intros.
-      apply IntMap.search_some with (opt:= None) in S; auto.
-      destruct S as (k&v&G&S).
-      assert (G':= G).
-      apply ALL in G.  destruct G as (GF & GS).
-      apply WFE in G'. destruct G' as (WFF & WFS).
-      unfold search_in_pair_map in S.
-      destruct b.
-      - unfold search_in_map in S.
-        apply IntMap.search_some with (opt:= None) in S; auto.
-        destruct S as (k' & v' & G2 & S2).
-        exists k', v'; split; auto.
-        apply GS in G2 ; auto.
-      - unfold search_in_map in S.
-        apply IntMap.search_some with (opt:= None) in S; auto.
-        destruct S as (k' & v' & G2 & S2).
-        exists k', v'; split; auto.
-        apply GF in G2 ; auto.
-    Qed.
-
-  End SEARCH.
 
   Definition is_empty {A: Type} (m: IntMap.ptrie (key:=int) A) :=
     match m with
@@ -8017,13 +8052,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     | Some l => if (lazy_or is_bot (fun x => Annot.lift check_classic l)) && negb (Annot.lift is_silly_split l) then Some l else None
     end.
 
-  Definition select_in_watch_map (pos: bool) (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:watch_map) : option (Annot.t (list literal)) :=
-    search_in_watch_map (select_clause is_bot lit) pos cl.
+  Definition select_in_wmap (pos: bool) (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:WMap.t) : option (Annot.t (list literal)) :=
+    WMap.search (select_clause is_bot lit) pos cl.
 
 
-  Definition find_split (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:watch_map) : option (Annot.t (list literal)) :=
-    match select_in_watch_map true lit is_bot cl with
-    | None => select_in_watch_map false lit is_bot cl
+  Definition find_split (lit : IntMap.ptrie (Annot.t bool)) (is_bot: bool) (cl:WMap.t) : option (Annot.t (list literal)) :=
+    match select_in_wmap true lit is_bot cl with
+    | None => select_in_wmap false lit is_bot cl
     | Some r => Some r
     end.
 
@@ -8679,46 +8714,12 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       congruence.
     Qed.
 
-    Lemma IntMapForall_mono :
-      forall {A: Type} (F:hmap -> A -> Prop) (m m' : hmap) (cl : IntMap.ptrie A)
-             (FMono : forall x, F m x -> F m' x),
-             hmap_order m m' ->
-             IntMapForall (F m) cl ->
-             IntMapForall (F m') cl.
-    Proof.
-      unfold IntMapForall.
-      intros.
-      apply H0 in H1.
-      apply FMono ; auto.
-    Qed.
 
-    Lemma ForallWatchedClause_mono :
-      forall (F:hmap -> Annot.t watched_clause -> Prop)
-             (Mono:isMono F)
-      , isMono (fun m => ForallWatchedClause (F m) ).
-    Proof.
-      unfold ForallWatchedClause.
-      intros.
-      unfold isMono.
-      intros m m' ORD x.
-      set (G := fun m => IntMapForall2 (F m)).
-      change (IntMapForall (G m) x -> IntMapForall (G  m')x).
-      apply IntMapForall_mono; auto.
-      unfold G. intro.
-      unfold IntMapForall2.
-      intros.
-      destruct H.
-      split.
-      revert H. apply IntMapForall_mono; auto.
-      apply Mono; auto.
-      revert H0. apply IntMapForall_mono; auto.
-      apply Mono; auto.
-    Qed.
 
     Lemma has_clauses_mono : isMono has_clauses.
     Proof.
       unfold has_clauses.
-      apply ForallWatchedClause_mono; auto.
+      apply WMap.Forall_mono; auto.
       apply check_annot_mono.
       apply isMono_lift.
       apply has_watched_clause_mono.
@@ -8856,7 +8857,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           destruct WF;auto.
         + unfold eval_annot_clauses in *.
           revert ev_an_clauses0.
-          apply ForallWatchedClause_mono; auto.
+          apply WMap.Forall_mono; auto.
           apply eval_annot_mono.
       - destruct WF.
         constructor ; simpl; auto.
@@ -9879,7 +9880,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Proof.
       unfold shorten_clauses.
       intros u st.
-      rewrite PTrie.fold_elements'.
+      rewrite WMap.fold_elements.
       assert (Acc : (Progress st: dresult)  <> Fail Stuck).
       {
         congruence.
@@ -9888,7 +9889,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       generalize ((Progress st: dresult)).
       set (F:= (fun (a : dresult) (p : int * Annot.t watched_clause) =>
      update_watched_clause (fst p) (snd p) a)).
-      induction (PTrie.elements' u nil).
+      induction (WMap.elements u nil).
       - simpl. congruence.
       - simpl.
         intros.
@@ -9917,11 +9918,9 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         destruct p.
         destruct (success g (units s) t0).
         congruence.
-        destruct (find_clauses (id_of_literal (Annot.elt t0)) (clauses s)).
-        destruct (  shorten_clauses match Annot.elt t0 with
-                        | POS _ => p
-                        | NEG _ => p0
-                        end (insert_literal t0 s)) eqn:E; try congruence.
+        destruct (shorten_clauses (WMap.find_clauses (Annot.elt t0) (clauses s))
+                                  (insert_literal t0 s)
+                 ) eqn:E; try congruence.
         inv H.
         apply shorten_clauses_not_stuck in E; auto.
         congruence.
@@ -10329,51 +10328,33 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Qed.
 
 
-  Lemma ForallWatchedClauseAND : forall P Q cls,
-      ForallWatchedClause P cls -> ForallWatchedClause Q cls ->
-      ForallWatchedClause (fun cl : Annot.t watched_clause => P cl /\ Q cl) cls.
-  Proof.
-    intros.
-    unfold ForallWatchedClause in *.
-    specialize (IntMapForallAnd _ _ _  H H0).
-    apply IntMapForall_Forall.
-    intros.
-    destruct H1. destruct H1. destruct H2.
-    split.
-    apply IntMapForallAnd ; auto.
-    apply IntMapForallAnd ; auto.
-  Qed.
-
-
-  Lemma eval_select_in_watch_map :
+  Lemma eval_select_in_wmap :
     forall pos m g u cls
-           (WFM: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WFU: wf_units_lit u m)
            (EU : eval_units m u)
            (WF : has_clauses m cls)
            (EV : eval_clauses  cls)
-           (EVAL : ohold (Annot.lift eval_or) (select_in_watch_map pos u (is_classic g) cls) -> eval_ohformula g),
+           (EVAL : ohold (Annot.lift eval_or) (select_in_wmap pos u (is_classic g) cls) -> eval_ohformula g),
       eval_ohformula g.
   Proof.
     intros.
-    unfold select_in_watch_map in EVAL.
+    unfold select_in_wmap in EVAL.
     revert EVAL.
-    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
-    apply search_in_watch_map_correct
+    destruct (WMap.search (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply WMap.search_correct
       with (P :=
               fun cl => Annot.lift eval_watched_clause cl /\ check_annot has_watched_clause m cl) in EQ; auto.
     destruct EQ as (k&v&P&S).
     rewrite <- S.
     destruct P as (P1 & P2).
     eapply eval_select_clause; eauto.
-    apply ForallWatchedClauseAND; auto.
+    apply WMap.ForallAND; auto.
   Qed.
 
   Lemma eval_find_split :
     forall m g u cls
-           (WFM: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WFU: wf_units_lit u m)
            (EU : eval_units m u)
            (WF : has_clauses m cls)
@@ -10386,39 +10367,37 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     revert EVAL.
     destruct_in_goal SEL.
     rewrite <- SEL.
-    eapply eval_select_in_watch_map; eauto.
-    eapply eval_select_in_watch_map; eauto.
+    eapply eval_select_in_wmap; eauto.
+    eapply eval_select_in_wmap; eauto.
   Qed.
 
-  Lemma eval_annot_select_in_watch_map :
+  Lemma eval_annot_select_in_wmap :
     forall pos m g u cls
-           (WFM: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WFU: wf_units_lit u m)
            (EU : eval_annot_units u m)
            (WF : has_clauses m cls)
            (EV : eval_annot_clauses m cls)
-           (EVAL : ohold (eval_annot  eval_or m) (select_in_watch_map pos u (is_classic g) cls) -> eval_ohformula g),
+           (EVAL : ohold (eval_annot  eval_or m) (select_in_wmap pos u (is_classic g) cls) -> eval_ohformula g),
       eval_ohformula g.
   Proof.
     intros.
-    unfold select_in_watch_map in EVAL.
+    unfold select_in_wmap in EVAL.
     revert EVAL.
-    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
-    apply search_in_watch_map_correct
+    destruct (WMap.search (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply WMap.search_correct
       with (P :=
               fun cl =>   eval_annot eval_watched_clause m cl /\ check_annot has_watched_clause m cl) in EQ; auto.
     destruct EQ as (k&v&P&S).
     rewrite <- S.
     destruct P as (P1 & P2).
     eapply eval_annot_select_clause; eauto.
-    apply ForallWatchedClauseAND; auto.
+    apply WMap.ForallAND; auto.
   Qed.
 
   Lemma eval_annot_find_split :
     forall m g u cls
-           (WFM: wf_map cls)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WFU: wf_units_lit u m)
            (EU : eval_annot_units u m)
            (WF : has_clauses m cls)
@@ -10431,22 +10410,21 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     revert EVAL.
     destruct_in_goal SEL.
     rewrite <- SEL.
-    apply eval_annot_select_in_watch_map; auto.
-    apply eval_annot_select_in_watch_map; auto.
+    apply eval_annot_select_in_wmap; auto.
+    apply eval_annot_select_in_wmap; auto.
   Qed.
 
-  Lemma wf_select_in_watch_map :
+  Lemma wf_select_in_wmap :
     forall pos m g u cls
-           (WFM: wf_map cls)
            (WFU: wf_units_lit u m)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WF : has_clauses m cls),
-      ohold (check_annot has_conflict_clause  m) (select_in_watch_map pos u (is_classic g) cls) .
+      ohold (check_annot has_conflict_clause  m) (select_in_wmap pos u (is_classic g) cls) .
   Proof.
     intros.
-    unfold select_in_watch_map.
-    destruct (search_in_watch_map (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
-    apply search_in_watch_map_correct
+    unfold select_in_wmap.
+    destruct (WMap.search (select_clause (is_classic g) u) pos cls) eqn:EQ; [|simpl; tauto].
+    apply WMap.search_correct
       with (P :=
               fun cl => check_annot has_watched_clause m cl) in EQ; auto.
     destruct EQ as (k&v&P&S).
@@ -10457,9 +10435,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 
   Lemma wf_find_split :
     forall m g u cls
-           (WFM: wf_map cls)
            (WFU: wf_units_lit u m)
-           (WFW: wf_watch_map cls)
+           (WFW: WMap.wf cls)
            (WF : has_clauses m cls),
       ohold (check_annot has_conflict_clause  m) (find_split u (is_classic g) cls) .
   Proof.
@@ -10467,8 +10444,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     unfold find_split.
     destruct_in_goal SEL.
     rewrite <- SEL.
-    apply wf_select_in_watch_map ; auto.
-    apply wf_select_in_watch_map ; auto.
+    apply wf_select_in_wmap ; auto.
+    apply wf_select_in_wmap ; auto.
   Qed.
 
 
@@ -10762,10 +10739,10 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     - unfold wf_units_lit.
       intros. rewrite empty_o in H0.
       congruence.
-    - apply IntMapForallEmpty.
+    - unfold has_clauses.
+      apply WMap.Forall_empty.
    - apply wf_map_empty;auto.
-   - apply wf_map_empty;auto.
-   - apply IntMapForallEmpty.
+   - apply WMap.wf_empty.
   Qed.
 
   Lemma forall_units_empty : forall P m ,
@@ -10786,10 +10763,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     - unfold eval_units.
       apply forall_units_empty.
     -  constructor.
-    - repeat intro.
-      unfold empty_watch_map in H.
-      rewrite empty_o in H.
-      congruence.
+    - apply WMap.Forall_empty.
   Qed.
 
   Lemma eval_annot_empty : forall m,
@@ -10798,10 +10772,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     unfold empty_state.
     constructor ; simpl ; auto.
     apply forall_units_empty.
-    repeat intro.
-      unfold empty_watch_map in H.
-      rewrite empty_o in H.
-      congruence.
+    apply WMap.Forall_empty.
   Qed.
 
   Lemma eq_sound_prover : forall P Q,
@@ -11343,5 +11314,6 @@ Proof.
     auto.
     apply is_dec_correct.
 Qed.
+
 
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
