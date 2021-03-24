@@ -1704,8 +1704,819 @@ Module PTrie.
         else join i (Leaf i x) prefix (Branch prefix brbit l r)
       end.
 
-    Ltac destruct_eq X Y :=
-      rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y) ; unfold proj_sumbool in *.
+
+    Fixpoint update {A: Type} (f : A -> option A ) (i: key) (m: ptrie A) : ptrie A :=
+      match m with
+      | Empty => Empty
+      | Leaf j v => if eqb i j then
+                      match f v with
+                      | None => Empty
+                      | Some v' => Leaf i v'
+                      end
+                    else Leaf j v
+      | Branch prefix brbit l r =>
+        if match_prefix i prefix brbit then
+          if zerobit i brbit
+          then branch prefix brbit (update f i l) r
+          else branch prefix brbit l (update f i r)
+        else m
+      end.
+
+    Fixpoint updater {A B: Type} (f : A -> B) (g : B -> option A) (acc:B) (i:key)  (m:ptrie A) : ptrie A * B :=
+      match m with
+      | Empty => (Empty, acc)
+      | Leaf j v => if eqb i j then
+                      let r := f v in
+                      match g r with
+                      | None => (Empty,r)
+                      | Some v' => (Leaf i v',r)
+                      end
+                    else (Leaf j v,acc)
+      | Branch prefix brbit l r =>
+        if match_prefix i prefix brbit then
+          if zerobit i brbit
+          then
+            let (u,v) := updater f g acc i l in
+            (branch prefix brbit u r,v)
+          else
+            let (u,v) := updater f g acc i r in
+            (branch prefix brbit l u,v)
+        else (m,acc)
+      end.
+
+    Lemma wf_update:
+      forall A f opt i (t: ptrie A),
+        wf opt t ->
+        wf opt (update f i t).
+    Proof.
+      induction 1; intros.
+      - constructor.
+      - simpl. destruct (f v).
+        + destruct (eqb i k) eqn:EQ.
+        * apply eqb_spec in EQ. subst. constructor; auto.
+        * constructor; auto.
+        + destruct (eqb i k) eqn:EQ.
+        * apply eqb_spec in EQ. subst. constructor; auto.
+        * constructor; auto.
+      - simpl. destruct (f v).
+        + destruct (eqb i k) eqn:EQ.
+        * apply eqb_spec in EQ. subst. constructor; auto.
+        * constructor; auto.
+        + destruct (eqb i k) eqn:EQ.
+        * apply eqb_spec in EQ. subst. constructor; auto.
+        * constructor; auto.
+      - simpl. case_eq (match_prefix i prefix brbit); intros.
+        + destruct (zerobit i brbit); eapply wf_branch; eauto.
+        + econstructor; eauto.
+      - simpl. case_eq (match_prefix i prefix brbit); intros.
+        + destruct (zerobit i brbit); eapply wf_branch'; eauto.
+        + econstructor; eauto.
+    Qed.
+
+
+    Lemma gus:
+      forall (A: Type) f opt (i: key) (m: ptrie A),
+        wf opt m ->
+        get' i (update f i m) = match get' i m with
+                                 | None => None
+                                 | Some v => f v
+                                 end.
+    Proof.
+      induction 1; intros.
+       - reflexivity.
+      - simpl.
+        rewrite! eqb_is_dec ; destruct (eq i k); simpl; auto.
+        destruct (f v); simpl; auto.
+        rewrite eqb_refl; reflexivity.
+        rewrite eqb_is_dec. destruct (eq i k); simpl; congruence.
+      - simpl. rewrite eqb_is_dec; destruct (eq i k); simpl; auto.
+        destruct (f v); simpl; auto.        rewrite eqb_refl; reflexivity.
+        rewrite eqb_is_dec; destruct (eq i k); simpl;congruence.
+      - simpl. case_eq (match_prefix i prefix brbit); intros.
+        + case_eq (zerobit i brbit); intros.
+          * unfold branch. case_eq (update f i l); intros.
+            { rewrite H3 in *.
+              simpl in IHwf1. rewrite <- IHwf1.
+              eapply get_not_same_lr; eauto. }
+            { rewrite <- H3. destruct r; auto.
+              - simpl. rewrite H2; auto.
+              - simpl. rewrite H2; auto. }
+            { rewrite <- H3. destruct r; auto.
+              - simpl. rewrite H2; auto.
+              - simpl. rewrite H2; auto. }
+          * unfold branch. destruct l; auto.
+            { case_eq (update f i r); intros.
+              - simpl. rewrite eqb_is_dec ; destruct (eq i k); auto.
+                subst i. inv H; congruence.
+                simpl. rewrite H3 in IHwf2; simpl; auto.
+              - rewrite <- H3. simpl. rewrite H2. auto.
+              - rewrite <- H3. simpl. rewrite H2. auto. }
+            { case_eq (update f i r); intros.
+              - rewrite H3 in IHwf2. simpl in IHwf2. rewrite <- IHwf2.
+                inv H; simpl. case_eq (zerobit i brbit0); intros;
+                                eapply get_not_same_prefix; eauto.
+                + erewrite zerobit_spec in Hlr0; eauto.
+                  erewrite zerobit_spec in H2; eauto.
+                  rewrite negb_true_iff in Hlr0. rewrite negb_false_iff in H2. congruence.
+                + erewrite zerobit_spec in Hlr0; eauto.
+                  erewrite zerobit_spec in H2; eauto.
+                  rewrite negb_true_iff in Hlr0. rewrite negb_false_iff in H2. congruence.
+              - rewrite <- H3. simpl. rewrite H2. auto.
+              - rewrite <- H3. simpl. rewrite H2. auto. }
+        + eapply match_prefix_spec' in H1; eauto.
+          destruct H1 as [HO [n [HA HB]]].
+          simpl. case_eq (zerobit i brbit); intros.
+          * assert (get' i l = None).
+            { eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB; subst; auto. }
+            rewrite H2. reflexivity.
+          * assert (get' i r = None).
+            {
+            eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB; subst; auto.
+            } rewrite H2; reflexivity.
+      - simpl. case_eq (match_prefix i prefix brbit); intros.
+        + case_eq (zerobit i brbit); intros.
+          * unfold branch. case_eq (update f i l); intros.
+            { rewrite H3 in IHwf1.
+              rewrite <- IHwf1. simpl.
+              eapply get_not_same_lr; eauto. }
+            { rewrite <- H3. destruct r; auto.
+              - simpl. rewrite H2; auto.
+              - simpl. rewrite H2; auto. }
+            { rewrite <- H3. destruct r; auto.
+              - simpl. rewrite H2; auto.
+              - simpl. rewrite H2; auto. }
+          * unfold branch. destruct l; auto.
+            { case_eq (update f i r); intros.
+              - simpl. rewrite eqb_is_dec ; destruct (eq i k); auto.
+                subst i. inv H; congruence.
+                simpl. rewrite <- IHwf2. rewrite H3. reflexivity.
+              - rewrite <- H3. simpl. rewrite H2. auto.
+              - rewrite <- H3. simpl. rewrite H2. auto. }
+            { case_eq (update f i r); intros.
+              - rewrite <- IHwf2. rewrite H3. simpl.
+                inv H; simpl. case_eq (zerobit i brbit0); intros;
+                eapply get_not_same_prefix; eauto.
+                + erewrite zerobit_spec in Hlr; eauto.
+                  erewrite zerobit_spec in H2; eauto.
+                  rewrite negb_true_iff in Hlr. rewrite negb_false_iff in H2. congruence.
+                +
+                  erewrite zerobit_spec in Hlr; eauto.
+                  erewrite zerobit_spec in H2; eauto.
+                  rewrite negb_true_iff in Hlr. rewrite negb_false_iff in H2. congruence.
+              - rewrite <- H3. simpl. rewrite H2. auto.
+              - rewrite <- H3. simpl. rewrite H2. auto. }
+        + eapply match_prefix_spec' in H1; auto.
+          destruct H1 as [HO [n [HA HB]]].
+          simpl. case_eq (zerobit i brbit); intros.
+          * assert (get' i l = None).
+            {
+              eapply get_not_same_prefix; eauto.
+              apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+              intros [n' [HX [HY HZ]]]. eapply HX in HB; subst; auto.
+            }
+            rewrite H2 ; reflexivity.
+          * assert (get' i r = None).
+            {
+              eapply get_not_same_prefix; eauto.
+              apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+              intros [n' [HX [HY HZ]]]. eapply HX in HB; subst; auto.
+            }
+            rewrite H2;reflexivity.
+          * inv H; auto; congruence.
+          * inv H; auto; congruence.
+     Qed.
+
+
+    Lemma updater_fst:
+      forall (A B: Type) acc (f:A -> B) g (j: key) (m: ptrie A) ,
+        fst (updater f g acc j m) =  update (fun x => g (f x)) j m.
+    Proof.
+      induction m; simpl; intros.
+      - reflexivity.
+      - destruct (eqb j k);auto.
+        destruct (g (f v)); auto.
+      - destruct (match_prefix j prefix brbit); auto.
+        destruct (zerobit j brbit).
+        destruct (updater f g acc j m1).
+        simpl in *. congruence.
+        destruct (updater f g acc j m2).
+        simpl in *. congruence.
+    Qed.
+
+    Lemma updater_snd:
+      forall (A B: Type) acc (f:A -> B) g (j: key) o (m: ptrie A)
+        (WF: wf o m),
+        snd (updater f g acc j m) =  match get' j m with
+                                     | None => acc
+                                     | Some j => f j
+                                     end.
+    Proof.
+      induction 1; simpl; intros.
+      - reflexivity.
+      - destruct (eqb j k);auto.
+        destruct (g (f v)); auto.
+      - destruct (eqb j k);auto.
+        destruct (g (f v)); auto.
+      -
+        destruct (match_prefix j prefix brbit)eqn:EQ; auto.
+        { destruct (zerobit j brbit)eqn:Z.
+          + destruct (updater f g acc j l).
+            simpl in *. congruence.
+          + destruct (updater f g acc j r).
+            simpl in *. congruence.
+        }
+        { eapply match_prefix_spec' in EQ; eauto.
+          destruct EQ as [HO [n [HA HB]]].
+          simpl.
+          destruct (zerobit j brbit)eqn:Z.
+          assert (get' j l = None).
+          {
+            eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB. subst; auto.
+          }
+          rewrite H ; auto.
+          assert (get' j r = None).
+          {
+            eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB. subst; auto.
+          }
+          rewrite H ; auto.
+        }
+      - destruct (match_prefix j prefix brbit)eqn:EQ; auto.
+        { destruct (zerobit j brbit)eqn:Z.
+          + destruct (updater f g acc j l).
+            simpl in *. congruence.
+          + destruct (updater f g acc j r).
+            simpl in *. congruence.
+        }
+        { eapply match_prefix_spec' in EQ; eauto.
+          destruct EQ as [HO [n [HA HB]]].
+          simpl.
+          destruct (zerobit j brbit)eqn:Z.
+          assert (get' j l = None).
+          {
+            eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB. subst; auto.
+          }
+          rewrite H ; auto.
+          assert (get' j r = None).
+          {
+            eapply get_not_same_prefix; eauto.
+            apply not_eq_sym. generalize (branching_bit_spec _ _ HO).
+            intros [n' [HX [HY HZ]]]. eapply HX in HB. subst; auto.
+          }
+          rewrite H ; auto.
+          inv  WF1 ; auto.
+          inv  WF2 ; auto.
+          congruence.
+        }
+    Qed.
+
+
+    Lemma guo:
+      forall (A: Type) f opt (i j: key) (m: ptrie A),
+        wf opt m ->
+        i <> j -> get' i (update f j m) = get' i m.
+    Proof.
+      induction 1; intros.
+      - reflexivity.
+      - simpl. repeat rewrite eqb_is_dec.
+        destruct (eq j k); simpl; repeat rewrite eqb_is_dec; destruct (eq i k); simpl; try congruence. subst.
+        destruct (f v). simpl.
+        rewrite eqb_is_dec. destruct (eq i k); simpl; congruence.
+        reflexivity.
+      - simpl. repeat rewrite eqb_is_dec.
+        destruct (eq j k); simpl; repeat rewrite eqb_is_dec; destruct (eq i k); simpl; try congruence. destruct (f v); simpl; auto.
+        rewrite eqb_is_dec. destruct (eq i j); simpl; congruence.
+      - simpl. case_eq (match_prefix j prefix brbit); intros.
+        + case_eq (zerobit j brbit); intros.
+          * unfold branch. case_eq (update f j l); intros.
+            { case_eq (zerobit i brbit); intros; auto.
+              rewrite <- IHwf1; auto. rewrite H4; simpl.
+              eapply get_not_same_lr; eauto. }
+            { destruct r.
+              - rewrite <- H4. rewrite IHwf1; auto.
+                case_eq (zerobit i brbit); intros; auto.
+                simpl. eapply get_not_same_lr; eauto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+            { destruct r.
+              - rewrite <- H4. rewrite IHwf1; auto.
+                case_eq (zerobit i brbit); intros; auto.
+                simpl. eapply get_not_same_lr; eauto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+          * unfold branch. destruct l; auto.
+            { rewrite IHwf2; auto.
+              case_eq (zerobit i brbit); intros; auto.
+              simpl. eapply get_not_same_lr; eauto. }
+            { case_eq (update f  j r); intros.
+              - case_eq (zerobit i brbit); intros; auto.
+                symmetry. simpl. repeat rewrite eqb_is_dec; destruct (eq i k).
+                + subst k. inv H; congruence.
+                + rewrite <- IHwf2; auto. rewrite H4. reflexivity.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+            { case_eq (update f j r); intros.
+              - simpl. case_eq (zerobit i brbit); intros; auto.
+                rewrite <- IHwf2; auto. rewrite H4; simpl.
+                case_eq (zerobit i brbit0); intros.
+                + inv H. eapply get_not_same_prefix; eauto.
+                  erewrite zerobit_spec in Hlr0; eauto.
+                  erewrite zerobit_spec in H5; eauto. congruence.
+                + inv H. eapply get_not_same_prefix; eauto.
+                  erewrite zerobit_spec in Hlr0; eauto.
+                  erewrite zerobit_spec in H5; eauto. congruence.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+        + simpl. auto.
+      - simpl. case_eq (match_prefix j prefix brbit); intros.
+        + case_eq (zerobit j brbit); intros.
+          * unfold branch. case_eq (update f j l); intros.
+            { case_eq (zerobit i brbit); intros; auto.
+              rewrite <- IHwf1; auto. rewrite H4; simpl.
+              eapply get_not_same_lr; eauto. }
+            { destruct r.
+              - rewrite <- H4. rewrite IHwf1; auto.
+                case_eq (zerobit i brbit); intros; auto.
+                simpl. eapply get_not_same_lr; eauto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+            { destruct r.
+              - rewrite <- H4. rewrite IHwf1; auto.
+                case_eq (zerobit i brbit); intros; auto.
+                simpl. eapply get_not_same_lr; eauto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+          * unfold branch. destruct l; auto.
+            { rewrite IHwf2; auto.
+              case_eq (zerobit i brbit); intros; auto.
+              simpl. eapply get_not_same_lr; eauto. }
+            { case_eq (update f j r); intros.
+              - case_eq (zerobit i brbit); intros; auto.
+                symmetry. simpl. repeat rewrite eqb_is_dec;destruct (eq i k).
+                + subst k. inv H; congruence.
+                + rewrite <- IHwf2; auto. rewrite H4. reflexivity.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+            { case_eq (update f j r); intros.
+              - simpl. case_eq (zerobit i brbit); intros; auto.
+                rewrite <- IHwf2; auto. rewrite H4; simpl.
+                case_eq (zerobit i brbit0); intros.
+                + inv H. eapply get_not_same_prefix; eauto.
+                  erewrite zerobit_spec in Hlr; eauto.
+                  erewrite zerobit_spec in H5; eauto. congruence.
+                + inv H. eapply get_not_same_prefix; eauto.
+                  erewrite zerobit_spec in Hlr; eauto.
+                  erewrite zerobit_spec in H5; eauto. congruence.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto.
+              - rewrite <- H4. simpl. case_eq (zerobit i brbit); intros; auto. }
+        + simpl. auto.
+    Qed.
+
+    Lemma not_empty_get':
+      forall {A: Type} {pt: ptrie A} {opt},
+        wf opt pt ->
+        pt <> Empty ->
+        exists k v, get' k pt = Some v.
+    Proof.
+      induction pt; intros.
+      - elim H0; reflexivity.
+      - exists k, v; simpl; rewrite eqb_refl; congruence.
+      - assert (HA: exists k1 v1, get' k1 pt1 = Some v1) by (inv H; eapply IHpt1; eauto).
+        assert (HB: exists k2 v2, get' k2 pt2 = Some v2) by (inv H; eapply IHpt2; eauto).
+        simpl. destruct HA as [k1 [v1 HA]].
+        exists k1, v1; rewrite HA.
+        case_eq (zerobit k1 brbit); intros; auto.
+        assert (get' k1 pt1 = None) by (inv H; eapply get_not_same_lr; eauto).
+        congruence.
+    Qed.
+
+        Ltac destruct_eq X Y :=
+          rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y) ; unfold proj_sumbool in *.
+
+    Fixpoint beq' {A: Type} (beqA: A -> A -> bool) (m1 m2: ptrie A): bool :=
+      match m1, m2 with
+      | Empty, Empty => true
+      | Leaf k1 v1, Leaf k2 v2 => eq k1 k2 && beqA v1 v2
+      | Branch p1 brbit1 l1 r1, Branch p2 brbit2 l2 r2 =>
+        eq p1 p2 && eq brbit1 brbit2 && beq' beqA l1 l2 && beq' beqA r1 r2
+      | _, _ => false
+      end.
+
+    Lemma bempty:
+      forall {A: Type} {m: ptrie A} {opt},
+        wf opt m ->
+        (forall x, get' x m = None) <-> m = Empty.
+    Proof.
+      induction m; intros.
+      - split; intros; simpl; auto.
+      - split; try discriminate; intros.
+        generalize (H0 k); simpl; rewrite eqb_refl; congruence.
+      - split; intros; try discriminate.
+        inv H.
+        + elim Hl. eapply IHm1; eauto.
+          simpl in H0. intros.
+          case_eq (zerobit x brbit); intros.
+          * generalize (H0 x); rewrite H; auto.
+          * eapply get_not_same_lr; eauto.
+        + elim Hl. eapply IHm1; eauto.
+          simpl in H0. intros.
+          case_eq (zerobit x brbit); intros.
+          * generalize (H0 x); rewrite H; auto.
+          * eapply get_not_same_lr; eauto.
+    Qed.
+
+    Lemma is_mask_same:
+      forall {m p q},
+        is_mask m p ->
+        is_mask m q ->
+        p = q.
+    Proof.
+      intros; unfold is_mask in *; unfold is_mask in *.
+      generalize (proj2 (H0 q) eq_refl); intros.
+      eapply H; auto.
+    Qed.
+
+    Lemma is_mask_same':
+      forall [m m' p],
+        is_mask m p ->
+        is_mask m' p ->
+        m = m'.
+    Proof.
+      intros; eapply testbit_spec; intros.
+      destruct (Nat.eq_dec p n).
+      - subst p. rewrite (proj2 (H _) eq_refl).
+        rewrite (proj2 (H0 _) eq_refl).
+        reflexivity.
+      - case_eq (testbit m n); intros.
+        + elim n0. eapply (proj1 (H _) H1).
+        + case_eq (testbit m' n); intros; auto.
+          elim n0. eapply (proj1 (H0 _) H2).
+    Qed.
+
+    Lemma get_some_implies:
+      forall {A: Type} [m: ptrie A] [k: key] [v: A] [opt],
+        wf opt m ->
+        get' k m = Some v ->
+        match m with
+        | Empty => False
+        | Leaf k' v' => k = k'
+        | Branch prefix brbit _ _ =>
+          forall brbit', is_mask brbit brbit' ->
+                    (forall n, (n < brbit')%nat -> testbit k n = testbit prefix n)
+        end.
+    Proof.
+      induction m; intros.
+      - simpl in H0; inv H0.
+      - simpl in H0. destruct_eq k0 k; congruence.
+      - simpl in H0. case_eq (zerobit k brbit); intros; rewrite H3 in H0.
+        + inv H.
+          * generalize (IHm1 _ _ _ H7 H0). intros HA.
+            inv H7; try tauto.
+            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              symmetry. eapply Hprefix0. auto. }
+            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
+              rewrite Hprefix0; try lia; auto. }
+          * generalize (IHm1 _ _ _ H7 H0). intros HA.
+            inv H7; try tauto.
+            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              symmetry. eapply Hprefix0. auto. }
+            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
+              rewrite Hprefix0; try lia; auto. }
+        + inv H.
+          * generalize (IHm2 _ _ _ H10 H0). intros HA.
+            inv H10; try tauto.
+            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              symmetry. eapply Hprefix0. auto. }
+            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
+              rewrite Hprefix0; try lia; auto. }
+          * generalize (IHm2 _ _ _ H10 H0). intros HA.
+            inv H10; try tauto.
+            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              symmetry. eapply Hprefix0. auto. }
+            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
+              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
+              rewrite Hprefix0; try lia; auto. }
+    Qed.
+
+        Lemma beq_correct':
+      forall (A: Type) (eqA: A -> A -> bool) (t1 t2: ptrie A) opt,
+        wf opt t1 ->
+        wf opt t2 ->
+        beq' eqA t1 t2 = true <->
+        (forall (x: key),
+            match get' x t1, get' x t2 with
+            | None, None => True
+            | Some y1, Some y2 => eqA y1 y2 = true
+            | _, _ => False
+            end).
+    Proof.
+      induction t1; intros; split; intros.
+      { simpl in H1. destruct t2; inv H1.
+        simpl; reflexivity. }
+      { simpl in H1. generalize (proj1 (bempty H0)). intros HA.
+        erewrite HA; simpl; auto.
+        intros; generalize (H1 x); destruct (get' x t2); tauto. }
+      { destruct t2; simpl in H1; inv H1.
+        simpl. destruct_eq k k0; simpl in H3; inv H3.
+        destruct_eq x k0; simpl; auto. rewrite H2. reflexivity. }
+      { simpl in H1. destruct t2.
+        - generalize (H1 k); rewrite eqb_refl; simpl; tauto.
+        - generalize (H1 k); rewrite eqb_refl; simpl; try congruence.
+          destruct_eq k k0; tauto.
+        - generalize (H1 k); rewrite eqb_refl; simpl; try congruence.
+          case_eq (zerobit k brbit); intros.
+          + assert (t2_2 <> Empty) by (inv H0; auto).
+            assert (exists o, wf o t2_2) by (inv H0; eauto).
+            destruct H5.
+            generalize (not_empty_get' H5 H4). intros [k' [v' HA]].
+            generalize (H1 k'); simpl. assert (get' k t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
+            destruct_eq k' k; try congruence.
+            rewrite HA; case_eq (zerobit k' brbit); intros; try tauto.
+            assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence.
+          + assert (t2_1 <> Empty) by (inv H0; auto).
+            assert (exists o, wf o t2_1) by (inv H0; eauto).
+            destruct H5.
+            generalize (not_empty_get' H5 H4). intros [k' [v' HA]].
+            generalize (H1 k'); simpl. assert (get' k t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
+            destruct_eq k' k; try congruence.
+            rewrite HA; case_eq (zerobit k' brbit); intros; try tauto.
+            assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence. }
+      { destruct t2; simpl in H1; inv H1.
+        destruct (eq prefix prefix0); destruct (eq brbit brbit0); simpl in H3; inv H3.
+        simpl. rewrite H2.  apply andb_true_iff in H2. destruct H2.
+        inv H; inv H0.
+        - generalize (is_mask_same Hbrbit' Hbrbit'0). intros; subst brbit'0.
+          generalize (proj1 (IHt1_1 _ _ H6 H4) H1); intros HA.
+          generalize (proj1 (IHt1_2 _ _ H9 H13) H2); intros HB.
+          case_eq (zerobit x brbit0); intros.
+          + apply HA.
+          + apply HB.
+        - generalize (is_mask_same Hbrbit' Hbrbit'0). intros; subst brbit'0.
+          generalize (proj1 (IHt1_1 _ _ H6 H5) H1); intros HA.
+          generalize (proj1 (IHt1_2 _ _ H9 H8) H2); intros HB.
+          case_eq (zerobit x brbit0); intros.
+          + apply HA.
+          + apply HB. }
+      { destruct t2; simpl in H1.
+        - generalize (not_empty_get' H ltac:(congruence)). intros [k [v HA]].
+          simpl in HA. generalize (H1 k); simpl in HA; rewrite HA; tauto.
+        - case_eq (zerobit k brbit); intros.
+          + assert (HA: t1_2 <> Empty) by (inv H; auto).
+            assert (HB: exists o, wf o t1_2) by (inv H; eauto).
+            destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+            generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
+            * assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
+            * destruct_eq k' k; try congruence; tauto.
+          + assert (HA: t1_1 <> Empty) by (inv H; auto).
+            assert (HB: exists o, wf o t1_1) by (inv H; eauto).
+            destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+            generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
+            * destruct_eq k' k; try congruence; tauto.
+            * assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
+        - destruct (eq prefix prefix0).
+          + subst prefix0.
+            assert (Hbrbit: exists brbit', is_mask brbit brbit' /\ (forall n, (n >= brbit')%nat -> testbit prefix n = false)) by (inv H; eauto).
+            destruct Hbrbit as [brbit' [Hbrbit Hprefix]].
+            assert (Hbrbit0: exists brbit0', is_mask brbit0 brbit0' /\ (forall n, (n >= brbit0')%nat -> testbit prefix n = false)) by (inv H0; eauto).
+            destruct Hbrbit0 as [brbit0' [Hbrbit0 Hprefix']].
+            assert (Hmask: mask prefix brbit = prefix).
+            { eapply testbit_spec. intros.
+              generalize (mask_spec prefix _ _ Hbrbit). intros [HA HB].
+              destruct (lt_dec n brbit').
+              - apply HA; auto.
+              - rewrite Hprefix; try lia.
+                rewrite HB; auto; lia. }
+            assert (Hmask': mask prefix brbit0 = prefix).
+            { eapply testbit_spec. intros.
+              generalize (mask_spec prefix _ _ Hbrbit0). intros [HA HB].
+              destruct (lt_dec n brbit0').
+              - apply HA; auto.
+              - rewrite Hprefix'; try lia.
+                rewrite HB; auto; lia. }
+            destruct (Nat.eq_dec brbit' brbit0').
+            * subst brbit0'. generalize (is_mask_same' Hbrbit0 Hbrbit). intros; subst brbit0.
+              simpl. destruct (eq prefix prefix); try congruence.
+              destruct (eq brbit brbit); try congruence; simpl.
+              assert (Ho1: exists o1, wf o1 t1_1 /\ wf o1 t2_1) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
+              assert (Ho2: exists o2, wf o2 t1_2 /\ wf o2 t2_2) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
+              destruct Ho1 as [o1 [HA HB]]. destruct Ho2 as [o2 [HC HD]].
+              rewrite (proj2 (IHt1_1 _ _ HA HB)), (proj2 (IHt1_2 _ _ HC HD)); simpl; auto.
+              { intros. generalize (H1 x).
+                case_eq (zerobit x brbit); intros.
+                - assert (get' x t1_2 = None) by (inv H; eapply get_not_same_lr; eauto).
+                  assert (get' x t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
+                  rewrite H4, H5. auto.
+                - auto. }
+              { intros. generalize (H1 x).
+                case_eq (zerobit x brbit); intros.
+                - auto.
+                - assert (get' x t1_1 = None) by (inv H; eapply get_not_same_lr; eauto).
+                  assert (get' x t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
+                  rewrite H4, H5. auto. }
+            * assert (brbit' < brbit0' \/ brbit0' < brbit')%nat by lia. destruct H2.
+              { assert (HA: testbit prefix brbit' = false) by (eapply Hprefix; lia).
+                assert (Ht1_2: t1_2 <> Empty) by (inv H; assumption).
+                assert (HB: exists o, wf o t1_2) by (inv H; eauto).
+                destruct HB as [o HB].
+                generalize (not_empty_get' HB Ht1_2).
+                intros [k [v HC]]. case_eq (zerobit k brbit); intros.
+                - assert (get' k t1_2 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
+                - generalize (H1 k); rewrite H3; rewrite HC.
+                  case_eq (get' k (Branch prefix brbit0 t2_1 t2_2)); intros.
+                  + generalize (get_some_implies H0 H4 _ Hbrbit0 _ H2). intros HD.
+                    erewrite zerobit_spec in H3; eauto. rewrite HD in H3.
+                    rewrite HA in H3. simpl in H3. congruence.
+                  + simpl in H4. rewrite H4 in H5. elim H5. }
+              { assert (HA: testbit prefix brbit0' = false) by (eapply Hprefix'; lia).
+                assert (Ht2_2: t2_2 <> Empty) by (inv H0; assumption).
+                assert (HB: exists o, wf o t2_2) by (inv H0; eauto).
+                destruct HB as [o HB].
+                generalize (not_empty_get' HB Ht2_2).
+                intros [k [v HC]]. case_eq (zerobit k brbit0); intros.
+                - assert (get' k t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence.
+                - generalize (H1 k); rewrite H3; rewrite HC.
+                  case_eq (get' k (Branch prefix brbit t1_1 t1_2)); intros.
+                  + generalize (get_some_implies H H4 _ Hbrbit _ H2). intros HD.
+                    erewrite zerobit_spec in H3; eauto. rewrite HD in H3.
+                    rewrite HA in H3. simpl in H3. congruence.
+                  + simpl in H4. rewrite H4 in H5. elim H5. }
+          + assert (Hbrbit: exists brbit', is_mask brbit brbit' /\ (forall n, (n >= brbit')%nat -> testbit prefix n = false)) by (inv H; eauto).
+            destruct Hbrbit as [brbit' [Hbrbit Hprefix]].
+            assert (Hbrbit0: exists brbit0', is_mask brbit0 brbit0' /\ (forall n, (n >= brbit0')%nat -> testbit prefix0 n = false)) by (inv H0; eauto).
+            destruct Hbrbit0 as [brbit0' [Hbrbit0 Hprefix']].
+            assert (Hmask: mask prefix brbit = prefix).
+            { eapply testbit_spec. intros.
+              generalize (mask_spec prefix _ _ Hbrbit). intros [HA HB].
+              destruct (lt_dec n0 brbit').
+              - apply HA; auto.
+              - rewrite Hprefix; try lia.
+                rewrite HB; auto; lia. }
+            assert (Hmask': mask prefix0 brbit0 = prefix0).
+            { eapply testbit_spec. intros.
+              generalize (mask_spec prefix0 _ _ Hbrbit0). intros [HA HB].
+              destruct (lt_dec n0 brbit0').
+              - apply HA; auto.
+              - rewrite Hprefix'; try lia.
+                rewrite HB; auto; lia. }
+            destruct (lt_dec brbit' brbit0').
+            * case_eq (testbit prefix0 brbit'); intros.
+              { assert (HA: t1_1 <> Empty) by (inv H; auto).
+                assert (HB: exists o, wf o t1_1) by (inv H; eauto).
+                destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+                generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
+                - case_eq (get' k' (Branch prefix0 brbit0 t2_1 t2_2)); intros.
+                  + generalize (get_some_implies H0 H5 _ Hbrbit0 _ l). intros.
+                    erewrite zerobit_spec in H3; eauto. eapply negb_true_iff in H3.
+                    rewrite H6 in H3. rewrite H2 in H3. congruence.
+                  + simpl in H5; rewrite H5 in H4. elim H4.
+                - assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto).
+                  congruence. }
+              { assert (HA: t1_2 <> Empty) by (inv H; auto).
+                assert (HB: exists o, wf o t1_2) by (inv H; eauto).
+                destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+                generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
+                - assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto).
+                  congruence.
+                - case_eq (get' k' (Branch prefix0 brbit0 t2_1 t2_2)); intros.
+                  + generalize (get_some_implies H0 H5 _ Hbrbit0 _ l). intros.
+                    erewrite zerobit_spec in H3; eauto. eapply negb_false_iff in H3.
+                    rewrite H6 in H3. rewrite H2 in H3. congruence.
+                  + simpl in H5; rewrite H5 in H4. elim H4. }
+            * destruct (lt_dec brbit0' brbit').
+              { case_eq (testbit prefix brbit0'); intros.
+                { assert (HA: t2_1 <> Empty) by (inv H0; auto).
+                  assert (HB: exists o, wf o t2_1) by (inv H0; eauto).
+                  destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+                  generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit0); intros.
+                  - case_eq (get' k' (Branch prefix brbit t1_1 t1_2)); intros.
+                    + generalize (get_some_implies H H5 _ Hbrbit _ l). intros.
+                      erewrite zerobit_spec in H3; eauto. eapply negb_true_iff in H3.
+                      rewrite H6 in H3. rewrite H2 in H3. congruence.
+                    + simpl in H5; rewrite H5 in H4. elim H4.
+                  - assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
+                    congruence. }
+                { assert (HA: t2_2 <> Empty) by (inv H0; auto).
+                  assert (HB: exists o, wf o t2_2) by (inv H0; eauto).
+                  destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
+                  generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit0); intros.
+                  - assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
+                    congruence.
+                  - case_eq (get' k' (Branch prefix brbit t1_1 t1_2)); intros.
+                    + generalize (get_some_implies H H5 _ Hbrbit _ l). intros.
+                      erewrite zerobit_spec in H3; eauto. eapply negb_false_iff in H3.
+                      rewrite H6 in H3. rewrite H2 in H3. congruence.
+                    + simpl in H5; rewrite H5 in H4. elim H4. } }
+              { assert (brbit0' = brbit') by lia. subst. clear n1; clear n0.
+                generalize (branching_bit_spec _ _ n). intros [p [HA [HB HC]]].
+                generalize (not_empty_get' H ltac:(congruence)). intros [k [v HD]].
+                assert (p < brbit')%nat.
+                { destruct (lt_dec p brbit'); auto.
+                  rewrite Hprefix in HC; try lia.
+                  rewrite Hprefix' in HC; try congruence; lia. }
+                generalize (get_some_implies H HD _ Hbrbit _ H2). intros HE.
+                generalize (H1 k). simpl in HD; rewrite HD.
+                generalize (is_mask_same' Hbrbit Hbrbit0). intros; subst.
+                case_eq (get' k (Branch prefix0 brbit0 t2_1 t2_2)); intros.
+                - generalize (get_some_implies H0 H3 _ Hbrbit _ H2). intros HF.
+                  elim HC; congruence.
+                - simpl in H3; rewrite H3 in H4. elim H4. } }
+    Qed.
+
+
+    Lemma ptrie_extensional:
+      forall (A: Type) (t1 t2: ptrie A) o,
+        wf o t1 ->
+        wf o t2 ->
+        (forall k, get' k t1 = get' k t2) ->
+        t1 = t2.
+    Proof.
+      induction t1; intros.
+      - destruct t2; auto.
+        + generalize (H1 k); simpl; intros.
+          rewrite eqb_refl in H2; congruence.
+        + generalize (not_empty_get' H0 ltac:(congruence)). intros [k [v HA]].
+          rewrite <- H1 in HA. simpl in HA; congruence.
+      - destruct t2.
+        + generalize (H1 k); simpl; intros. rewrite eqb_refl in H2; congruence.
+        + generalize (H1 k); generalize (H1 k0); simpl.
+          rewrite! eqb_refl; destruct_eq k0 k; destruct_eq k k0; congruence.
+        + assert (Ht2_1: t2_1 <> Empty) by (inv H0; auto).
+          assert (Ht2_2: t2_2 <> Empty) by (inv H0; auto).
+          assert (Ho1: exists o1, wf o1 t2_1) by (inv H0; eauto). destruct Ho1 as [o1 Ho1].
+          assert (Ho2: exists o2, wf o2 t2_2) by (inv H0; eauto). destruct Ho2 as [o2 Ho2].
+          generalize (H1 k); simpl; destruct (eq k k); try congruence; intros.
+          apply eq_sym in H2. case_eq (zerobit k brbit); intros; rewrite H3 in H2.
+          * generalize (not_empty_get' Ho2 Ht2_2). intros [k' [v' HA]].
+            case_eq (zerobit k' brbit); intros.
+            { assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto); congruence. }
+            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
+              rewrite H4; congruence. }
+          * generalize (not_empty_get' Ho1 Ht2_1). intros [k' [v' HA]].
+            case_eq (zerobit k' brbit); intros.
+            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
+              rewrite H4; congruence. }
+            { assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto); congruence. }
+      - destruct t2.
+        + generalize (not_empty_get' H ltac:(congruence)). intros [k [v HA]].
+          rewrite H1 in HA; simpl in HA; congruence.
+        + assert (Ht1_1: t1_1 <> Empty) by (inv H; auto).
+          assert (Ht1_2: t1_2 <> Empty) by (inv H; auto).
+          assert (Ho1: exists o1, wf o1 t1_1) by (inv H; eauto). destruct Ho1 as [o1 Ho1].
+          assert (Ho2: exists o2, wf o2 t1_2) by (inv H; eauto). destruct Ho2 as [o2 Ho2].
+          generalize (H1 k); simpl; destruct (eq k k); try congruence; intros.
+          case_eq (zerobit k brbit); intros; rewrite H3 in H2.
+          * generalize (not_empty_get' Ho2 Ht1_2). intros [k' [v' HA]].
+            case_eq (zerobit k' brbit); intros.
+            { assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto); congruence. }
+            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
+              rewrite H4; congruence. }
+          * generalize (not_empty_get' Ho1 Ht1_1). intros [k' [v' HA]].
+            case_eq (zerobit k' brbit); intros.
+            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
+              rewrite H4; congruence. }
+            { assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto); congruence. }
+        +
+          generalize (proj2 (beq_correct' _ (fun a b => true) _ _ _ H H0) ltac:(intros; rewrite H1; destruct (get' x (Branch prefix0 brbit0 t2_1 t2_2)); auto)). intros.
+          simpl in H2. destruct (eq prefix prefix0); simpl in H2; try congruence.
+          subst prefix0. destruct (eq brbit brbit0); simpl in H2; try congruence. subst brbit0.
+          f_equal; auto.
+          * inv H; inv H0; eapply IHt1_1; eauto.
+            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
+              subst brbit'0. eauto. }
+            { intros. generalize (H1 k); simpl.
+              case_eq (zerobit k brbit); intros; auto.
+              erewrite ! (get_not_same_lr); eauto. }
+            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
+              subst brbit'0. eauto. }
+            { intros. generalize (H1 k); simpl.
+              case_eq (zerobit k brbit); intros; auto.
+              erewrite ! (get_not_same_lr); eauto. }
+          * inv H; inv H0; eapply IHt1_2; eauto.
+            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
+              subst brbit'0. eauto. }
+            { intros. generalize (H1 k); simpl.
+              case_eq (zerobit k brbit); intros; auto.
+              erewrite ! (get_not_same_lr); eauto. }
+            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
+              subst brbit'0. eauto. }
+            { intros. generalize (H1 k); simpl.
+              case_eq (zerobit k brbit); intros; auto.
+              erewrite ! (get_not_same_lr); eauto. }
+    Qed.
+
+
 
 
     Lemma insert'_not_empty:
@@ -3417,437 +4228,12 @@ Module PTrie.
                     generalize (proj2 (ltb_spec _ _ _ _ Hbrbit'0 Hbrbit') H).  intros; congruence. }
     Qed.
 
-    Fixpoint beq' {A: Type} (beqA: A -> A -> bool) (m1 m2: ptrie A): bool :=
-      match m1, m2 with
-      | Empty, Empty => true
-      | Leaf k1 v1, Leaf k2 v2 => eq k1 k2 && beqA v1 v2
-      | Branch p1 brbit1 l1 r1, Branch p2 brbit2 l2 r2 =>
-        eq p1 p2 && eq brbit1 brbit2 && beq' beqA l1 l2 && beq' beqA r1 r2
-      | _, _ => false
-      end.
 
-    Lemma bempty:
-      forall {A: Type} {m: ptrie A} {opt},
-        wf opt m ->
-        (forall x, get' x m = None) <-> m = Empty.
-    Proof.
-      induction m; intros.
-      - split; intros; simpl; auto.
-      - split; try discriminate; intros.
-        generalize (H0 k); simpl; rewrite eqb_refl; congruence.
-      - split; intros; try discriminate.
-        inv H.
-        + elim Hl. eapply IHm1; eauto.
-          simpl in H0. intros.
-          case_eq (zerobit x brbit); intros.
-          * generalize (H0 x); rewrite H; auto.
-          * eapply get_not_same_lr; eauto.
-        + elim Hl. eapply IHm1; eauto.
-          simpl in H0. intros.
-          case_eq (zerobit x brbit); intros.
-          * generalize (H0 x); rewrite H; auto.
-          * eapply get_not_same_lr; eauto.
-    Qed.
 
-    Lemma not_empty_get':
-      forall {A: Type} {pt: ptrie A} {opt},
-        wf opt pt ->
-        pt <> Empty ->
-        exists k v, get' k pt = Some v.
-    Proof.
-      induction pt; intros.
-      - elim H0; reflexivity.
-      - exists k, v; simpl; rewrite eqb_refl; congruence.
-      - assert (HA: exists k1 v1, get' k1 pt1 = Some v1) by (inv H; eapply IHpt1; eauto).
-        assert (HB: exists k2 v2, get' k2 pt2 = Some v2) by (inv H; eapply IHpt2; eauto).
-        simpl. destruct HA as [k1 [v1 HA]].
-        exists k1, v1; rewrite HA.
-        case_eq (zerobit k1 brbit); intros; auto.
-        assert (get' k1 pt1 = None) by (inv H; eapply get_not_same_lr; eauto).
-        congruence.
-    Qed.
 
-    Lemma is_mask_same:
-      forall {m p q},
-        is_mask m p ->
-        is_mask m q ->
-        p = q.
-    Proof.
-      intros; unfold is_mask in *; unfold is_mask in *.
-      generalize (proj2 (H0 q) eq_refl); intros.
-      eapply H; auto.
-    Qed.
 
-    Lemma is_mask_same':
-      forall [m m' p],
-        is_mask m p ->
-        is_mask m' p ->
-        m = m'.
-    Proof.
-      intros; eapply testbit_spec; intros.
-      destruct (Nat.eq_dec p n).
-      - subst p. rewrite (proj2 (H _) eq_refl).
-        rewrite (proj2 (H0 _) eq_refl).
-        reflexivity.
-      - case_eq (testbit m n); intros.
-        + elim n0. eapply (proj1 (H _) H1).
-        + case_eq (testbit m' n); intros; auto.
-          elim n0. eapply (proj1 (H0 _) H2).
-    Qed.
 
-    Lemma get_some_implies:
-      forall {A: Type} [m: ptrie A] [k: key] [v: A] [opt],
-        wf opt m ->
-        get' k m = Some v ->
-        match m with
-        | Empty => False
-        | Leaf k' v' => k = k'
-        | Branch prefix brbit _ _ =>
-          forall brbit', is_mask brbit brbit' ->
-                    (forall n, (n < brbit')%nat -> testbit k n = testbit prefix n)
-        end.
-    Proof.
-      induction m; intros.
-      - simpl in H0; inv H0.
-      - simpl in H0. destruct_eq k0 k; congruence.
-      - simpl in H0. case_eq (zerobit k brbit); intros; rewrite H3 in H0.
-        + inv H.
-          * generalize (IHm1 _ _ _ H7 H0). intros HA.
-            inv H7; try tauto.
-            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              symmetry. eapply Hprefix0. auto. }
-            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
-              rewrite Hprefix0; try lia; auto. }
-          * generalize (IHm1 _ _ _ H7 H0). intros HA.
-            inv H7; try tauto.
-            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              symmetry. eapply Hprefix0. auto. }
-            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
-              rewrite Hprefix0; try lia; auto. }
-        + inv H.
-          * generalize (IHm2 _ _ _ H10 H0). intros HA.
-            inv H10; try tauto.
-            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              symmetry. eapply Hprefix0. auto. }
-            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
-              rewrite Hprefix0; try lia; auto. }
-          * generalize (IHm2 _ _ _ H10 H0). intros HA.
-            inv H10; try tauto.
-            { subst k0. generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              symmetry. eapply Hprefix0. auto. }
-            { generalize (is_mask_same H1 Hbrbit'). intros; subst brbit'0.
-              specialize (HA _ Hbrbit'0). rewrite HA; try lia.
-              rewrite Hprefix0; try lia; auto. }
-    Qed.
-    
-    Lemma beq_correct':
-      forall (A: Type) (eqA: A -> A -> bool) (t1 t2: ptrie A) opt,
-        wf opt t1 ->
-        wf opt t2 ->
-        beq' eqA t1 t2 = true <->
-        (forall (x: key),
-            match get' x t1, get' x t2 with
-            | None, None => True
-            | Some y1, Some y2 => eqA y1 y2 = true
-            | _, _ => False
-            end).
-    Proof.
-      induction t1; intros; split; intros.
-      { simpl in H1. destruct t2; inv H1.
-        simpl; reflexivity. }
-      { simpl in H1. generalize (proj1 (bempty H0)). intros HA.
-        erewrite HA; simpl; auto.
-        intros; generalize (H1 x); destruct (get' x t2); tauto. }
-      { destruct t2; simpl in H1; inv H1.
-        simpl. destruct_eq k k0; simpl in H3; inv H3.
-        destruct_eq x k0; simpl; auto. rewrite H2. reflexivity. }
-      { simpl in H1. destruct t2.
-        - generalize (H1 k); rewrite eqb_refl; simpl; tauto.
-        - generalize (H1 k); rewrite eqb_refl; simpl; try congruence.
-          destruct_eq k k0; tauto.
-        - generalize (H1 k); rewrite eqb_refl; simpl; try congruence.
-          case_eq (zerobit k brbit); intros.
-          + assert (t2_2 <> Empty) by (inv H0; auto).
-            assert (exists o, wf o t2_2) by (inv H0; eauto).
-            destruct H5.
-            generalize (not_empty_get' H5 H4). intros [k' [v' HA]].
-            generalize (H1 k'); simpl. assert (get' k t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
-            destruct_eq k' k; try congruence.
-            rewrite HA; case_eq (zerobit k' brbit); intros; try tauto.
-            assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence.
-          + assert (t2_1 <> Empty) by (inv H0; auto).
-            assert (exists o, wf o t2_1) by (inv H0; eauto).
-            destruct H5.
-            generalize (not_empty_get' H5 H4). intros [k' [v' HA]].
-            generalize (H1 k'); simpl. assert (get' k t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
-            destruct_eq k' k; try congruence.
-            rewrite HA; case_eq (zerobit k' brbit); intros; try tauto.
-            assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence. }
-      { destruct t2; simpl in H1; inv H1.
-        destruct (eq prefix prefix0); destruct (eq brbit brbit0); simpl in H3; inv H3.
-        simpl. rewrite H2.  apply andb_true_iff in H2. destruct H2.
-        inv H; inv H0.
-        - generalize (is_mask_same Hbrbit' Hbrbit'0). intros; subst brbit'0.
-          generalize (proj1 (IHt1_1 _ _ H6 H4) H1); intros HA.
-          generalize (proj1 (IHt1_2 _ _ H9 H13) H2); intros HB.
-          case_eq (zerobit x brbit0); intros.
-          + apply HA.
-          + apply HB.
-        - generalize (is_mask_same Hbrbit' Hbrbit'0). intros; subst brbit'0.
-          generalize (proj1 (IHt1_1 _ _ H6 H5) H1); intros HA.
-          generalize (proj1 (IHt1_2 _ _ H9 H8) H2); intros HB.
-          case_eq (zerobit x brbit0); intros.
-          + apply HA.
-          + apply HB. }
-      { destruct t2; simpl in H1.
-        - generalize (not_empty_get' H ltac:(congruence)). intros [k [v HA]].
-          simpl in HA. generalize (H1 k); simpl in HA; rewrite HA; tauto.
-        - case_eq (zerobit k brbit); intros.
-          + assert (HA: t1_2 <> Empty) by (inv H; auto).
-            assert (HB: exists o, wf o t1_2) by (inv H; eauto).
-            destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-            generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
-            * assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
-            * destruct_eq k' k; try congruence; tauto.
-          + assert (HA: t1_1 <> Empty) by (inv H; auto).
-            assert (HB: exists o, wf o t1_1) by (inv H; eauto).
-            destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-            generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
-            * destruct_eq k' k; try congruence; tauto.
-            * assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
-        - destruct (eq prefix prefix0).
-          + subst prefix0.
-            assert (Hbrbit: exists brbit', is_mask brbit brbit' /\ (forall n, (n >= brbit')%nat -> testbit prefix n = false)) by (inv H; eauto).
-            destruct Hbrbit as [brbit' [Hbrbit Hprefix]].
-            assert (Hbrbit0: exists brbit0', is_mask brbit0 brbit0' /\ (forall n, (n >= brbit0')%nat -> testbit prefix n = false)) by (inv H0; eauto).
-            destruct Hbrbit0 as [brbit0' [Hbrbit0 Hprefix']].
-            assert (Hmask: mask prefix brbit = prefix).
-            { eapply testbit_spec. intros.
-              generalize (mask_spec prefix _ _ Hbrbit). intros [HA HB].
-              destruct (lt_dec n brbit').
-              - apply HA; auto.
-              - rewrite Hprefix; try lia.
-                rewrite HB; auto; lia. }
-            assert (Hmask': mask prefix brbit0 = prefix).
-            { eapply testbit_spec. intros.
-              generalize (mask_spec prefix _ _ Hbrbit0). intros [HA HB].
-              destruct (lt_dec n brbit0').
-              - apply HA; auto.
-              - rewrite Hprefix'; try lia.
-                rewrite HB; auto; lia. }
-            destruct (Nat.eq_dec brbit' brbit0').
-            * subst brbit0'. generalize (is_mask_same' Hbrbit0 Hbrbit). intros; subst brbit0.
-              simpl. destruct (eq prefix prefix); try congruence.
-              destruct (eq brbit brbit); try congruence; simpl.
-              assert (Ho1: exists o1, wf o1 t1_1 /\ wf o1 t2_1) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
-              assert (Ho2: exists o2, wf o2 t1_2 /\ wf o2 t2_2) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
-              destruct Ho1 as [o1 [HA HB]]. destruct Ho2 as [o2 [HC HD]].
-              rewrite (proj2 (IHt1_1 _ _ HA HB)), (proj2 (IHt1_2 _ _ HC HD)); simpl; auto.
-              { intros. generalize (H1 x).
-                case_eq (zerobit x brbit); intros.
-                - assert (get' x t1_2 = None) by (inv H; eapply get_not_same_lr; eauto).
-                  assert (get' x t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
-                  rewrite H4, H5. auto.
-                - auto. }
-              { intros. generalize (H1 x).
-                case_eq (zerobit x brbit); intros.
-                - auto.
-                - assert (get' x t1_1 = None) by (inv H; eapply get_not_same_lr; eauto).
-                  assert (get' x t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
-                  rewrite H4, H5. auto. }
-            * assert (brbit' < brbit0' \/ brbit0' < brbit')%nat by lia. destruct H2.
-              { assert (HA: testbit prefix brbit' = false) by (eapply Hprefix; lia).
-                assert (Ht1_2: t1_2 <> Empty) by (inv H; assumption).
-                assert (HB: exists o, wf o t1_2) by (inv H; eauto).
-                destruct HB as [o HB].
-                generalize (not_empty_get' HB Ht1_2).
-                intros [k [v HC]]. case_eq (zerobit k brbit); intros.
-                - assert (get' k t1_2 = None) by (inv H; eapply get_not_same_lr; eauto). congruence.
-                - generalize (H1 k); rewrite H3; rewrite HC.
-                  case_eq (get' k (Branch prefix brbit0 t2_1 t2_2)); intros.
-                  + generalize (get_some_implies H0 H4 _ Hbrbit0 _ H2). intros HD.
-                    erewrite zerobit_spec in H3; eauto. rewrite HD in H3.
-                    rewrite HA in H3. simpl in H3. congruence.
-                  + simpl in H4. rewrite H4 in H5. elim H5. }
-              { assert (HA: testbit prefix brbit0' = false) by (eapply Hprefix'; lia).
-                assert (Ht2_2: t2_2 <> Empty) by (inv H0; assumption).
-                assert (HB: exists o, wf o t2_2) by (inv H0; eauto).
-                destruct HB as [o HB].
-                generalize (not_empty_get' HB Ht2_2).
-                intros [k [v HC]]. case_eq (zerobit k brbit0); intros.
-                - assert (get' k t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence.
-                - generalize (H1 k); rewrite H3; rewrite HC.
-                  case_eq (get' k (Branch prefix brbit t1_1 t1_2)); intros.
-                  + generalize (get_some_implies H H4 _ Hbrbit _ H2). intros HD.
-                    erewrite zerobit_spec in H3; eauto. rewrite HD in H3.
-                    rewrite HA in H3. simpl in H3. congruence.
-                  + simpl in H4. rewrite H4 in H5. elim H5. }
-          + assert (Hbrbit: exists brbit', is_mask brbit brbit' /\ (forall n, (n >= brbit')%nat -> testbit prefix n = false)) by (inv H; eauto).
-            destruct Hbrbit as [brbit' [Hbrbit Hprefix]].
-            assert (Hbrbit0: exists brbit0', is_mask brbit0 brbit0' /\ (forall n, (n >= brbit0')%nat -> testbit prefix0 n = false)) by (inv H0; eauto).
-            destruct Hbrbit0 as [brbit0' [Hbrbit0 Hprefix']].
-            assert (Hmask: mask prefix brbit = prefix).
-            { eapply testbit_spec. intros.
-              generalize (mask_spec prefix _ _ Hbrbit). intros [HA HB].
-              destruct (lt_dec n0 brbit').
-              - apply HA; auto.
-              - rewrite Hprefix; try lia.
-                rewrite HB; auto; lia. }
-            assert (Hmask': mask prefix0 brbit0 = prefix0).
-            { eapply testbit_spec. intros.
-              generalize (mask_spec prefix0 _ _ Hbrbit0). intros [HA HB].
-              destruct (lt_dec n0 brbit0').
-              - apply HA; auto.
-              - rewrite Hprefix'; try lia.
-                rewrite HB; auto; lia. }
-            destruct (lt_dec brbit' brbit0').
-            * case_eq (testbit prefix0 brbit'); intros.
-              { assert (HA: t1_1 <> Empty) by (inv H; auto).
-                assert (HB: exists o, wf o t1_1) by (inv H; eauto).
-                destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-                generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
-                - case_eq (get' k' (Branch prefix0 brbit0 t2_1 t2_2)); intros.
-                  + generalize (get_some_implies H0 H5 _ Hbrbit0 _ l). intros.
-                    erewrite zerobit_spec in H3; eauto. eapply negb_true_iff in H3.
-                    rewrite H6 in H3. rewrite H2 in H3. congruence.
-                  + simpl in H5; rewrite H5 in H4. elim H4.
-                - assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto).
-                  congruence. }
-              { assert (HA: t1_2 <> Empty) by (inv H; auto).
-                assert (HB: exists o, wf o t1_2) by (inv H; eauto).
-                destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-                generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit); intros.
-                - assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto).
-                  congruence.
-                - case_eq (get' k' (Branch prefix0 brbit0 t2_1 t2_2)); intros.
-                  + generalize (get_some_implies H0 H5 _ Hbrbit0 _ l). intros.
-                    erewrite zerobit_spec in H3; eauto. eapply negb_false_iff in H3.
-                    rewrite H6 in H3. rewrite H2 in H3. congruence.
-                  + simpl in H5; rewrite H5 in H4. elim H4. }
-            * destruct (lt_dec brbit0' brbit').
-              { case_eq (testbit prefix brbit0'); intros.
-                { assert (HA: t2_1 <> Empty) by (inv H0; auto).
-                  assert (HB: exists o, wf o t2_1) by (inv H0; eauto).
-                  destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-                  generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit0); intros.
-                  - case_eq (get' k' (Branch prefix brbit t1_1 t1_2)); intros.
-                    + generalize (get_some_implies H H5 _ Hbrbit _ l). intros.
-                      erewrite zerobit_spec in H3; eauto. eapply negb_true_iff in H3.
-                      rewrite H6 in H3. rewrite H2 in H3. congruence.
-                    + simpl in H5; rewrite H5 in H4. elim H4.
-                  - assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto).
-                    congruence. }
-                { assert (HA: t2_2 <> Empty) by (inv H0; auto).
-                  assert (HB: exists o, wf o t2_2) by (inv H0; eauto).
-                  destruct HB as [o HB]. generalize (not_empty_get' HB HA). intros [k' [v' HC]].
-                  generalize (H1 k'). rewrite HC. case_eq (zerobit k' brbit0); intros.
-                  - assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto).
-                    congruence.
-                  - case_eq (get' k' (Branch prefix brbit t1_1 t1_2)); intros.
-                    + generalize (get_some_implies H H5 _ Hbrbit _ l). intros.
-                      erewrite zerobit_spec in H3; eauto. eapply negb_false_iff in H3.
-                      rewrite H6 in H3. rewrite H2 in H3. congruence.
-                    + simpl in H5; rewrite H5 in H4. elim H4. } }
-              { assert (brbit0' = brbit') by lia. subst. clear n1; clear n0.
-                generalize (branching_bit_spec _ _ n). intros [p [HA [HB HC]]].
-                generalize (not_empty_get' H ltac:(congruence)). intros [k [v HD]].
-                assert (p < brbit')%nat.
-                { destruct (lt_dec p brbit'); auto.
-                  rewrite Hprefix in HC; try lia.
-                  rewrite Hprefix' in HC; try congruence; lia. }
-                generalize (get_some_implies H HD _ Hbrbit _ H2). intros HE.
-                generalize (H1 k). simpl in HD; rewrite HD.
-                generalize (is_mask_same' Hbrbit Hbrbit0). intros; subst.
-                case_eq (get' k (Branch prefix0 brbit0 t2_1 t2_2)); intros.
-                - generalize (get_some_implies H0 H3 _ Hbrbit _ H2). intros HF.
-                  elim HC; congruence.
-                - simpl in H3; rewrite H3 in H4. elim H4. } }
-    Qed.
 
-    Lemma ptrie_extensional:
-      forall (A: Type) (t1 t2: ptrie A) o,
-        wf o t1 ->
-        wf o t2 ->
-        (forall k, get' k t1 = get' k t2) ->
-        t1 = t2.
-    Proof.
-      induction t1; intros.
-      - destruct t2; auto.
-        + generalize (H1 k); simpl; intros.
-          rewrite eqb_refl in H2; congruence.
-        + generalize (not_empty_get' H0 ltac:(congruence)). intros [k [v HA]].
-          rewrite <- H1 in HA. simpl in HA; congruence.
-      - destruct t2.
-        + generalize (H1 k); simpl; intros. rewrite eqb_refl in H2; congruence.
-        + generalize (H1 k); generalize (H1 k0); simpl.
-          rewrite! eqb_refl; destruct_eq k0 k; destruct_eq k k0; congruence.
-        + assert (Ht2_1: t2_1 <> Empty) by (inv H0; auto).
-          assert (Ht2_2: t2_2 <> Empty) by (inv H0; auto).
-          assert (Ho1: exists o1, wf o1 t2_1) by (inv H0; eauto). destruct Ho1 as [o1 Ho1].
-          assert (Ho2: exists o2, wf o2 t2_2) by (inv H0; eauto). destruct Ho2 as [o2 Ho2].
-          generalize (H1 k); simpl; destruct (eq k k); try congruence; intros.
-          apply eq_sym in H2. case_eq (zerobit k brbit); intros; rewrite H3 in H2.
-          * generalize (not_empty_get' Ho2 Ht2_2). intros [k' [v' HA]].
-            case_eq (zerobit k' brbit); intros.
-            { assert (get' k' t2_2 = None) by (inv H0; eapply get_not_same_lr; eauto); congruence. }
-            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
-              rewrite H4; congruence. }
-          * generalize (not_empty_get' Ho1 Ht2_1). intros [k' [v' HA]].
-            case_eq (zerobit k' brbit); intros.
-            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
-              rewrite H4; congruence. }
-            { assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto); congruence. }
-      - destruct t2.
-        + generalize (not_empty_get' H ltac:(congruence)). intros [k [v HA]].
-          rewrite H1 in HA; simpl in HA; congruence.
-        + assert (Ht1_1: t1_1 <> Empty) by (inv H; auto).
-          assert (Ht1_2: t1_2 <> Empty) by (inv H; auto).
-          assert (Ho1: exists o1, wf o1 t1_1) by (inv H; eauto). destruct Ho1 as [o1 Ho1].
-          assert (Ho2: exists o2, wf o2 t1_2) by (inv H; eauto). destruct Ho2 as [o2 Ho2].
-          generalize (H1 k); simpl; destruct (eq k k); try congruence; intros.
-          case_eq (zerobit k brbit); intros; rewrite H3 in H2.
-          * generalize (not_empty_get' Ho2 Ht1_2). intros [k' [v' HA]].
-            case_eq (zerobit k' brbit); intros.
-            { assert (get' k' t1_2 = None) by (inv H; eapply get_not_same_lr; eauto); congruence. }
-            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
-              rewrite H4; congruence. }
-          * generalize (not_empty_get' Ho1 Ht1_1). intros [k' [v' HA]].
-            case_eq (zerobit k' brbit); intros.
-            { generalize (H1 k'); simpl. destruct_eq k' k; try congruence.
-              rewrite H4; congruence. }
-            { assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto); congruence. }
-        +
-          generalize (proj2 (beq_correct' _ (fun a b => true) _ _ _ H H0) ltac:(intros; rewrite H1; destruct (get' x (Branch prefix0 brbit0 t2_1 t2_2)); auto)). intros.
-          simpl in H2. destruct (eq prefix prefix0); simpl in H2; try congruence.
-          subst prefix0. destruct (eq brbit brbit0); simpl in H2; try congruence. subst brbit0.
-          f_equal; auto.
-          * inv H; inv H0; eapply IHt1_1; eauto.
-            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
-              subst brbit'0. eauto. }
-            { intros. generalize (H1 k); simpl.
-              case_eq (zerobit k brbit); intros; auto.
-              erewrite ! (get_not_same_lr); eauto. }
-            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
-              subst brbit'0. eauto. }
-            { intros. generalize (H1 k); simpl.
-              case_eq (zerobit k brbit); intros; auto.
-              erewrite ! (get_not_same_lr); eauto. }
-          * inv H; inv H0; eapply IHt1_2; eauto.
-            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
-              subst brbit'0. eauto. }
-            { intros. generalize (H1 k); simpl.
-              case_eq (zerobit k brbit); intros; auto.
-              erewrite ! (get_not_same_lr); eauto. }
-            { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
-              subst brbit'0. eauto. }
-            { intros. generalize (H1 k); simpl.
-              case_eq (zerobit k brbit); intros; auto.
-              erewrite ! (get_not_same_lr); eauto. }
-    Qed.
-    
     Lemma elements_extensional:
       forall {A: Type} (m n: ptrie A) o,
         wf o m ->
