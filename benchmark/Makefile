@@ -7,7 +7,7 @@ pigeon_hole.vo : pigeon_hole.v
 	coqc pigeon_hole.v
 
 %.dat: %.v pigeon_hole.v
-	ulimit -Sv 15000000; coqc $< | cut -d' ' -f4 > $@
+	ulimit -Sv 15000000; $(COQBIN)/coqc $< | cut -d' ' -f4 > $@
 
 %.qed: %.dat
 	sed '1d;n; d' $< > $@
