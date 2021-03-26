@@ -75,7 +75,7 @@ BENCH = pigeon_hole.v
 ALLBENCHV = $(addprefix benchmark/,$(BENCH))
 ALLBENCHVO = $(ALLBENCHV:.v=.vo)
 
-COQC ?= "$(COQBIN)coqc"
+COQC ?= $(COQBIN)coqc
 
 %.vo : %.v
 	$(COQC) $(COQMF_COQLIBS_NOML) $<
