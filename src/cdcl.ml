@@ -38,6 +38,9 @@ let coq_nnpp = lazy (constr_of_ref "core.nnpp.type")
 
 (*let coq_iff = lazy (Coqlib.lib_ref "core.iff.type") *)
 
+let coq_bool = lazy (constr_of_ref "core.bool.type")
+
+
 (* Formula terms *)
 let coq_Formula = lazy (constr_of_ref "cdcl.Formula.type")
 let coq_TT = lazy (constr_of_ref "cdcl.Formula.TT")
@@ -54,11 +57,18 @@ let coq_int = lazy (constr_of_ref "num.int63.type")
 let coq_IsBool = lazy (constr_of_ref "cdcl.kind.IsBool")
 let coq_IsProp = lazy (constr_of_ref "cdcl.kind.IsProp")
 let coq_BForm = lazy (constr_of_ref "cdcl.BForm.type")
+let coq_HBForm = lazy (constr_of_ref "cdcl.HBForm.type")
 let coq_BTT = lazy (constr_of_ref "cdcl.BForm.BTT")
 let coq_BFF = lazy (constr_of_ref "cdcl.BForm.BFF")
 let coq_BAT = lazy (constr_of_ref "cdcl.BForm.BAT")
 let coq_BOP = lazy (constr_of_ref "cdcl.BForm.BOP")
 let coq_BIT = lazy (constr_of_ref "cdcl.BForm.BIT")
+
+(* PTrie *)
+let coq_ptrie = lazy (constr_of_ref "PTrie.ptrie.type")
+let coq_Empty = lazy (constr_of_ref "PTrie.ptrie.Empty")
+let coq_Leaf = lazy (constr_of_ref "PTrie.ptrie.Leaf")
+let coq_Branch = lazy (constr_of_ref "PTrie.ptrie.Branch")
 
 (* Evaluation *)
 let coq_eval_is_dec = lazy (constr_of_ref "cdcl.eval_is_dec")
@@ -114,6 +124,20 @@ let constr_of_option typ constr_of_val = function
   | None -> EConstr.mkApp (Lazy.force coq_None, [|typ|])
   | Some v -> EConstr.mkApp (Lazy.force coq_Some, [|typ; constr_of_val v|])
 
+let constr_of_ptrie constr_of_typ constr_of_val t =
+  let empty = Lazy.force coq_Empty in
+  let leaf  = Lazy.force coq_Leaf in
+  let branch = Lazy.force coq_Branch in
+  let int63   = Lazy.force coq_int in
+
+  let rec constr_of_ptrie = function
+    | P.PTrie.Empty -> EConstr.mkApp(empty,[|int63; constr_of_typ|])
+    | P.PTrie.Leaf(k,v) -> EConstr.mkApp(leaf,[| int63;constr_of_typ; EConstr.mkInt k;constr_of_val v|])
+    | P.PTrie.Branch(k1,k2,l,r) -> EConstr.mkApp(branch,[| int63;constr_of_typ; EConstr.mkInt k1; EConstr.mkInt k2;
+                                                           constr_of_ptrie l;constr_of_ptrie r|])
+  in
+  constr_of_ptrie t
+       
 module IMap = Map.Make (Int)
 
 module Env = struct
@@ -133,6 +157,8 @@ module Env = struct
         ; constr_prop : EConstr.t
         ; constr_iff : EConstr.t }
 
+  
+  
   let pp_atom_spec env evd = function
     | AtomProp(e,_) -> Pp.(str "AtomProp " ++ Printer.pr_econstr_env env evd e)
     | AtomBool{constr_bool;constr_prop} -> Pp.(str "AtomBool " ++ Printer.pr_econstr_env env evd constr_bool ++ str"," ++ Printer.pr_econstr_env env evd constr_prop)
@@ -394,26 +420,18 @@ module Env = struct
         ; fresh = env.fresh + 1 }
       , env.fresh )
 
-  let map_of_env env =
-    let add = Lazy.force coq_add in
-    let ty = Lazy.force coq_atomT in
-    let mk_atom a =
+  let ptrie_of_env env = 
+    List.fold_left (fun m (e,i) -> 
+        P.PTrie.set' P.kInt (Uint63.of_int i) e m) P.PTrie.empty env.vars
+
+  let constr_of_atom a =
       match a with
       | AtomProp (p, None) -> EConstr.mkApp (Lazy.force coq_mkAtom, [|p|])
       | AtomProp (p, Some prf) ->
         EConstr.mkApp (Lazy.force coq_mkAtomDec, [|p; prf|])
       | AtomBool {constr_bool = b; constr_prop = p; constr_iff = prf} ->
         EConstr.mkApp (Lazy.force coq_TBool, [|b; p; prf|])
-    in
-    let add i e m =
-      EConstr.mkApp (add, [|ty; EConstr.mkInt (Uint63.of_int i); mk_atom e; m|])
-    in
-    let rec map_of_list l =
-      match l with
-      | [] -> EConstr.mkApp (Lazy.force coq_empty, [|ty|])
-      | (e, i) :: l -> add i e (map_of_list l)
-    in
-    map_of_list env.vars
+
 
   (* [all_literals] returns the list of all literals as a clause.
      NB: is_dec is not correctly set. *)
@@ -1286,7 +1304,7 @@ let generalize l =
   let l = List.map (fun c -> ((Locus.AllOccurrences, c), Anonymous)) l in
   Tactics.generalize_gen l
 
-let generalize_env env =
+(*let generalize_env env =
   let prop_of_atom (a, _) =
     Env.(
       match a with
@@ -1302,6 +1320,7 @@ let generalize_env env =
   in
   let gen_tac tac a = Tacticals.New.tclTHEN tac (gen_list (prop_of_atom a)) in
   List.fold_left gen_tac Tacticals.New.tclIDTAC env.Env.vars
+ *)
 
 let change_goal =
   Proofview.Goal.enter (fun gl ->
@@ -1311,10 +1330,7 @@ let change_goal =
       let concl = Tacmach.New.pf_concl gl in
       let hyps, concl, env = reify_goal genv (Env.empty sigma) [] concl in
       let form, env = make_formula env (List.rev hyps) concl in
-      let cform = constr_of_bformula form in
-      let m = Env.map_of_env env in
-      let f = env.Env.fresh in
-      let n = fresh_id (Names.Id.of_string "__n") gl in
+
       if debug () then (
         flush stdout;
         Feedback.msg_debug Pp.(str "Running prover with conflict clauses");
@@ -1333,19 +1349,42 @@ let change_goal =
         | P.Progress _ -> Feedback.msg_debug Pp.(str "Prover Progress")
         | P.Fail f -> Feedback.msg_debug Pp.(str "Prover Failure" ++ str (P.string_of_failure f))
         | P.Success _ -> Feedback.msg_debug Pp.(str "Prover success") );
+
+      let cform = constr_of_bformula form in
+      let m = Env.ptrie_of_env env in
+(*      let mbool = P.PTrie.map1' Env.has_bool m in
+      let mdec  = P.PTrie.map1' Env.is_dec m in *)
+      let f = env.Env.fresh in
+      let n = fresh_id (Names.Id.of_string "__n") gl in
+      let form_name = fresh_id (Names.Id.of_string "__f") gl in
+      let m_name = fresh_id (Names.Id.of_string "__m") gl in
+(*      let mb_name = fresh_id (Names.Id.of_string "__mb") gl in 
+      let md_name = fresh_id (Names.Id.of_string "__md") gl in *)
+
+      let m_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_atomT|]) in
+      (*      let mbool_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_bool|]) in*)
+
       let change =
         EConstr.mkLetIn
           ( Context.nameR n
           , EConstr.mkInt (Uint63.of_int (10 * f))
-          , Lazy.force coq_int
-          , EConstr.mkApp
-              ( Lazy.force coq_eval_hbformula
-              , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|m|]); cform|] ) )
+          , Lazy.force coq_int,
+(*          EConstr.mkLetIn
+            (Context.nameR mb_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mbool, mbool_typ,
+             EConstr.mkLetIn
+               (Context.nameR md_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mdec, mbool_typ, *)
+                EConstr.mkLetIn (
+                 Context.nameR m_name, constr_of_ptrie (Lazy.force coq_atomT) Env.constr_of_atom  m, m_typ,
+                 EConstr.mkLetIn
+                   (Context.nameR form_name, cform, Lazy.force coq_HBForm,
+                     EConstr.mkApp
+                       ( Lazy.force coq_eval_hbformula
+                       , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) )))
       in
       if debug () then
         Feedback.msg_debug
           Pp.(str "change " ++ Printer.pr_econstr_env genv sigma change);
-      Tacticals.New.tclTHENLIST [Tactics.change_concl change; generalize_env env])
+      Tacticals.New.tclTHENLIST [Tactics.change_concl change(*; generalize_env env*)])
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in

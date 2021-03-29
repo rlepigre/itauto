@@ -1,6 +1,3 @@
-# Makefile.config defined the path variable COMPCERT
-include Makefile.config
-
 all: pigeon_itauto.dat
 
 pigeon_hole.vo : pigeon_hole.v
@@ -25,8 +22,6 @@ pigeon_qed.pdf : pigeon_itauto.qed pigeon_tauto.qed pigeon_rtauto.qed plot_qed
 pigeon_tac.pdf : pigeon_itauto.tac pigeon_tauto.tac pigeon_rtauto.tac plot_tac
 	gnuplot -s plot_tac
 
-compcert.dat : 
-	make -C $(COMPCERT) > compcert.dat
 
 compcert.tac1 compcert.tac2 compcert.tac : compcert.dat2 Makefile
 	cat $< | grep -e "^Lia" -e "^Tauto" -e "T1"  > compcert.tac1

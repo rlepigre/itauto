@@ -5,6 +5,7 @@ Import ZifyClasses.
 
 Set Primitive Projections.
 
+
 Ltac inv H := inversion H ; try subst ; clear H.
 Ltac split_and :=
   repeat
@@ -14,9 +15,7 @@ Ltac split_and :=
 
 Lemma and_first : forall A B : Prop,
     A -> (A -> B) -> A /\ B.
-Proof.
-  tauto.
-Qed.
+Proof.  tauto. Qed.
 
 Ltac split_and_first :=
   match goal with
@@ -1764,9 +1763,6 @@ Inductive op :=
        apply IHf1;auto.
   Qed.
 
-  Variable eval_atom : int -> Prop.
-
-
   Definition eval_op (o: op) (f1 f2 : Prop) : Prop :=
     match o with
     | AND => f1 /\ f2
@@ -2066,6 +2062,9 @@ Inductive op :=
 
   End EvalList.
 
+
+  Variable eval_atom : int -> Prop.
+
   Fixpoint eval_formula (f: LForm) : Prop :=
     match f with
     | LFF   => False
@@ -2355,21 +2354,14 @@ Inductive op :=
     | CLAUSE cl => eval_watched_clause cl
     end.
 
+  Definition ThyP :=  hmap -> list literal -> option (hmap * list literal).
 
-
-  Record Thy : Type :=
-    mkThy
-      {
-        (** The formula are restricted to atoms *)
-        thy_prover  : hmap -> list literal -> option (hmap * list literal);
-        thy_prover_sound : forall hm hm' cl cl',
-            thy_prover hm cl = Some (hm',cl') ->
-            eval_literal_list cl' /\
-            hmap_order hm hm' /\
-            Forall (has_literal hm') cl'
-      }.
-
-
+  Definition Thy (P:ThyP) :=
+    forall hm hm' cl cl',
+      P hm cl = Some (hm',cl') ->
+      eval_literal_list cl' /\
+      hmap_order hm hm' /\
+      Forall (has_literal hm') cl'.
 
   Definition iset := IntMap.ptrie (key:=int) unit.
 
@@ -3307,7 +3299,7 @@ Inductive op :=
 
   Definition opp_literal (l1 l2: literal) : bool :=
     match l1 , l2 with
-    | POS f , NEG f' | NEG f , POS f'  => id f == id f'
+    | POS f , NEG f' | NEG f , POS f'  => id f =? id f'
     | _  , _ => false
     end.
 
@@ -9497,7 +9489,9 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Qed.
 
   Section ThyProverT.
-    Variable thy: Thy.
+    Variable thy_prover: ThyP.
+    Variable thy_prover_sound : Thy thy_prover.
+
 
     (** From a context,
         ¬ a₁,..., ¬aₙ , b₁, bₘ ⊢ c
@@ -9567,7 +9561,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
 
     Definition run_thy_prover (st: state) (g: option HFormula)  :=
       let cl := generate_conflict_clause st g in
-      match thy.(thy_prover) (hconsmap st) cl with
+      match thy_prover (hconsmap st) cl with
       | None => Fail HasModel
       | Some (h',cl') =>
         match augment_with_clause cl'  (set_hmap h' st) with
@@ -9769,7 +9763,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       specialize (wf_generate_conflict_clause WFS HASF).
       set (l := (generate_conflict_clause st g)) in * ; clearbody l.
       intro C.
-      destruct (thy_prover thy (hconsmap st) l) eqn:THY ; try congruence.
+      destruct (thy_prover (hconsmap st) l) eqn:THY ; try congruence.
       destruct p as (h',cl').
       apply thy_prover_sound in THY.
       destruct THY as (EV & ORD & WF).
@@ -9838,7 +9832,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | Some cl => case_split_ann P (Annot.deps cl)  (Annot.elt cl) st g
       end.
 
-    Definition  prover_thy (P: ProverT) (thy: Thy) (use_prover: bool) (st: state) (g: option HFormula) :=
+    Definition  prover_thy (P: ProverT) (thy: ThyP) (use_prover: bool) (st: state) (g: option HFormula) :=
       if use_prover
       then run_thy_prover P thy st g
       else Fail HasModel.
@@ -9854,7 +9848,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Definition prover_impl_arrows (P:ProverT) st g :=
       prover_arrows P (find_arrows st (arrows st)) st g.
 
-    Fixpoint prover  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+    Fixpoint prover  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
       | S n => let ProverTRec := prover thy use_prover n in
@@ -9879,7 +9873,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       destruct n ; reflexivity.
     Qed.
 
-    Fixpoint prover_opt  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+    Fixpoint prover_opt  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
       | S n => let ProverTRec := prover_opt thy use_prover n in
@@ -9893,7 +9887,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
                end
       end.
 
-    Lemma prover_opt_rew : forall  (thy: Thy) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula),
+    Lemma prover_opt_rew : forall  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula),
         prover_opt thy use_prover n st g = 
         match n with
       | O => Fail OutOfFuel
@@ -10054,7 +10048,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       intros.
       destruct up; try reflexivity.
       unfold run_thy_prover.
-      destruct (thy_prover thy (hconsmap st) (generate_conflict_clause st g)); auto.
+      destruct (thy (hconsmap st) (generate_conflict_clause st g)); auto.
       destruct p.
       destruct_in_goal M1; auto.
     Qed.
@@ -10432,10 +10426,9 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     eapply H ; eauto.
   Qed.
 
-
-
-
-  Lemma prover_correct : forall thy b n st, sound_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
+  Lemma prover_correct : forall thy (THY:Thy thy) b n st
+    ,
+      sound_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
   Proof.
     induction n.
     - unfold sound_prover. simpl ; auto.
@@ -10563,13 +10556,14 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         destruct b ; try congruence.
         apply run_thy_prover_correct.
         apply IHn ; auto.
+        auto.
       +
         repeat apply never_progress_seq.
         unfold never_progress, prover_thy.
         destruct b ; try congruence.
         unfold run_thy_prover.
         intros.
-        destruct (thy_prover thy (hconsmap st0) (generate_conflict_clause st0 g)); try congruence.
+        destruct (thy  (hconsmap st0) (generate_conflict_clause st0 g)); try congruence.
         destruct p.
         destruct_in_hyp PRF H ; try congruence.
         destruct r ; try congruence.
@@ -10692,7 +10686,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     eauto.
   Qed.
 
-  Lemma prover_formula_correct : forall thy up m m' prf d n f ,
+  Lemma prover_formula_correct : forall thy (THY: Thy thy) up m m' prf d n f ,
       prover_formula thy up m n f = Success (m',prf, d) ->
       eval_hformula f.
   Proof.
@@ -10762,11 +10756,11 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Definition hcons_form (f : HFormula) : hmap :=
     IntMap.set' f.(id) (f.(is_dec),f.(elt)) (hcons hmap_empty f.(elt)).
 
-  Definition hcons_prover (thy:Thy) (n:nat) (f:HFormula) :=
+  Definition hcons_prover (thy:ThyP) (n:nat) (f:HFormula) :=
     let m := hcons_form f in
     prover_bformula thy m n f.
 
-  Lemma hcons_prover_correct : forall thy n f ,
+  Lemma hcons_prover_correct : forall thy (THY: Thy thy) n f ,
       hcons_prover thy n f = true ->
       eval_hformula f.
   Proof.
@@ -10775,8 +10769,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     unfold prover_bformula in H.
     destruct (prover_formula thy false (hcons_form f) n f) eqn:EQ; try congruence.
     destruct r. destruct p.
-    apply prover_formula_correct in EQ.
-    auto.
+    apply prover_formula_correct in EQ; auto.
   Qed.
 
 
@@ -11068,44 +11061,71 @@ Definition eval_prop (m: IntMap.ptrie atomT) (k:kind) (i:int)  : eval_kind k :=
               end
   end.
 
-Definition has_bool (m:IntMap.ptrie atomT) (i:int) : bool :=
+Definition bool_of_ptrie {A:Type} (f : A -> bool) (m:IntMap.ptrie A) (i:int) : bool :=
   match IntMap.get' i m with
   | None => false
-  | Some v => match v with
-              | NBool _ _ => false
-              | TBool _ _ _ => true
-              end
+  | Some v => f v
   end.
+
+Definition map_bool_of_ptrie {A: Type} (f: A -> bool)
+           (m: IntMap.ptrie (key:=int) A) : IntMap.ptrie bool :=
+  IntMap.map1' f m.
+
+Definition bool_of_ptrie_bool (m : IntMap.ptrie (key:=int) bool) (i:int) : bool :=
+  match IntMap.get' i m with
+  | None => false
+  | Some b => b
+  end.
+
+Lemma map_bool_of_ptrie_correct : forall {A:Type} (f: A -> bool) m i,
+    bool_of_ptrie f m i = bool_of_ptrie_bool (map_bool_of_ptrie f m) i.
+Proof.
+  unfold bool_of_ptrie_bool, bool_of_ptrie.
+  intros.
+  unfold map_bool_of_ptrie.
+  rewrite IntMap.gmap1'.
+  destruct (IntMap.get' i m); reflexivity.
+Qed.
+
+Definition has_bool_atomT (a:atomT) :=
+  match a with
+  | NBool _ _ => false
+  | TBool _ _ _ => true
+  end.
+
+Definition has_bool (m:IntMap.ptrie atomT) (i:int) : bool :=
+  bool_of_ptrie has_bool_atomT m i.
 
 Lemma has_bool_correct : forall am i,
   has_bool am i = true -> eval_prop am IsProp i <-> Is_true (eval_prop am IsBool i).
 Proof.
   unfold has_bool, eval_prop.
-  intros.
+  intros.  unfold bool_of_ptrie in H.
   destruct (IntMap.get' i am).
-  - destruct a ; try congruence.
+  - destruct a ; simpl in H; congruence.
   - simpl. tauto.
 Qed.
 
-Definition eval_is_dec (m: IntMap.ptrie atomT) (i:int)  :=
-  match IntMap.get' i m with
-  | None => false
-  | Some v => match v with
-              | NBool _ o =>
-                match o with
-                | None => false
-                | Some _ => true
-                end
-              | TBool _ _ _ => true
-              end
+Definition is_dec_atomT (a: atomT) :=
+  match a with
+  | NBool _ o =>
+    match o with
+    | None => false
+    | Some _ => true
+    end
+  | TBool _ _ _ => true
   end.
+
+Definition eval_is_dec (m: IntMap.ptrie atomT) (i:int)  :=
+  bool_of_ptrie is_dec_atomT m i.
 
 Lemma is_dec_correct : forall m i, eval_is_dec m i = true -> eval_prop m IsProp i  \/ ~ eval_prop m IsProp i .
 Proof.
   unfold eval_is_dec, eval_prop.
+  unfold bool_of_ptrie.
   intros. destruct (IntMap.get' i m);[| tauto].
   destruct a.
-  - destruct o ; try congruence.
+  - destruct o ; simpl in H; try congruence.
     apply o.
   - rewrite i0.
     destruct b; simpl; tauto.
@@ -11133,6 +11153,7 @@ Import BForm.
 Register IsProp as cdcl.kind.IsProp.
 Register IsBool as cdcl.kind.IsBool.
 Register BForm as cdcl.BForm.type.
+Register HBForm as cdcl.HBForm.type.
 Register BTT as cdcl.BForm.BTT.
 Register BFF as cdcl.BForm.BFF.
 Register BAT as cdcl.BForm.BAT.
@@ -11178,18 +11199,17 @@ Register set   as cdcl.IntMap.add.
 
 Definition empty_thy_prover  (hm:hmap ) (l:list literal) : option (hmap  * list (literal)) := None.
 
-Definition empty_thy  (is_dec: int -> bool) (eA: int -> Prop) : Thy is_dec eA.
-  apply mkThy  with (thy_prover := empty_thy_prover).
-  - unfold empty_thy_prover.
-    congruence.
+Lemma empty_thy : forall (is_dec: int -> bool) (eA: int -> Prop), Thy is_dec eA empty_thy_prover.
+Proof.
+  unfold Thy, empty_thy_prover.
+  congruence.
 Qed.
 
 Definition hlform (hf : HFormula) :=
   nform lform hf.
 
-
-Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:Thy (eval_is_dec m) (eval_prop m IsProp)) (n:nat) (f: BForm.HBForm) :=
-    hcons_prover (eval_is_dec m) (eval_prop m IsProp) thy n (hlform (BForm.to_hformula (has_bool m) f)).
+Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:ThyP) (n:nat) (f: BForm.HBForm) :=
+    hcons_prover (eval_is_dec m)  thy n (hlform (BForm.to_hformula (has_bool m) f)).
 
 Lemma eval_hformula_hlform : forall am f,
     eval_hformula (eval_prop am IsProp) (hlform f) <->
@@ -11205,7 +11225,7 @@ Proof.
 Qed.
 
 Lemma hcons_bprover_correct : forall n (f:BForm.HBForm) am,
-    hcons_bprover am (empty_thy (eval_is_dec am) (eval_prop am IsProp)) n f = true ->
+    hcons_bprover am (empty_thy_prover ) n f = true ->
     BForm.eval_hbformula  (eval_prop am)  f.
 Proof.
   intros n f am.
@@ -11213,11 +11233,74 @@ Proof.
   apply BForm.to_hformula_correct with (has_bool := has_bool am).
   - apply has_bool_correct.
   - unfold hcons_bprover in H.
-    apply hcons_prover_correct in H.
+    apply hcons_prover_correct with (eval_atom := eval_prop am IsProp) in H.
     rewrite eval_hformula_hlform in H.
     auto.
     apply is_dec_correct.
+    apply empty_thy.
 Qed.
 
+Definition eqb_map {A: Type} (f : A -> bool) (m: IntMap.ptrie bool) (m': IntMap.ptrie A) : bool :=
+  IntMap.beq' (fun x y => Bool.eqb x (f y)) m m'.
+
+
+Lemma eqb_map_correct : forall {A: Type} (f: A -> bool)  m m',
+    eqb_map f m m' = true ->
+    m = IntMap.map1' f m'.
+Proof.
+  unfold eqb_map.
+  induction m.
+  - destruct m'; simpl; solve[reflexivity|discriminate].
+  - destruct m'; simpl; try (reflexivity||discriminate).
+    intros.
+    apply andb_true_iff in H.
+    destruct H.
+    apply eqb_correct in H.
+    rewrite  Bool.eqb_true_iff in H0.
+    congruence.
+  - simpl.
+    destruct m'; simpl; try (reflexivity||discriminate).
+    intros.
+    rewrite! andb_true_iff in H.
+    destruct H as (((P1 & P2) & P3) & P4).
+    apply eqb_correct in P1.
+    apply eqb_correct in P2. subst.
+    f_equal; auto.
+Qed.
+
+
+Definition hcons_tauto_prover (eval_is_dec : int -> bool) (has_bool : int -> bool)  (n:nat) (f: BForm.HBForm) :=
+    hcons_prover eval_is_dec   empty_thy_prover  n (hlform (BForm.to_hformula has_bool  f)).
+
+Lemma hcons_tauto_prover_correct :
+  forall am mdec mbool n f
+         (DEC: eqb_map is_dec_atomT mdec  am = true )
+         (BOOL: eqb_map has_bool_atomT mbool am = true)
+         (PROVER: hcons_tauto_prover (bool_of_ptrie_bool mdec) (bool_of_ptrie_bool mbool) n f = true),
+    BForm.eval_hbformula  (eval_prop am)  f.
+Proof.
+  intros am mdec mbool n f.
+  intros.
+  apply eqb_map_correct in DEC.
+  apply eqb_map_correct in BOOL.
+  apply BForm.to_hformula_correct with (has_bool := bool_of_ptrie_bool mbool).
+  - intros.
+    apply has_bool_correct.
+    rewrite <- H.
+    rewrite BOOL.
+    change   (has_bool am i = bool_of_ptrie_bool (map_bool_of_ptrie has_bool_atomT am) i).
+    apply map_bool_of_ptrie_correct.
+  - unfold hcons_tauto_prover in PROVER.
+    apply hcons_prover_correct  with (eval_atom := eval_prop am IsProp) in PROVER.
+    rewrite eval_hformula_hlform in PROVER.
+    auto.
+    + intros.
+      apply is_dec_correct.
+      rewrite <- H.
+      rewrite DEC.
+      change   (eval_is_dec am a = bool_of_ptrie_bool (map_bool_of_ptrie is_dec_atomT am) a).
+      apply map_bool_of_ptrie_correct.
+    +  apply empty_thy.
+Qed.
 
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).

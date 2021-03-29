@@ -2099,15 +2099,15 @@ Module PTrie.
         congruence.
     Qed.
 
-        Ltac destruct_eq X Y :=
-          rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y) ; unfold proj_sumbool in *.
+    Ltac destruct_eq X Y :=
+      rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y) ; unfold proj_sumbool in *.
 
-    Fixpoint beq' {A: Type} (beqA: A -> A -> bool) (m1 m2: ptrie A): bool :=
+    Fixpoint beq' {A B: Type} (beq_elt: A -> B -> bool) (m1 : ptrie A) (m2: ptrie B): bool :=
       match m1, m2 with
       | Empty, Empty => true
-      | Leaf k1 v1, Leaf k2 v2 => eq k1 k2 && beqA v1 v2
+      | Leaf k1 v1, Leaf k2 v2 => eqb k1 k2 && beq_elt v1 v2
       | Branch p1 brbit1 l1 r1, Branch p2 brbit2 l2 r2 =>
-        eq p1 p2 && eq brbit1 brbit2 && beq' beqA l1 l2 && beq' beqA r1 r2
+        eqb p1 p2 && eqb brbit1 brbit2 && beq' beq_elt l1 l2 && beq' beq_elt r1 r2
       | _, _ => false
       end.
 
@@ -2210,15 +2210,15 @@ Module PTrie.
               rewrite Hprefix0; try lia; auto. }
     Qed.
 
-        Lemma beq_correct':
-      forall (A: Type) (eqA: A -> A -> bool) (t1 t2: ptrie A) opt,
+    Lemma beq_correct':
+      forall (A B: Type) (eq_elt: A -> B -> bool) (t1: ptrie A) (t2: ptrie B) opt,
         wf opt t1 ->
         wf opt t2 ->
-        beq' eqA t1 t2 = true <->
+        beq' eq_elt t1 t2 = true <->
         (forall (x: key),
             match get' x t1, get' x t2 with
             | None, None => True
-            | Some y1, Some y2 => eqA y1 y2 = true
+            | Some y1, Some y2 => eq_elt y1 y2 = true
             | _, _ => False
             end).
     Proof.
@@ -2254,8 +2254,9 @@ Module PTrie.
             rewrite HA; case_eq (zerobit k' brbit); intros; try tauto.
             assert (get' k' t2_1 = None) by (inv H0; eapply get_not_same_lr; eauto). congruence. }
       { destruct t2; simpl in H1; inv H1.
-        destruct (eq prefix prefix0); destruct (eq brbit brbit0); simpl in H3; inv H3.
+        destruct_eq prefix prefix0; destruct_eq brbit brbit0; simpl in H3; inv H3.
         simpl. rewrite H2.  apply andb_true_iff in H2. destruct H2.
+        rewrite H1. rewrite H2.
         inv H; inv H0.
         - generalize (is_mask_same Hbrbit' Hbrbit'0). intros; subst brbit'0.
           generalize (proj1 (IHt1_1 _ _ H6 H4) H1); intros HA.
@@ -2307,8 +2308,8 @@ Module PTrie.
                 rewrite HB; auto; lia. }
             destruct (Nat.eq_dec brbit' brbit0').
             * subst brbit0'. generalize (is_mask_same' Hbrbit0 Hbrbit). intros; subst brbit0.
-              simpl. destruct (eq prefix prefix); try congruence.
-              destruct (eq brbit brbit); try congruence; simpl.
+              simpl. destruct_eq prefix prefix; try congruence.
+              destruct_eq brbit brbit; try congruence; simpl.
               assert (Ho1: exists o1, wf o1 t1_1 /\ wf o1 t2_1) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
               assert (Ho2: exists o2, wf o2 t1_2 /\ wf o2 t2_2) by (inv H; inv H0; generalize (is_mask_same Hbrbit'0 Hbrbit'); intros; subst; eauto).
               destruct Ho1 as [o1 [HA HB]]. destruct Ho2 as [o2 [HC HD]].
@@ -2488,9 +2489,9 @@ Module PTrie.
               rewrite H4; congruence. }
             { assert (get' k' t1_1 = None) by (inv H; eapply get_not_same_lr; eauto); congruence. }
         +
-          generalize (proj2 (beq_correct' _ (fun a b => true) _ _ _ H H0) ltac:(intros; rewrite H1; destruct (get' x (Branch prefix0 brbit0 t2_1 t2_2)); auto)). intros.
-          simpl in H2. destruct (eq prefix prefix0); simpl in H2; try congruence.
-          subst prefix0. destruct (eq brbit brbit0); simpl in H2; try congruence. subst brbit0.
+          generalize (proj2 (beq_correct' _ _ (fun a b => true) _ _ _ H H0) ltac:(intros; rewrite H1; destruct (get' x (Branch prefix0 brbit0 t2_1 t2_2)); auto)). intros.
+          simpl in H2. destruct_eq prefix prefix0; simpl in H2; try congruence.
+          subst prefix0. destruct_eq brbit brbit0; simpl in H2; try congruence. subst brbit0.
           f_equal; auto.
           * inv H; inv H0; eapply IHt1_1; eauto.
             { assert (brbit'0 = brbit') by (eapply is_mask_same; eauto).
@@ -4345,3 +4346,8 @@ Module PTrie.
 End S.
 
 End PTrie.
+
+Register PTrie.ptrie  as PTrie.ptrie.type.
+Register PTrie.Empty  as PTrie.ptrie.Empty.
+Register PTrie.Leaf   as PTrie.ptrie.Leaf.
+Register PTrie.Branch as PTrie.ptrie.Branch.

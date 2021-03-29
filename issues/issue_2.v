@@ -20,16 +20,6 @@ Proof. intros. Time itauto reflexivity. Qed.   (* 1.678 secs *)
 Goal F (compile 4000000) = compile 40000000 -> x = x.
 Proof. intros. Time itauto reflexivity. Qed.   (* This works now *)
 
-Ltac itauto_use_tauto ::= constr:(true).
-
-Goal F (compile 1000) = compile 1000 -> x = x.
-Proof. intros. Time itauto reflexivity. Qed.   (* 0.012 secs *)
-Goal F (compile 2000) = compile 2000 -> x = x.
-Proof. intros. Time itauto reflexivity. Qed.   (* 0.02 secs *)
-Goal F (compile 3000) = compile 3000 -> x = x.
-Proof. intros. Time itauto reflexivity. Qed.   (* 0.024 secs *)
-Goal F (compile 4000) = compile 4000 -> x = x.
-Proof. intros. Time itauto reflexivity. Qed.   (* 0.029 secs *)
 
 
 Axiom opaque_compile: nat -> list Z.
@@ -42,3 +32,10 @@ Goal F (opaque_compile 3000) = opaque_compile 3000 -> x = x.
 Proof. intros. Time itauto reflexivity. Qed.   (* 0.042 secs *)
 Goal F (opaque_compile 4000) = opaque_compile 4000 -> x = x.
 Proof. intros. Time itauto reflexivity. Qed.   (* 0.034 secs *)
+
+
+
+Goal compile 1000 = compile 1000.
+Proof. intros. Time itauto reflexivity. Qed.
+Goal compile 4000000 = compile 4000000.
+Proof. intros. Time itauto reflexivity. Qed.
