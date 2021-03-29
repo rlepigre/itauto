@@ -1352,34 +1352,34 @@ let change_goal =
 
       let cform = constr_of_bformula form in
       let m = Env.ptrie_of_env env in
-(*      let mbool = P.PTrie.map1' Env.has_bool m in
-      let mdec  = P.PTrie.map1' Env.is_dec m in *)
+      let mbool = P.PTrie.map1' Env.has_bool m in
+      let mdec  = P.PTrie.map1' Env.is_dec m in
       let f = env.Env.fresh in
       let n = fresh_id (Names.Id.of_string "__n") gl in
       let form_name = fresh_id (Names.Id.of_string "__f") gl in
       let m_name = fresh_id (Names.Id.of_string "__m") gl in
-(*      let mb_name = fresh_id (Names.Id.of_string "__mb") gl in 
-      let md_name = fresh_id (Names.Id.of_string "__md") gl in *)
+      let mb_name = fresh_id (Names.Id.of_string "__mb") gl in
+      let md_name = fresh_id (Names.Id.of_string "__md") gl in
 
       let m_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_atomT|]) in
-      (*      let mbool_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_bool|]) in*)
+      let mbool_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_bool|]) in
 
       let change =
         EConstr.mkLetIn
           ( Context.nameR n
           , EConstr.mkInt (Uint63.of_int (10 * f))
           , Lazy.force coq_int,
-(*          EConstr.mkLetIn
+          EConstr.mkLetIn
             (Context.nameR mb_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mbool, mbool_typ,
              EConstr.mkLetIn
-               (Context.nameR md_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mdec, mbool_typ, *)
+               (Context.nameR md_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mdec, mbool_typ,
                 EConstr.mkLetIn (
                  Context.nameR m_name, constr_of_ptrie (Lazy.force coq_atomT) Env.constr_of_atom  m, m_typ,
                  EConstr.mkLetIn
                    (Context.nameR form_name, cform, Lazy.force coq_HBForm,
                      EConstr.mkApp
                        ( Lazy.force coq_eval_hbformula
-                       , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) )))
+                       , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) )))))
       in
       if debug () then
         Feedback.msg_debug

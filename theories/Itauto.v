@@ -18,7 +18,7 @@ Ltac gen_conflicts tac :=
   (cdcl_conflicts tac).
 
 (** [vitautog] reifies the CONCLUSION of the goal and computes using vm_compute *)
-Ltac vitautog :=
+(*Ltac vitautog :=
   (* Reify the conclusion *)
   cdcl_change;
   let n := fresh "n" in
@@ -28,8 +28,8 @@ Ltac vitautog :=
   (* Apply soundness proof and compute *)
   apply (hcons_bprover_correct (KeyInt.nat_of_int n));
   vm_compute; reflexivity).
-
-(*Ltac vitautog :=
+*)
+Ltac vitautog :=
   (* Reify the conclusion *)
   cdcl_change;
   let n := fresh "n" in
@@ -41,7 +41,7 @@ Ltac vitautog :=
   (* Apply soundness proof and compute *)
    apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
    [reflexivity | reflexivity | vm_compute; reflexivity]).
-*)
+
 
 
 (** [nitautog] same as [vitauto] but uses native_compute *)

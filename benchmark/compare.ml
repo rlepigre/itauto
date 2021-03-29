@@ -84,25 +84,25 @@ let speedup l1 l2 =
       | _         -> Printf.printf "Ignoring %f / %f = %f\n" f1 f2 res ; acc) [] l1 l2
 
 let split_3 l1 l2 = 
-  let rec split_3 (l,slm,slM) (e,se) (g,sgm,sgM) l1 l2 =
+  let rec split_3 (l,slm,slM) (e,sem,seM) (g,sgm,sgM) l1 l2 =
     match l1, l2 with
-    | [] , [] -> ((l,slm,slM), (e,se), (g,sgm,sgM))
+    | [] , [] -> ((l,slm,slM), (e,sem,seM), (g,sgm,sgM))
     | e1::l1 , e2::l2 ->
        if abs_float (e2 -. e1) <= 0.001
-       then split_3 (l,slm,slM) (e+1,se +. e1) (g,sgm,sgM) l1 l2 
+       then split_3 (l,slm,slM) (e+1,sem +. e1, seM+. e2) (g,sgm,sgM) l1 l2 
        else
          (match compare e1 e2 with
-          | 0 -> split_3 (l,slm,slM) (e+1,se +. e1) (g,sgm,sgM) l1 l2 
-          | -1 -> split_3 (l+1,slm+.e1,slM+.e2) (e,se) (g,sgm,sgM) l1 l2
-          | _  -> split_3 (l,slm,slM) (e,se) (g+1,sgm+.e1,sgM+.e2) l1 l2)
+          | 0 -> split_3 (l,slm,slM) (e+1,sem +. e1, seM +. e2) (g,sgm,sgM) l1 l2 
+          | -1 -> split_3 (l+1,slm+.e1,slM+.e2) (e,sem,seM) (g,sgm,sgM) l1 l2
+          | _  -> split_3 (l,slm,slM) (e,sem,seM) (g+1,sgm+.e1,sgM+.e2) l1 l2)
     | _ , _ -> failwith "split_3 expects list of same size"
   in
-  split_3 (0,0.,0.) (0,0.) (0,0.,0.) l1 l2
+  split_3 (0,0.,0.) (0,0.,0.) (0,0.,0.) l1 l2
 
 
-let output_split_3 ((l,slm,slM), (e,se), (g,sgm,sgM))  =
+let output_split_3 ((l,slm,slM), (e,sem,seM), (g,sgm,sgM))  =
   Printf.printf "<: %i (%f,%f)\n" l slm slM;
-  Printf.printf "=: %i %f\n" e se;
+  Printf.printf "=: %i (%f,%f)\n" e sem seM;
   Printf.printf ">: %i (%f,%f)\n" g sgm sgM
 
 
@@ -203,7 +203,7 @@ let _ =
           let l1,l2 = unzip_succ s in
           let l1 = List.map float_of_string l1 in
           let l2 = List.map float_of_string l2 in
-          let s = split_3 l1 l2 in
+          let s = split_3 l2 l1 in
           output_split_3 s;
           let l1' = take 10 (List.rev (List.sort compare l1)) in
           let l2' = take 10 (List.rev (List.sort compare l2)) in
