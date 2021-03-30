@@ -17,18 +17,6 @@ Ltac gen_conflicts tac :=
   (* Generate conflict clauses *)
   (cdcl_conflicts tac).
 
-(** [vitautog] reifies the CONCLUSION of the goal and computes using vm_compute *)
-(*Ltac vitautog :=
-  (* Reify the conclusion *)
-  cdcl_change;
-  let n := fresh "n" in
-  let m := fresh "m" in
-  let f := fresh "f" in
-  (intros n m f ;
-  (* Apply soundness proof and compute *)
-  apply (hcons_bprover_correct (KeyInt.nat_of_int n));
-  vm_compute; reflexivity).
-*)
 Ltac vitautog :=
   (* Reify the conclusion *)
   cdcl_change;
@@ -46,15 +34,17 @@ Ltac vitautog :=
 
 (** [nitautog] same as [vitauto] but uses native_compute *)
 Ltac nitautog :=
-  (* Reify the conclusion *)
+(* Reify the conclusion *)
   cdcl_change;
   let n := fresh "n" in
+  let mb := fresh "mb" in
+  let md := fresh "md" in
   let m := fresh "m" in
   let f := fresh "f" in
-  (intros n m f ;
+  (intros n mb md m f;
   (* Apply soundness proof and compute *)
-  apply (hcons_bprover_correct (KeyInt.nat_of_int n));
-  native_compute; reflexivity).
+   apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
+   [reflexivity | reflexivity | native_compute; reflexivity]).
 
 (** [vitauto] is a standalone version reifying all the hypotheses *)
 Ltac vitauto :=
