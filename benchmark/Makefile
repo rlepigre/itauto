@@ -1,25 +1,25 @@
+.SUFFIXES: .dat .qed
+
 all: pigeon_itauto.dat
 
 pigeon_hole.vo : pigeon_hole.v
-	coqc pigeon_hole.v
+	$(COQBIN)/coqc pigeon_hole.v
 
-%.dat: %.v pigeon_hole.v
+%.dat: %.v pigeon_hole.vo
 	ulimit -Sv 15000000; $(COQBIN)/coqc $< | cut -d' ' -f4 > $@
 
-%.qed: %.dat
-	sed '1d;n; d' $< > $@
-
-%.tac: %.dat
-	sed 'n; d' $< > $@
+%.qed %.tac : %.dat
+	sed '1d;n; d' $< > $*.qed
+	sed 'n; d' $< > $*.tac
 
 %dat2: %dat Makefile
 	cat $< | grep "Tactic call" | grep "success" > $@
 
 #gnuplot --persist
-pigeon_qed.pdf : pigeon_itauto.qed pigeon_tauto.qed pigeon_rtauto.qed plot_qed
+pigeon_qed.pdf : pigeon_itauto.qed pigeon_nitauto.qed pigeon_tauto.qed pigeon_rtauto.qed plot_qed
 	gnuplot -s plot_qed
 
-pigeon_tac.pdf : pigeon_itauto.tac pigeon_tauto.tac pigeon_rtauto.tac plot_tac
+pigeon_tac.pdf : pigeon_itauto.tac pigeon_nitauto.tac pigeon_tauto.tac pigeon_rtauto.tac plot_tac
 	gnuplot -s plot_tac
 
 
@@ -47,3 +47,4 @@ cmp : compare.ml
 
 clean:
 	rm *pdf
+	rm -f *\.tac *\.qed  *\.vo

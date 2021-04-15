@@ -244,7 +244,6 @@ Abort.
 
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
-Require Import Coq.omega.Omega.
 Open Scope Z_scope.
 
 Goal

@@ -22,6 +22,6 @@ depends: [
 depopts: [ "ocamlformat" {build} ]
   
 tags: [
-  "keyword:integers" "keyword:arithmetic" "keyword:automation"
+  "keyword:integers" "keyword:SAT" "keyword:SMT" "keyword:automation"
   "logpath:Cdcl"
 ]

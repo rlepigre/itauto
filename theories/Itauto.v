@@ -46,12 +46,26 @@ Ltac nitautog :=
    apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
    [reflexivity | reflexivity | native_compute; reflexivity]).
 
+Ltac citautog :=
+(* Reify the conclusion *)
+  cdcl_change;
+  let n := fresh "n" in
+  let mb := fresh "mb" in
+  let md := fresh "md" in
+  let m := fresh "m" in
+  let f := fresh "f" in
+  (intros n mb md m f;
+  (* Apply soundness proof and compute *)
+   apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
+   [reflexivity | reflexivity | compute; reflexivity]).
+
 (** [vitauto] is a standalone version reifying all the hypotheses *)
 Ltac vitauto :=
   cdcl_generalize ;
   vitautog.
 
-Ltac itauto tac  :=
+Tactic Notation "itauto" tactic(tac) :=
+(*Ltac itauto tac  := *)
   gen_conflicts tac ;
   vitautog.
 

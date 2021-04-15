@@ -1,19 +1,9 @@
 -Q theories/ Cdcl
--Q src/ Cdcl
 # theories/ZifyInt.v
 theories/ReifClasses.v
 theories/Coqlib.v
 theories/PatriciaR.v
 theories/KeyInt.v
 theories/Formula.v
-theories/Itauto.v
 theories/Prover.v
-theories/ZArithDec.v
-theories/Tac.v 
--I src/
-src/proverPatch.ml
-src/cdcl.ml
-#src/no.ml
-src/g_cdcl.mlg
-src/cdcl_plugin.mlpack
 

@@ -1,4 +1,4 @@
-# itauto : a micro intuitionistic SMT for the Coq proof assistant
+# itauto : an  Extensible Intuitionistic SAT solver
 
 ## Contexte and Motivation
 
@@ -80,7 +80,7 @@ A few relevant tests are found in the `test-suite` directory.
 
 `itauto tac` calls `tac` when no propositional progress is possible.
 
-The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia`.
+<!The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia`. -->
 
 ## Bug report
 
@@ -104,9 +104,10 @@ Once the SAT solver has succeeded. All the unsat cores are asserted in
 the original goal. Eventually, the reflexive SAT solver is rerun  in Coq
 using an empty theory.
 
-### Nelson-Oppen combination
+<! ### Nelson-Oppen combination
 
 We also have a naive Nelson-Oppen scheme allowing to combine `congruence` and `lia`.
+-->
 
 ### Design of the sat solver
 
@@ -143,3 +144,4 @@ solver continues.
   finer tracking of dependencies to detect the set of input clauses
   responsible for a conflict.
 
+- À la Nelson-Oppen combination of theories.

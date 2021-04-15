@@ -24,6 +24,7 @@ Proof.
 Time   timeout 3600 tauto.
 Time Qed.
 
+Print Unnamed_thm2.
 Goal pigeon_hole false 5 4 -> False.
 Proof.
   simpl_pigeon.

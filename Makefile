@@ -1,7 +1,7 @@
 # For debugging purposes, it is desirable to patch the Coq extracted code
 # This is done by calling `make prover` once the Coq code is extracted
 
-.PHONY: clean cleanaux coq test cleantest benchmark
+.PHONY: clean cleanaux coq test cleantest benchmark paper
 
 -include CoqMakefile.conf
 
@@ -11,18 +11,23 @@ COQBIN:=$(COQBIN)/
 endif
 
 
-all : src/proverPatch.ml
-	rm -f src/cdcl.ml.d
-	rm -f src/cdcl_plugin.mlpack.d
-	make -f CoqMakefile 
+all : theories/Itauto.vo
 
-coq : CoqMakefile
-	make -f CoqMakefile theories/Prover.vo
+theories/Prover.vo src/prover.ml : CoqMakefile 
+	$(MAKE) -f CoqMakefile theories/Prover.vo COQBIN=$(COQBIN) 
 
-theories/Prover.vo src/prover.ml : CoqMakefile coq
+theories/Itauto.vo : theories/Itauto.v theories/Prover.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml theories/Itauto.vo COQBIN=$(COQBIN) 
+
+src/cdcl_plugin.cmxs CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
+	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 
+
+CoqMakefile CoqMakefile.conf : _CoqProject
+	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 src/patch/mlpatch :
-	cd src/patch ; make 
+	cd src/patch ; $(MAKE)
 
 HASOCAMLFORMAT := $(shell command -v ocamlformat 2> /dev/null)
 
@@ -46,21 +51,20 @@ src/prover.cmx : src/prover.ml
 	ocamlc -annot -I $(UINT) -I src -rectypes -c src/prover.ml
 
 install :
-	make -f CoqMakefile install
+	$(MAKE) -f CoqMakefile install
+	$(MAKE) -f CoqMakefile_ml install
 
 uninstall:
-	make -f CoqMakefile uninstall
+	$(MAKE) -f CoqMakefile uninstall
 
 cleanaux : 
 	rm -f src/prover.*  src/proverPatch.ml src/patch/mlpatch
 
 clean : cleanaux
-	make -f CoqMakefile clean
-	rm CoqMakefile.conf
+	$(MAKE) -f CoqMakefile clean
+	rm -f CoqMakefile.conf CoqMakefile CoqMakefile_ml CoqMakefile_ml.conf
 
 
-CoqMakefile CoqMakefile.conf : _CoqProject
-	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 
 TESTSUITE = arith.v  refl_bool.v # no_test.v
@@ -86,6 +90,5 @@ benchmark : $(ALLBENCHVO)
 
 cleantest :
 	rm -f $(ALLTESTVO)
-
 
 

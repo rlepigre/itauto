@@ -57,7 +57,13 @@ Proof.
 Time   timeout 3600 rtauto.
 Time Qed.
 
-Goal pigeon_hole false 10 8 -> False.
+Goal pigeon_hole false 10 9 -> False.
+Proof.
+  simpl_pigeon.
+Time   timeout 3600 rtauto.
+Time Qed.
+
+Goal pigeon_hole false 11 10 -> False.
 Proof.
   simpl_pigeon.
 Time   timeout 3600 rtauto.

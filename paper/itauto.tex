@@ -1,5 +1,5 @@
-\documentclass[utf8,a4paper,UKenglish,cleveref, autoref, thm-restate]{lipics-v2019}
-\usepackage{minted}
+\documentclass[utf8,a4paper,UKenglish,cleveref, autoref, thm-restate]{lipics-v2021}
+\usepackage[]{minted}
 \usepackage{stmaryrd}
 \usepackage{newunicodechar}
 % \usepackage{mathspec} %\usepackage{unicode-math}
@@ -14,11 +14,15 @@
 
 \newcommand\bigforall{\mbox{\Large $\mathsurround0pt\forall$}} 
 
+\setminted[coq]{escapeinside=\#\#,mathescape=true}
+
 \title{Itauto: an Extensible Intuitionistic SAT Solver} 
 
 %\titlerunning{Dummy short title} %TODO optional, please use if title is longer than one line
 
-\author{Frédéric Besson}{Inria, Univ Rennes, IRISA}{frederic.besson@inria.fr}{}{}
+\author{Frédéric Besson}
+{Inria, Univ Rennes, Irisa\and Rennes, France}
+{frederic.besson@inria.fr}{https://orcid.org/0000-0001-6815-0652}{}
 \authorrunning{F. Besson}
 
 \Copyright{Frédéric Besson} %TODO mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
@@ -35,20 +39,20 @@
   Tree library.  Thanks are also due to Samuel Gruetter for stress testing the
 tactic; his feedbacks have been very valuable.}
 
-%\nolinenumbers
+\nolinenumbers
 
 %Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\EventEditors{}
-\EventNoEds{0}
-\EventLongTitle{}
-\EventShortTitle{}
-\EventAcronym{}
-\EventYear{}
-\EventDate{}
-\EventLocation{}
+\EventEditors{Liron Cohen and Cezary Kaliszyk}
+\EventNoEds{2}
+\EventLongTitle{12th International Conference on Interactive Theorem Proving (ITP 2021)}
+\EventShortTitle{ITP 2021}
+\EventAcronym{ITP}
+\EventYear{2021}
+\EventDate{June 29--July 1, 2021}
+\EventLocation{Rome, Italy (Virtual Conference)}
 \EventLogo{}
-\SeriesVolume{}
-\ArticleNo{.}
+\SeriesVolume{193}
+\ArticleNo{21}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -58,7 +62,7 @@ tactic; his feedbacks have been very valuable.}
 
 \begin{abstract}
   We present the design and implementation of \icoq{itauto}, a Coq
-  reflexive tactic for solving intuitionistic propositional logic. The
+  reflexive tactic for intuitionistic propositional logic. The
   tactic inherits features found in modern SAT solvers: definitional
   conjunctive normal form; lazy unit propagation and conflict driven
   backjumping.
@@ -85,7 +89,7 @@ and mundane proof tasks would be discharged by automated procedures.
 However, automated reasoning is hard; even more so for
 \emph{sceptical}~\cite{HarrisonT98} proof-assistants: generating and
 verifying proofs at scale, even for decidable logic fragments, is a
-challenge requiring sophisticated implementation strategies.
+challenge requiring sophisticated implementation strategies~\cite{BohmeW10,BessonCP11,ArmandFGKTW11}.
 %
 For the Coq proof-assistant, the situation is made slightly worse
 because intuitionistic logic is not mainstream for automated provers.
@@ -95,7 +99,7 @@ classical SAT solver needs to be revisited.
 \subsection{Propositional Reasoning and Theory Reasoning in Coq}
 \label{sec:prop-in-coq}
 
-There is a variety of Coq tactics which perform intuitionistic
+There are a variety of Coq tactics which perform intuitionistic
 propositional and theory reasoning. We describe here their main
 features and explain some limitations, thus motivating the need for a
 novel (extensible) solver for intuitionistic propositional logic
@@ -112,18 +116,17 @@ using proof by reflection. %(The manual warns that proof-checking may
 %be slower than \icoq{tauto}.)
 These decision procedures are usually efficient enough for interactive
 use but do not perform theory
-reasoning. \icoq{lia}~\footnote{\url{https://coq.inria.fr/refman/addendum/micromega.html\#coq:tacn.lia}}
+reasoning. \icoq{lia}\footnote{\url{https://coq.inria.fr/refman/addendum/micromega.html\#coq:tacn.lia}}
 is a decision procedure for linear arithmetic. It has a classical
 understanding of propositional connectives but abstracts away
 non-arithmetic
-propositions. \icoq{congruence}~\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.congruence}}~\cite{Corbineau06}
+propositions. \icoq{congruence}\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.congruence}}~\cite{Corbineau06}
 does not perform propositional reasoning but decides the theory of
-equality with constructors that is useful to reason about inductive
-types. Another tactic that is worth mentioning is \icoq{intuition
-  tac}~\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.intuition}};
+equality with constructors. % that is useful to reason about inductive types.
+Another tactic that is worth mentioning is \icoq{intuition tac}\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.intuition}};
 it first performs propositional reasoning and calls the leaf tactic
 \icoq{tac} when it gets stuck. (\icoq{tauto} is actually
-\icoq{intuition fail}).
+\icoq{intuition fail}.)
 
 In a classical setting, calling a theory solver on the leaves of a
 propositional proof search is the basis of the $\mathit{DPLL(T)}$
@@ -134,9 +137,8 @@ illustrates the issue.
   \label{exa:incomplete}
   Consider the following goals.
   \begin{minted}{coq}
-Lemma Ex1: forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
-Lemma Ex2: forall (A:Type) (p:Prop) (a b c:A),
-                  a = b -> b = c -> (a = c -> p) -> p.
+Lemma Ex1:#$\forall$#(p:Prop)(x:Z), x=0 #$\to$# (x>=0 #$\to$# p) #$\to$# p.
+Lemma Ex2:#$\forall$#(A:Type)(p:Prop)(a b c:A),a=b #$\to$# b=c #$\to$# (a=c #$\to$# p) #$\to$# p.
 \end{minted}
   For \icoq{Ex1} and \icoq{Ex2}, \icoq{intuition lia} (resp. \icoq{intuition congruence}) fail whereas
   the goal can be decided using a combination of
@@ -149,16 +151,12 @@ Lemma Ex2: forall (A:Type) (p:Prop) (a b c:A),
   propositions\footnote{The propositional variable \icoq{p} is replaced by
     \icoq{True} or \icoq{False} depending on its polarity.} and is
   left with the non-theorem
-  \begin{minted}{coq}
-    x = 0 -> (x >= 0 -> True) ->  False.
-  \end{minted}
+  \icoq{x=0#$\to$#(x>=0#$\to$#True)#$\to$#False}.
   For \icoq{Ex2}, \icoq{congruence} abstracts away
   propositions and is also left with a non-theorem:
-  \begin{minted}{coq}
-    a = b -> b = c -> False.
-  \end{minted}
+  \icoq{a=b#$\to$#b=c#$\to$#False}.
 \end{example}
-Besides completeness, \icoq{intuition tac} has also an efficiency issue and may call the leaf tactic \icoq{tac}
+Besides completeness, \icoq{intuition tac} may also call the leaf tactic \icoq{tac}
 %In term of efficiency, \icoq{intuition tac} does not \emph{learn}
 %conflict clauses and therefore may call the leaf tactic \icoq{tac}
 more often than necessary. %If the leaf tactic is costly, this has a negative effect on efficiency.
@@ -167,53 +165,60 @@ This is illustrated by Example~\ref{ex:too-many-calls}.
   \label{ex:too-many-calls}
   Consider the following goal.
   \begin{minted}{coq}
-Lemma Ex3: forall (A:Type) (x y t:A) (p q:Prop),
-                  x = y -> p \/ q -> (p -> y = t) -> (q -> y = t) -> x = t.
+Lemma Ex3:#$\forall$#(A:Type)(x y t:A)(p q:Prop),x=y#$\to$#p#$\lor$#q#$\to$#(p#$\to$#y=t)#$\to$#(q#$\to$#y=t)#$\to$#x=t.
   \end{minted}
   In this case, \icoq{intuition congruence} performs a case-split
   over \icoq{p\/q}, and derives \icoq{y=t} by
   \emph{modus-ponens}. Eventually, it calls the leaf tactic
   \icoq{congruence} twice.  However, in both branches,
   \icoq{congruence} solves the same theory problem \emph{i.e.},
-  \icoq{x = y -> y = t -> x = t}.
+  \icoq{x=y #$\to$# y=t #$\to$# x=t}.
 \end{example}
 
 \subsection{Contribution}
 
-A contribution is the design and implementation of a reflexive
+A first contribution is the design and implementation of a reflexive
 intuitionistic SAT solver in Coq.  The SAT solver obtains decent
 performances using features found in state-of-the-art SAT solvers such
 as hash-consing, lazy unit propagation, backjumping and theory
-learning. It also makes a pervasive use of native integers and
-Patricia Trees.
+learning. It also makes a pervasive use of native machine
+integers\footnote{\url{https://coq.inria.fr/refman/language/core/primitive.html\#primitive-integers}}
+and Patricia Trees~\cite{Okasaki98fastmergeable}.
 
 
 Another contribution is a variation of the proof by reflection
-approach where the verified extracted SAT solver is first run inside
-the proof engine. This enables to increase the expressiveness by
-calling user-defined tactics on the leaves of the propositional proof
-search thus allowing theory reasoning.
+approach whereby the verified extracted SAT solver is first run inside
+the proof engine. Theory reasoning is then performs by calling
+user-defined tactics on the leaves of the propositional proof search.
 %
-We extract unsat cores by inspecting the proof terms generated by the
-user-provided tactic. The unsat core is then injected in the SAT
-solver as a novel propositional clause. To our knowledge, this design
-combining reflexive code with tactics is original. Besides increased
-flexibility, another advantage is to factorise the code and localise the
-soundness bugs to its unverified part.
+Following the $\mathit{DPLL(T)}$ approach, minimal conflict clauses
+obtained from the tactic proof-terms are passed back to the SAT
+solver. % thus preventing redundant theory calls.
+% 
+Eventually, a proof is obtained by asserting the conflict clauses and
+re-running the reflexive SAT solver with an empty theory module.
+%We extract unsat cores by inspecting the proof terms generated by the
+%user-provided tactic. The unsat core is then injected in the SAT
+%solver as a novel propositional clause.
+To our knowledge, this design
+combining reflexive code with tactics is original.
+%Besides increased
+%flexibility, another advantage is to factorise the code and localise the
+%soundness bugs to its unverified part.
 
 The rest of the paper is organised as follows.
 %
 In Section~\ref{sec:design}, we present the main features of our SAT
 solver and its implementation in Coq.
 %
-The structure of the soundness proof is detailed in Section~\ref{sec:reflection}.
+The structure of the soundness proof is detailed in Section~\ref{sec:soundness-proof}.
 %
 In Section~\ref{sec:reflection}, we explain how to interface the SAT
 solver with the proof engine and  user-defined
 tactics.
 %
-We show experimental results in Section~\ref{sec:experiments} where we
-compare with the existing Coq tactics.
+We show experimental results in Section~\ref{sec:experiments}.
+%where we compare with the existing Coq tactics.
 %
 Related work is presented in Section~\ref{sec:related-work} and
 Section~\ref{sec:conclusion} concludes.
@@ -233,21 +238,21 @@ intuitionistic setting.
 Our SAT solver takes as input hash-consed~\cite{Allen-hcons} formulae defined by the inductive type \icoq{LForm}.
 \begin{minted}{coq}
 Inductive LForm : Type :=
-| LFF
-| LAT : int -> LForm
-| LOP : lop -> list (HCons.t LForm) -> LForm
-| LIMPL : list (HCons.t LForm) ->  (HCons.t LForm)  -> LForm.
+| LFF | LAT : int #$\to$# LForm | LOP : lop #$\to$# list (HCons.t LForm) #$\to$# LForm
+| LIMPL : list (HCons.t LForm) #$\to$#  (HCons.t LForm)  #$\to$# LForm.
 \end{minted}
 The syntax is mostly standard and models n-ary propositional operators.
 %
 \icoq{LFF} represents the proposition \icoq{False}. 
-\icoq{LAT i} represents the propositional variable \icoq{pi}.
+\icoq{LAT} $i$ represents the propositional variable \icoq{p}$_i$.
 %
 \icoq{LOP o} $[f_1; \dots; f_n]$ where \icoq{o} $\in$\{\icoq{AND},
 \icoq{OR}\} represents a n-ary conjunction or disjunction.
 %
 \icoq{LIMPL} $[f_1; \dots; f_n]$ $f$ represents a n-ary implication
 with $f_1$, \dots, $f_n$ being the premisses and $f$ the conclusion.
+%
+The negation of a formula $f$ is encoded by \icoq{LIMPL} $[f]$ \icoq{LFF}.
 %
 All sub-formulae are hash-consed \emph{i.e.} \icoq{f:HCons.t LForm}
 is a pair made of a formula and a unique index.
@@ -257,7 +262,7 @@ Because it enables a fast equality test of formulae in $O(1)$, hash-consing is e
 N-ary operators allow for a sparser conjunctive normal form (see \emph{e.g.}~\cite{LescuyerC09}).
 
 The interpretation of a formula \icoq{f:LFORM} is given by structural recursion with respect
-to an environment \icoq{e:int -> Prop} mapping indexes \emph{i.e.}, propositional variables, to
+to an environment \icoq{e:int #$\to$# Prop} mapping indexes \emph{i.e.}, propositional variables, to
 propositions.
 \[
   \begin{array}{lcl}
@@ -285,13 +290,13 @@ the CNF conversion preserves provability.
 %
 In an intuitionistic setting, this approach is not feasible because
 \emph{reductio ad adsurdum} is not logically sound and
-the usual CNF conversion requires De Morgan laws which do not hold either.
+the usual CNF conversion requires De Morgan laws which are not admissible.
 %
 Yet, Claessen and Rosén~\cite{ClaessenR15} show that it is possible to
 transform an intuitionistic  formula $f$ into an equi-provable formula of the form
-\[
+$
   \bigwedge F \land \bigwedge I \to q
-\]
+$
 where $q$ is a variable ; $f \in F$ is a so-called \emph{flat clause} of the
 form $p_1 \to \dots p_n \to q_1 \lor \dots \lor q_m$ where the $p_i$
 and $q_i$ are variables and $i\in I$ is a so-called \emph{implication clause}
@@ -300,7 +305,7 @@ of the form $(a\to b) \to c $ where $a$, $b$ and $c$ are variables.
 The transformation is based on Tseitin definitional CNF~\cite{Tseitin1983} with the
 modification that a clause is written
 $p_1 \to \dots \to p_n \to q_1 \lor \dots \lor q_n$ instead of
-$\neg p_1 \lor \dots \neg p_n \lor q_1 \dots q_n$.
+$\neg p_1 \lor \dots \lor \neg p_n \lor q_1 \dots \lor q_n$.
 %
 The \emph{implication clauses} are reminiscent of the fact that double
 arrows (\emph{e.g.}, in the LJT proof system) need a
@@ -311,14 +316,14 @@ Our implementation is along these lines but optimises the
 transformation in order to reduce both the set of \emph{flat clauses}
 and \emph{implication clauses}.  To reduce the set of \emph{flat
   clauses}, our definitional CNF is based on Plaisted and Greenbaum
-CNF~\cite{PlaistedG86} which exploits the polarity of formulae and is
-tabulated thus avoiding recomputing the CNF of identical sub-formulae.
+CNF~\cite{PlaistedG86} which exploits the polarity of formulae and uses
+memoization thus avoiding recomputing the CNF of identical sub-formulae.
 %
 In order to reduce the set of \emph{implication clauses}, we exploit
 the fact that, if the conclusion $q$ is decidable, intuitionistic logic reduces to
 classical logic. In that case, it is therefore
 admissible to replace an \emph{implication clause} $(a \to b) \to c$
-by the equivalent \emph{flat clauses} $(a\lor c) \land (b \to c)$.
+by the equivalent \emph{flat clauses} $\{a\lor c ; b \to c\}$.
 %
 Moreover, before performing CNF conversion, formulae are flattened
 using the associativity of $\land$ and $\lor$. This has the advantage
@@ -339,7 +344,7 @@ operator $\doubleplus$ is the concatenation of lists):
 \]
 
 \subsubsection{Literals}
-Tseitin style CNF consists in introducing fresh
+Tseitin style CNF~\cite{Tseitin1983} consists in introducing fresh
 propositional variables.  In a proof-assistant, modelling freshness
 may incur some proof overhead. Fortunately, in our case, the new
 propositional variables are not arbitrary but correspond to
@@ -349,30 +354,42 @@ literal is a positive or negative hash-consed formula.
 \begin{minted}{coq}
 Inductive literal : Type := | POS (f: HFormula) | NEG (f: HFormula)
 \end{minted}
+\newcommand\Lit[1]{\lfloor #1 \rfloor }
 As usual, a clause is a list of positive and negative literals but with the following interpretation.
 \[
   \begin{array}{lcl}
-    \llbracket \icoq{NEG} f :: l \rrbracket_e & = & \llbracket f \rrbracket_e \rightarrow \llbracket l \rrbracket_e \\
-    \llbracket \icoq{POS} f :: l \rrbracket_e & = & \llbracket f \rrbracket_e \lor \llbracket l \rrbracket_e \\
-    \llbracket [] \rrbracket_e &= & \icoq{False} \\
+    \llbracket \icoq{NEG} f :: l \rrbracket_e =  \llbracket f \rrbracket_e \rightarrow \llbracket l \rrbracket_e \quad\quad
+    \llbracket \icoq{POS} f :: l \rrbracket_e  =  \llbracket f \rrbracket_e \lor \llbracket l \rrbracket_e \qquad
+    \llbracket [] \rrbracket_e =  \icoq{False} 
   \end{array}
 \]
+For readability, we will write $\Lit{f}$ for $\icoq{POS} f$ and
+$\Lit{f} \to$ for $\icoq{NEG} f$. A singleton clause $[\icoq{NEG} f]$
+will be written $\Lit{f} \to \bot$.  In the remaining, we have the
+invariant that the negative literals are always before the positive
+literals.  As a result, a general clause
+$[\icoq{NEG} f_1 ; \dots; \icoq{NEG} f_i; \icoq{POS}
+g_1;\dots;\icoq{POS} g_j ]$ will be written
+$\Lit{f_1} \to \dots \to \Lit{f_i} \to \Lit{g_1} \lor \dots \lor
+\Lit{g_j}$ or more compactly
+$\bigwedge_i \Lit{f_i} \to \bigvee_j \Lit{g_j}$.  Moreover, we define
+the negation of a literal $l$: $\neg l$ is such that
+$\neg \Lit{f} = \Lit{f} \to$ and $\neg {\Lit{f \to}} = \Lit{f}$.
 
 \subsubsection{Introduction Rule}
 Before running the CNF conversion \emph{per se}, we inspect the
 formula and perform \emph{reductio ad adsurdum} if possible. The
 function \icoq{intro_impl} performs the introduction rule for
 implication with the twist that the conclusion is double negated if it
-is decidable. Therefore, \icoq{intro_impl: HFormula -> (list literal * HFormula)}
+is decidable. Therefore, \icoq{intro_impl: HFormula #$\to$# (list literal * HFormula)}
 takes as input a hash-consed formula and returns a pair
 $(l,c)$ where $l$ are hypotheses and $c$ is the conclusion.
 %%where
 %%\icoq{None} indicates that the conclusion is \icoq{False} thus
 %%enabling classical reasoning.
 \begin{minted}{coq}
-intro_impl (LIMPL  l r) = if is_dec r
-                          then ((NEG r):: map POS l , HLFF)
-                          else (map POS l, r)
+intro_impl (LIMPL  l r) = if is_dec r then ((NEG r):: map POS l , HLFF)
+                                      else (map POS l, r)
 intro_impl f   = if is_dec f then ([NEG f] , HLFF) else ([], f)
 \end{minted}
 The constant \icoq{HLFF} is the hash-consed formula \icoq{LFF}
@@ -385,47 +402,88 @@ propagated from atomic propositions that are known to be classical
 \subsubsection{Construction of the CNF}
 The next step consists in computing the CNF of the literals and of the
 formula in the conclusion.  We recursively compute for a positive literal
-\icoq{CNF-} \emph{i.e.}, clauses for the elimination rule; and for a
-negative literal (or the conclusion) \icoq{CNF+} \emph{i.e.}, clauses
-for the introduction rule.
+\icoq{CNF-} \emph{i.e.}, a set of clauses modelling the elimination rule; and for a
+negative literal (or the conclusion) \icoq{CNF+} \emph{i.e.}, a set of clauses
+modelling the introduction rule.
 \[
   \begin{array}{cc}
-  \icoq{AND-} \dfrac{ f = (f_1 \land \dots f_n) }
-  { (f \to f_1) \land \dots \land (f \to f_n) } &
-    %
-    \icoq{AND+} \dfrac{ f = (f_1 \land \dots f_n) }
-    { f_1 \to \dots \to f_n \to f } \\\\
-    %
-    \icoq{OR-}  \dfrac{ f = (f_1 \lor \dots f_n) }
-    { (f \to f_1 \lor \dots f_n) } &
-    %
-    \icoq{OR+}  \dfrac{ f = (f_1 \lor \dots f_n) }
-    { (f_1 \to  f) \land  (f_n \to f) }\\\\
-    %
-    \icoq{IMPL-}  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
-                   { (f \to f_1 \to \dots \to f_n \to r) } &
-    % 
-    \icoq{IMPL+}  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
-                   { (r \to f) \land \bigwedge_{(\icoq{is_dec}\ f_i)} (f_i \lor f)   }\\\\
+    \dfrac{ f = (f_1 \land \dots \land f_n) }
+    {
+    \begin{array}{l}
+      \icoq{AND-}(f) = \{\Lit{f} \to \Lit{f_1}; \dots; \Lit{f} \to \Lit{f_n}\}  \\
+      \icoq{AND+}(f) = \{\Lit{f_1} \to \dots \to \Lit{f_n} \to \Lit{f} \}
+    \end{array}} &
+                   \dfrac{ f = (f_1 \lor \dots \lor f_n) }
+                   {
+                   \begin{array}{l}
+                   \icoq{OR-}(f)=\{\Lit{f} \to \Lit{f_1} \lor \dots \lor \Lit{f_n}\}\\
+                     \icoq{OR+}(f)=\{\Lit{f_1} \to  \Lit{f} ;  \ldots ; \Lit{f_n} \to \Lit{f}\}               
+                   \end{array}
+    }
   \end{array}
 \]
-Except for \icoq{IMPL+}, the CNF is complete and all the formulae are
-both classical and intuitionistic tautologies.
+\[
+  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
+  {
+    \begin{array}{l}    
+      \icoq{IMPL-}(f)= \{\Lit{f} \to \Lit{f_1} \to \dots \to \Lit{f_n} \to \Lit{r}\} \\
+      \icoq{IMPL+}(f)= \{\Lit{r} \to \Lit{f}\} \cup  \bigcup_{\icoq{is_dec}\ f_i} \{\Lit{f_i} \lor \Lit{f}\}
+    \end{array}
+    }
+  \]
+This clausal encoding is correct and the generated clauses are both classical and intuitionistic tautologies.
+Except for \icoq{IMPL+}, the clausal encoding is also complete \emph{e.g.}, we have
+\[
+\begin{array}{lcl}
+  \icoq{CNF+}(f_1\land \dots \land f_n) \cup \{ \Lit{f_1} \land \dots \land \Lit{f_n} \}   &\vdash& \Lit{f_1\land \dots \land f_n}\\
+  \icoq{CNF-}(f_1\land \dots \land f_n) \cup \{ \Lit{f_1 \land \dots \land  f_n} \}  &\vdash& \Lit{f_1} \land \dots \land \Lit{f_n}\\
+\end{array}
+\]
 %
 For \icoq{IMPL+}, if not all the $f_i$ are classical propositions, the
-clausal encoding is partial and we also generate the \emph{implication
-  clause} $(f_1 \to \dots \to r) \to f$. Note that, if the conclusion
-is \icoq{False}, we also generate the full clausal form for 
-\[
-  I = (r \to f) \land (f_1 \lor f) \land \dots \land (f_i \lor f)
-\]
-This is sound because $I \to \icoq{False}$ is an intuitionistic tautology.% for ($f = (f_1 \to \dots \to f_n \to r)$).
+clausal encoding is partial and we also keep the \emph{implication
+  clause} $(\Lit{f_1} \to \dots \to \Lit{r}) \to \Lit{f}$ for later processing.  An
+exception is when we intend to prove \icoq{False}.  In that case, the
+\icoq{IMPL+} rule may drop the requirement on the decidability of the
+$f_i$ thus providing a complete clausal encoding.
+This is sound because for any $f=(f_1 \to \dots \to f_n \to r)$,
+$
+  (\Lit{r} \to \Lit{f}) \land \bigwedge_{f_i} (\Lit{f_i} \lor \Lit{f}) \to \icoq{False}
+$
+is an intuitionistic tautology.% for ($f = (f_1 \to \dots \to f_n \to r)$).
+
+\begin{example}
+  \label{exa:cnf}
+  Suppose that we intend to prove the tautology
+  $(a \to (b\land c)) \to (b \lor (a \to c))$ where $a$, $b$ and $c$ 
+  are intuitionistic propositional variables.
+  After running the introduction rule, we obtain the following hypothesis and conclusion
+  \[
+    \left\{\Lit{a \to (b\land c)} \right\}\vdash b \lor (a \to c)
+  \]
+  We compute $\icoq{CNF-}$ for the hypothesis \emph{i.e.} $\icoq{IMPL-}(\Lit{a \to (b\land c)})$, and $\icoq{CNF+}$ for the conclusion \emph{i.e.}, 
+  $\icoq{OR+}(\Lit{d \lor (a \to c)})$.
+  Recursively, we compute $\icoq{AND-}(b \land c)$ and $\icoq{IMPL+}(a \to c)$ and eventually obtain
+  \[\left\{
+    \begin{array}{l}
+      \Lit{a \to (b \land c) }, \Lit{a \to (b \land c)} \to \Lit{a} \to \Lit{b \land c},\\
+      \Lit{b \land c} \to \Lit{b}, \Lit{b \land c} \to \Lit{c},\\
+      \Lit{b} \to \Lit{b \lor (a \to c)},
+      \Lit{a \to c} \to \Lit{b \lor (a \to c)}\\
+      \Lit{c} \to \Lit{a \to c}, (\Lit{a} \to \Lit{c}) \to \Lit{a \to c}
+    \end{array}\right\}
+    \vdash b \lor (a \to c)
+  \]
+  Note that because $a$ is an intuitionistic proposition,
+  we keep the \emph{implication clause} $(\Lit{a} \to \Lit{c}) \to \Lit{a \to c}$.
+\end{example}
+
 
 \subsection{Lazy Unit Propagation}
 
 Once a clause is reduced to a single literal, say $l$, \emph{unit
   propagation} simplifies all the remaining clauses using $l$. There
-are three cases to consider.  If a clause $c$, does not mention $l$,
+are three cases to consider.  If a clause $c$ does not mention $l$,
 it is left unchanged. If the literal $l$ belongs to the clause $c$,
 the clause is redundant and it is removed (see \icoq{R1} and
 \icoq{R2}). If the negation of the literal $l$ belongs to the clause,
@@ -433,46 +491,48 @@ we deduce the simplified clause $c \setminus \neg l$ (see \icoq{M1} and \icoq{M2
 we have the following inferences:
 \[
   \icoq{R1}\dfrac{ p }{ p \lor r } \qquad
-  \icoq{R2}\dfrac {\neg p }{ p \to r } \qquad 
+  \icoq{R2}\dfrac {p \to \bot }{ p \to r } \qquad 
   \icoq{M1}\dfrac{p \quad p \to r}
   { r }  \qquad
-  \icoq{M2}\dfrac{\neg p \quad p \lor r}{r} 
+  \icoq{M2}\dfrac{p \to \bot \quad p \lor r}{r} 
   \qquad
 \]
+In the following, a literal $l$ is said to be \emph{watched} if
+neither $[l]$ nor $[\neg l]$ is a unit clause. We also say that a
+literal $l$ is \emph{assigned} if it is not \emph{watched}.
 
-
-A naive algorithm linearly traverses every clause and is therefore inefficient.
+A naive unit propagation algorithm linearly traverses every clause and is therefore inefficient.
 %
-A key observation is that the purpose of unit propagation is
-to produce new unit clauses. Said otherwise, it not necessary to traverse
-clauses with at least 2 literals that are not assigned.
-%% By indexing
-%% clauses on these two literals, unit propagation can be implemented
-%% more efficiently.
+A key observation is that the purpose of unit propagation is to
+produce new unit clauses. Said otherwise, it not necessary to traverse
+clauses where at least 2 literals are watched.
 %
-We implement a variant of head-tail
-lists~\cite{Zhang96anefficient,ZhangS00} that is simpler than the
-2-watched literals optimisation~\cite{MoskewiczMZZM01}.
-%
-Moreover, as functional lists do not provide a constant-time access to the
-tail of a list, instead of head-tail lists, we have 2-heads lists.
-%
-A clause that is neither the empty clause nor the unit clause is
+As a result, a clause that is neither the empty clause nor the unit clause is
 represented by the type \icoq{watched_clause} given below.
 \begin{minted}{coq}
-Record watched_clause := {
-  watch1 : literal;
-  watch2 : literal;
-  unwatched: list literal }.
+Record watched_clause:={
+  watch1 : literal;  watch2 : literal; unwatched : list literal }.
 \end{minted}
-Watched clauses are indexed on their watched literals but also on whether the leading literals are positive or negative.
+This is purely functional variant  of so called head/tail
+lists\footnote{Head/tail lists give access to the first and last element of a list in $O(1)$.}~\cite{Zhang96anefficient,ZhangS00} that is simpler than the
+2-watched literals optimisation~\cite{MoskewiczMZZM01}.
+%%%
+%%Head/tail lists are an imperative data-structure; access to the first and last element of the list is in $O(1)$.
+%%%
+%%Our purely functional alternative is to have two distinguished
+%%literals for the watched literals and store the rest of the literals
+%%in a list.
 %
-To get an efficient representation of sets of clauses, they are indexed and stored in Patricia Trees~\cite{Okasaki98fastmergeable}. 
+Watched clauses are indexed on their watched literals but also on whether the watched literals are positive or negative.
+%
+To get an efficient representation of sets of clauses, each clause is
+given a unique identifier and is stored in a Patricia
+Tree~\cite{Okasaki98fastmergeable}.
 %
 In order to implement so-called \emph{non-chronological backtracking} (see Section~\ref{sec:case-split}),
 we also track the set of literals that are needed to deduce a clause. As a
-result, each clause is annotated  with a set of literals \icoq{LitSet.t} that is also
-represented using Patricia Trees.
+result, each clause is annotated  with a set of literals \icoq{LitSet.t}.
+%that is also represented using Patricia Trees.
 \begin{minted}{coq}
   Record Annot (A: Type) := { elt := A ; deps := LitSet.t }
 \end{minted}
@@ -483,27 +543,23 @@ Definition clause_set := ptrie (Annot watched_clause).
 Definition watch_map  := ptrie (clause_set * clause_set).
 \end{minted}
 A \icoq{watch_map} $m$ maps a propositional variable $f$ \emph{i.e.},
-a hash-consed formula, to two sets $(n,s)$ of clauses where clauses in $n$ are watched by $\icoq{NEG}\ f$ and clauses in $p$ 
-are watched  by $\icoq{POS}\ f$. More precisely, we have
+a hash-consed formula, to two sets $(n,s)$ of clauses where clauses in $n$ are watched by $\Lit{f} \to$ and clauses in $p$ 
+are watched  by $\Lit{f}$. More precisely, we have
 \[
   \begin{array}{lcl}
-    c \in n &\mathit{ iff }& c.watch1=\icoq{NEG}\ f \lor c.watch2=\icoq{NEG}\ f \\
-    c \in p &\mathit{ iff }& c.watch1=\icoq{POS}\ f \lor c.watch2=\icoq{POS}\ f \\
+    c \in n &\mathit{ iff }& c.watch1=(\Lit{ f} \to) \lor (c.watch2=\Lit{f} \to) \\
+    c \in p &\mathit{ iff }& c.watch1=\Lit{f} \lor c.watch2=\Lit{f} \\
   \end{array}
 \]
 Suppose that we perform unit propagation for the literal
-$\icoq{POS}\ f$ for a \icoq{watched_map} $m$ such that $m[f] = (n,p)$.
+$\Lit{f}$ for a \icoq{watched_map} $m$ such that $m[f] = (n,p)$.
 The clauses in $p$ are redundant and can be dropped; the clauses in $n$
 need to be processed and reduced. The reduction takes as argument the
-set of literals that are already assigned, a watched clause $c$ and
+set of literals that are currently assigned, a watched clause $c$ and
 returns an annotated clause \icoq{Annot clause} where the type
 \icoq{clause} is given below
 \begin{minted}{coq}
-Inductive clause:=
- | EMPTY  
- | TRUE
- | UNIT (l:literal)
- | CLAUSE (wc:watched_clause)
+Inductive clause:=|EMPTY |TRUE |UNIT (l:literal)|CLAUSE (wc:watched_clause)
 \end{minted}
 \icoq{EMPTY} represents the \emph{empty} clause, \emph{i.e.} a
 contradiction. In that case, unit propagation concludes the proof.
@@ -512,13 +568,14 @@ contradiction. In that case, unit propagation concludes the proof.
 %
 \icoq{UNIT l} is a unit clause to be propagated and \icoq{CLAUSE wc} is a watched clause.
 
-Without loss of generality, suppose that $f$ belongs to the set of assigned
-literals \icoq{s} and that we have a clause $c$ has the form:
+Without loss of generality, suppose that $\Lit{f}$ belongs to the set of assigned
+literals \icoq{s} and that we have a clause $c$ of the form:
 \[
-  c = \{| \icoq{watch1} := \neg f ; \icoq{watch2} := x ; \icoq{unwatched} := [\neg y_1;\neg y_2;\dots;\neg y_n]|\}
+  c = \{| \icoq{watch1} := \neg \Lit{f}  ; \icoq{watch2} := x ;
+  \icoq{unwatched} := [y_1;\dots;y_n ;]|\}
 \]
 The \icoq{reduce} function takes as input the watched literal $x$ and aims at finding in the list
-$[\neg y_1;\neg y_n;\dots;\neg y_n]$ a watched literal $y_i$ (\emph{i.e.}, $y_i$ is not assigned in \icoq{s})
+$[y_1; y_n;\dots; y_n]$ a watched literal $y_i$ (\emph{i.e.}, $y_i$ is not assigned in \icoq{s})
 and return as clause the rest of the
 list. %The argument \icoq{d} is used to record the literals in the
 %clause that are known to be assigned.
@@ -530,39 +587,39 @@ list. %The argument \icoq{d} is used to record the literals in the
     let wc := {| watch1 := x ; watch2 := y ; unwatched := l |} in
     {| elt := CLAUSE wc ; deps := d |} when y #$\notin$# s
 \end{minted}
-If the list is empty, we have produced the unit clause $x$ and unit
-propagation will be recursively called.  Let $y$ be the head of the list
-$l$.  If $y$ is not assigned in the environment $s$, we return a
+If the list is empty, we produce the unit clause \icoq{UNIT} $x$ and unit
+propagation will be recursively called for $x$.  Let $y$ be the head of the list
+$l$.  If $y$ is not assigned in $s$, we return a
 novel clause where the watched literals are $x$ and $y$.
 %
-If $y$ is already assigned with the same polarity in $s$, the clause
+If $y$ is already assigned with the same polarity in $s$ ($y\in s$), the clause
 is redundant and can be dropped.  If $y$ is already assigned but with
 opposite polarity ($\neg y \in \icoq{s}$), the reduction is recursively called threading along
 the dependencies of the literal $y$.
 %
 \begin{example}
   Suppose that the set of assigned literals is given by
-  $\icoq{s} = \{ f; y_1; y_n \}$ and we perform unit
+  $\icoq{s} = \{f; \neg y_1; \neg y_n \}$ and we perform unit
   propagation over the clause $c$.  By construction, we know that
   neither $x$ nor $\neg x$ are assigned in $\icoq{s}$. To get a
   well-defined watched clause with 2 watched literals, we need to find
-  a replacement for the literal $\neg f$ in the list
-  $[\neg y_1;\neg y_2;\ldots;\neg y_n]$.
+  a replacement for the literal $\neg \Lit{f}$ in the list
+  $[y_1;y_2;\ldots; y_n]$.
   %
-  As $\{y_1, y_n\} \subseteq  \icoq{s}$, a greedy unit propagation would deduce that
-  $\neg y_1$ and $\neg y_n$ can be removed but as the prohibitive cost of a linear scan of the whole clause.
+  As $\{\neg y_1, \neg y_n\} \subseteq  \icoq{s}$, a greedy unit propagation would deduce that
+  $y_1$ and $y_n$ can be removed but as the prohibitive cost of a linear scan of the whole clause.
   The idea of lazy unit propagation is to stop at the first unassigned literal \emph{i.e.} $y_2$.
   Therefore, we generate the watched clause
   \[
-    \{ \icoq{watche1} := x ; \icoq{watche2} := \neg y_2 ; \icoq{unwatched} := [\neg y_3;\dots;\neg y_n] \}
+    \{ \icoq{watche1} := x ; \icoq{watche2} := y_2 ; \icoq{unwatched} := [ y_3;\dots; y_n] \}
     \]
-    In logic terms, we have performed the following \emph{modus ponens} ignoring $y_n$
-    \[
-      \dfrac{
-        f \quad y_1 \quad f \to x \to y_1 \to y_2 \to \dots  \to y_n \to \icoq{False}
-      }
-      {  x \to y_2 \to \dots \to y_n \to \icoq{False} }
-    \]
+%%     In logic terms, we have performed the following \emph{modus ponens} ignoring $y_n$
+%%     \[
+%%       \dfrac{
+%%         f \quad y_1 \quad f \to x \to y_1 \to y_2 \to \dots  \to y_n \to \icoq{False}
+%%       }
+%%       {  x \to y_2 \to \dots \to y_n \to \icoq{False} }
+%%     \]
 \end{example}
 
 
@@ -574,11 +631,18 @@ case-split over a clause. The clause needs to represent a
 disjunction. If the conclusion is \icoq{False}, any clause may be
 selected. Otherwise, the clause may only contain  either positive literals or  negative
 \emph{classical} literals. The soundness of this argument is expressed by
-the following propositional equivalences.
+the following  inferences.
 \[
   \begin{array}{l}
-  (\bigwedge_i p_i \to \bigvee_j q_j) \to \bot \equiv (\bigvee_i \neg p_i \lor \bigvee_j q_j) \to \bot\\
-    \bigwedge_i (p_1 \lor \neg p_i) \to ((\bigwedge_i p_i \to \bigvee_j q_j) \to g) \equiv (\bigvee_i \neg p_i \lor \bigvee_j q_j) \to g
+    \dfrac{
+    \bigwedge_i \Gamma \cup (p_i \to \bot) \vdash \bot \quad \bigwedge_j \Gamma \cup q_j  \vdash \bot
+    }
+    {\Gamma \cup \bigwedge_i p_i \to \bigvee_j q_j \vdash \bot} \quad
+    \dfrac{
+    \bigwedge_i (p_i \lor \neg p_i) \quad
+    \bigwedge_i \Gamma \cup (p_i \to \bot) \vdash g \quad \bigwedge_j \Gamma \cup q_j  \vdash g
+    }
+    {\Gamma \cup \bigwedge_i p_i \to \bigvee_j q_j \vdash g} \quad
   \end{array}
 \]
 A naive algorithm consists in doing a recursive call for each literal,
@@ -592,11 +656,12 @@ case-split. This is illustrated by Example~\ref{exa:backjump}.
   set of dependencies $d_i$ where the $d_i$ are disjoint and do not
   contain the literals $\{l,m,n,o\}$.
   \[
+    \{
     H_1 : (l \lor m)_{d_1}, 
     H_2 : (n \lor o)_{d_2},
     H_3 : (n \to \bot)_{d_3},
     H_4 : (o \to \bot)_{d_4}
-    \vdash \bot
+    \}\vdash \bot
 \]
 %% 
 %% 
@@ -626,14 +691,16 @@ the second case of the case-split over $H_2$.
 %
 A propositional prover has the idealised type \icoq{ProverT} defined below.
 \begin{minted}{coq}
-ProverT := state -> HFormula -> option LitSet.t
+ProverT := state #$\to$# HFormula #$\to$# option LitSet.t
 \end{minted}
 It takes as input the prover state \icoq{st}, and the formula
 to prove \icoq{g} and returns, upon success, %a list of learnt clauses together with
 the set of literals that are needed for the proof.
 %
+Details about the components of \icoq{state} are given in Section~\ref{sec:solver-state}.
+%
 The \icoq{case_split} algorithm is parametrised by a prover \icoq{Prover:ProverT}.
-It takes as input a clause \icoq{cl} and returns a prover performs a case-analysis over all the
+It takes as input a clause \icoq{cl} and returns a prover performing a case-analysis over all the
 literals of the input clause \icoq{cl}. In addition to a set of
 literals, it returns a boolean indicating whether backjumping is
 possible.
@@ -644,50 +711,46 @@ Fixpoint case_split cl st g  :=
  | f::cl => match Prover (st #$\cup$# f) g with
             | None => None
             | Some d  =>
-               if f#$\notin$# d && s #$\vdash$# d then Some (true,d)
+               if f#$\notin$# d && st #$\vdash$# d then Some (true,d)
                else match case_split cl st g with
                     | None => None
                     | Some(b, d') => if b then Some(b,d')
                                      else Some(false, d' #$\cup$# (d #$\setminus$# {f}))
-                    end
-            end
- end
+                    end end end.
 \end{minted}
 If the clause is empty \emph{i.e.}, it denotes \icoq{False}, the proof
 is finished.  Suppose that \icoq{f} is the first literal of the clause
 \icoq{cl}, the prover is recursively called with the state \icoq{st}
 augmented with the unit clause $f$. If the proof \icoq{d} does not
 require \icoq{f} and all the literals in \icoq{d} are assigned in the current
-state (\icoq{s} $\vdash$ d), the whole case-split is spurious and the
+state (\icoq{st} $\vdash$ d), the whole case-split is spurious and the
 prover returns immediately.  Otherwise, we recursively call
-\icoq{case_plit} and return the update the set of literals needed by the proof.
+\icoq{case_split} and return the updated set of literals needed by the proof.
 %
 The literal \icoq{f} is momentarily removed from the dependencies of
 \icoq{d} but the dependencies are adjusted just after the
 \icoq{case_split} call by adding the dependencies of the clause \icoq{cl}.
 
 \subsection{Implication clauses}
-When there is no clause to branch over, the prover is considering 
+When there is no clause to branch over, the prover considers 
 \emph{implication clauses} and tries to (recursively) prove one of
 them.
 \begin{minted}[escapeinside=\#\#,mathescape=true]{coq}
 Fixpoint prover_arrows (l : list literal) (st: state) (g: HFormula)  :=
  match l with
- | [] -> None
- | f :: l -> match Prover st f with
-             | Some _ => Prover (st #$\cup$# f) g
-             | None   => prover_arrows l st g
-             end
- end.
+ | [] => None
+ | f :: l => match Prover st f with
+             | Some _ => Prover (st #$\cup$# f) g  | None => prover_arrows l st g
+             end  end.
 \end{minted}
 The function \icoq{prover_arrows} takes as argument a list \icoq{l} of
-literals.  A literal \icoq{f} in the list is of the form \icoq{POS}
-(\icoq{LIMPL a b}).
-%
-For such literals, the CNF rule \icoq{IMPL+} is incomplete if all the \icoq{a}s are not \emph{classical} propositions.
+literals.  A literal \icoq{f} in the list is of the form
+$\icoq{POS} (\icoq{LIMPL}\; [a_1;...;a_n]\; b)$ which encodes an \emph{implication clause}
+$\Lit{a_1} \to \dots \to \Lit{a_n} \to (\Lit{a_1 \to \dots \to a_n \to b})$ which was left 
+aside during the  CNF conversion. % is incomplete if all the \icoq{a}s are not \emph{classical} propositions.
 %
 The prover is recursively called with, as goal,
-the formula \icoq{LIMPL a b}. If the proof succeeds, the literal \icoq{f} holds
+the formula $\bigwedge_i a_i \to b$. If the proof succeeds, the literal \icoq{f} holds
 and the proof continues with a state augmented with \icoq{f}.
 Otherwise, the prover tries another literal.
 %
@@ -697,7 +760,7 @@ Otherwise, the prover tries another literal.
 \label{sec:thy-reasoning}
 
 At leaves of the proof search, the solver has assigned a set of
-literal that do not lead to a propositional conflict. At this stage, a
+literals that do not lead to a propositional conflict. At this stage, a
 SAT solver reports that a model is found.
 %
 Yet, this propositional model may be invalidated by performing theory reasoning.
@@ -710,12 +773,11 @@ the SAT solver.
 The interface of a theory reasoner is given below.
 \begin{minted}[escapeinside=\#\#,mathescape=true]{coq}
 Record Thy := {
- thy_prover : hmap -> list literal -> option (hmap * clause);
- thy_prover_sound : forall hm hm' cl cl',
-    thy_prover hm cl = Some (hm',cl') ->
-    #$\llbracket$#cl'#$\rrbracket$#  #$\land$# hm #$\sqsubseteq$ #hm' #$\land$# #$\forall$# l #$\in$# cl', l #$\in$# hm'  }
+ thy_prover : hmap #$\to$# list literal #$\to$# option (hmap * clause);
+ thy_prover_sound : #$\forall$# hm hm' cl cl', thy_prover hm cl = Some (hm',cl')
+    #$\to$# #$\llbracket$#cl'#$\rrbracket$#  #$\land$# hm #$\sqsubseteq$ #hm' #$\land$# #$\forall$# l #$\in$# cl', l #$\in$# hm'  }
 \end{minted}
-A \icoq{thy_prover} takes an input a hash-cons map \icoq{hm} and a
+A \icoq{thy_prover} takes as input a hash-cons map \icoq{hm} and a
 list of literals \icoq{cl}.  The hash-cons map \icoq{hm} contains the
 currently hash-consed terms. The literals in the list \icoq{cl} are
 obtained from the current state of the SAT solver and are restricted
@@ -735,16 +797,13 @@ propagation and generate a clause made of new literals.
 %
 
 \subsection{Solver State and Main Loop}
+\label{sec:solver-state}
 Using the previous components, we are ready to detail the proof state. %It is a record defined below.
 \begin{minted}{coq}
 Record state := {
- fresh_clause_id : int;
- hconsmap        : hmap;
- arrows          : list literals;
- wneg            : iSet;
- defs            : iSet * iSet;
- units           : ptrie (Annot bool);
- unit_stack      : list (Annot literal);
+ fresh_clause_id : int; hconsmap : hmap; arrows : list literal;
+ wneg            : iSet; defs : iSet * iSet;
+ units           : ptrie (Annot bool); unit_stack : list (Annot literal);
  clauses         : watch_map }.
 \end{minted}
 \begin{itemize}
@@ -753,16 +812,20 @@ Record state := {
 \item The field \icoq{hconsmap} is only
 updated by the theory prover and is used to ensure well-formedness
 conditions about hash-consing.
-\item The field \icoq{arrows} contains the
-list of \emph{implication clauses} which could not be turned into a proper CNF.
+\item The field \icoq{arrows} contains a list of literals.  Each
+  literal is of the form $\icoq{IMPL}[a_1;\dots;a_n] b$ and represent
+  an \emph{implication clauses} \emph{i.e.},
+  $(\Lit{a_1} \to \dots \to \Lit{a_i} \to \Lit{b}) \to Lit{a_1 \to
+    \dots \to a_i \to b}$ which could not be turned into a proper
+  \emph{flat} clause during CNF conversion.
 %
 \item The field \icoq{wneg} contains a set of hash-cons indexes
 corresponding to watched negative literals. These literals are added
-to the list of literals send to the theory prover.
+to the list of literals sent to the theory prover.
 \item The field \icoq{defs} is a pair of sets of hash-cons indexes.
-These are used to avoid recomputing the CNF+ or CNF- of formulae.
+These are used for memoizing the CNF+ and CNF- computations.
 \item The field \icoq{units} encodes using a Patricia Tree the set of
-literals that are assigned.  The boolean indicates whether the literal
+assigned literals.  The boolean indicates whether the literal
 is positive or negative and the annotation tells which sets of initial
 literals were needed for the deduction.
 \item The field \icoq{unit_stack} is the stack of literals for which
@@ -774,7 +837,8 @@ The type of the implemented prover is slightly more complicated that what we exp
 In addition to a set of literals, it also threads along a \icoq{hmap} and a list of clauses learnt by theory reasoning.
 Theory reasoning is only running if the boolean \icoq{use_prover} is set.
 %
-Termination is ensured by provided some fuel computed from the size of the formula. 
+Termination is ensured by provided some fuel computed (without proof) from the size of
+the formula. 
 \begin{minted}{coq}
 Fixpoint prover thy use_prover fuel st g :=
  match n with
@@ -792,20 +856,43 @@ to prove one of the \emph{implication clause} by recursively calling
 the prover. Eventually, if no \emph{implication clause} can be
 derived, theory reasoning is called.
 
+  
+\begin{example}[Example~\ref{exa:cnf} continued]
+  Suppose that we have the proof state obtained after constructed the
+  CNF for $a \to (b \wedge c) \to (d \lor (a \to c))$ (see
+  Example~\ref{exa:cnf}).  The literal $\Lit{a \to (b \land c)}$
+  triggers unit propagation and generates the clause
+  $\Lit{a} \to \Lit{b \land c}$. At this stage, neither
+  unit propagation nor case-splitting is possible.  Yet, we have a
+  single \emph{implication clause}
+  $(\Lit{a} \to \Lit{c}) \to \Lit{a \to c}$.  Hence, we call
+  \icoq{prover_arrows} with the singleton list $[\Lit{a \to c}]$.  To
+  prove $\Lit{a \to c}$, we introduce $\Lit{a}$ and attempt to prove
+  $c$.  By unit propagation, we derive first $\Lit{b\land c}$
+  and then $\Lit{b}$ and $\Lit{c}$; thus concluding the sub-proof.  As
+  a result, we augment the context with $\Lit{a \to c}$ and conclude
+  the goal by unit propagation.
+\end{example}
+
 \section{Soundness Proof}
 \label{sec:soundness-proof}
+
 In this part, we give some insights about the soundness proof that is
 based on three main properties: well-formedness, soundness of
 dependencies and soundness of provers.
+%
+The only axioms of the development are those of the \icoq{Int63} standard library 
+which define native machine integers.
 
 \subsection{Well-formedness}
 
-Hash-consing has the advantage that equality of terms can be performed
-using native integers. However, this requires to ensure that the
-initial formula is correctly hash-consed and that the prover always
-operates with hash-consed literals. Fortunately, most of the generated
-literals are sub-formulae that are obtained by the CNF. The only
-exception being theory reasoning.
+Hash-consing has the advantage that the equality of terms can be
+decided by an equality of native integers without in-depth inspection
+of terms. However, this requires ensuring that the initial formula is
+correctly hash-consed and that the prover always operates with
+hash-consed literals. Fortunately, most of the generated literals are
+sub-formulae that are obtained by the CNF. The only exception is
+theory reasoning.
 %
 The hash-consed formulae are stored in a map \icoq{m} :
 \icoq{hmap := ptrie (bool*LForm)}.  The keys of the map are the hash-cons indexes
@@ -879,7 +966,7 @@ annotated by the set of literals needed for the deduction.
 %
 These sets are represented by Patricia Trees using hash-consed indexes as keys.
 
-We write $c_d$ (resp. $l_d$) for the a (watched) clause
+We write $c_d$ (resp. $l_d$) for a (watched) clause
 (resp. literal) annotated with a set of literals $d$. For each
 operation, we prove that the annotation is sound \emph{i.e.}
 the conjunction of the literals in $d$ entails the clause $c$ (resp. the literal $l$).
@@ -920,18 +1007,16 @@ sufficient to entail a conflict.  The soundness of provers is then
 stated by the following definition.
 \begin{minted}[escapeinside=\#\#,mathescape=true]{coq}
 Definition sound_prover (prover: ProverT) (st: state) :=
- #$\forall$# g hm lc d, wf_state st #$\to$# g#$_i^b$# #$\in$# hconsmap} st #$\to$#
+ #$\forall$# g hm lc d, wf_state st #$\to$# g#$_i^b$# #$\in$# hconsmap st #$\to$#
  prover st g = Success (m,lc,d) #$\to$#
- (#$\llbracket$#st#$\rrbracket$# -> #$\llbracket$#st#$\rrbracket^{dep}$# -> #$\llbracket$#g#$\rrbracket$#) #$\land$#
- (#$\llbracket$#st#$\rrbracket^{dep}$# -> #$\llbracket$#d#$\rrbracket_m$# -> #$\llbracket$#g#$\rrbracket$#)  #$\land$#
- #$\bigwedge_{c \in lc}$# #$\llbracket$#c#$\rrbracket$#
+ (#$\llbracket$#st#$\rrbracket$# #$\to$# #$\llbracket$#st#$\rrbracket^{dep}$# #$\to$# #$\llbracket$#g#$\rrbracket$#) #$\land$# (#$\llbracket$#st#$\rrbracket^{dep}$# #$\to$# #$\llbracket$#d#$\rrbracket_m$# #$\to$# #$\llbracket$#g#$\rrbracket$#)  #$\land$# #$\bigwedge_{c \in lc}$# #$\llbracket$#c#$\rrbracket$#
 \end{minted}
 Therefore, soundness requires to prove that the goal formula \icoq{g}
 is entailed by either the clauses in the state and their dependencies
 or the dependencies alone and the set of literals $d$.
 %
 Both properties are needed in order to prove that \emph{backjumping} is correct.
-We have also to prove that the clauses \icoq{lc} obtained by theory reasoning are
+We also have to prove that the clauses \icoq{lc} obtained by theory reasoning are
 sound. 
 %
 Sometimes, the fact that we use classical reasoning in an
@@ -963,14 +1048,14 @@ For most of our proof state transformation, say \icoq{T}, a simplified  correctn
 Having a SAT solver for deciding propositional logic, one option is to
 directly perform proof by
 reflection~\cite[Chap. 16]{casteran:hal-00344237}. Using this mode, we
-get a tactics that is similar to the existing \icoq{tauto} with the
+get a tactic that is similar to the existing \icoq{tauto} with the
 advantage that our reification process detects decidable propositions
 declared using the type-class mechanism~\cite{SozeauO08}.
 %
 %% \begin{example}
 %%   Consider the following goal.
 %% \begin{minted}{coq}
-%% Goal forall (x y:Z) (P: Prop), ((x = y) -> P) <-> (~ (x = y) \/ P).
+%% Goal forall (x y:Z) (P: Prop), ((x = y) #$\to$# P) <#$\to$# (~ (x = y) \/ P).
 %% Proof. intros. Fail tauto. itauto fail. Qed.
 %% \end{minted}
 %% The tactic \icoq{tauto} fails because this is not an intuitionistic
@@ -983,7 +1068,7 @@ demands that we implement the interface of
 Section~\ref{sec:thy-reasoning}. However, a closer look shows that the
 interface does not expose a syntax for atoms: they are only
 represented by indexes. In a nutshell, the interface is purposely  an
-empty shell. An fully reflexive approach would require to enrich the
+empty shell. A fully reflexive approach would require to enrich the
 interface with an environment mapping atoms to theory-specific
 syntactic terms.
 %
@@ -991,15 +1076,15 @@ Here, we follow a different path and implement theory reasoning using
 classic user-defined tactics.
 %
 The advantages are that existing decision procedures can be readily
-reuse and that user-defined tactics are more flexible.
+reused and that user-defined tactics are more flexible.
 %
 Yet, user-defined tactics and proof by reflection  do not
 operate at the same level and embedding a powerful reflective tactic language
 would be a challenge by itself.
 
 To reach our goal, we take the opposite approach and leverage the Coq
-extraction mechanism thus allowing to run our SAT solver inside the
-Coq proof engine \emph{i.e.}, at the level of tactics.
+extraction mechanism, thus allowing to run our SAT solver inside the
+Coq proof engine, \emph{i.e.}, at the level of tactics.
 %
 There, the theory reasoning interface may be implemented by calling
 user-defined tactics.
@@ -1009,24 +1094,37 @@ takes a list of literals and attempts to produce a clause.
 Therefore, to interface with tactics, the followings tasks need to be performed:
 \begin{enumerate}
 \item Construct a goal from the literals provided by the SAT solver.
+\item (Optionally) perform theory propagation
 \item Run the tactic and obtain a proof-term.
 \item Return a reduced clause.
 \end{enumerate}
 Within the proof engine, we maintain a mapping from literals to actual
 Coq terms. We interpret the list of literal as a clause to be
 discharged by the user-provided tactic. We obtain a goal $G$ of the general form:
-\[
+$
   G {:=} \forall_{i\in I} (x_i:p_i), \bigvee_{j\in J} q_j
-\]
-Actually, the $p_i$ and the $q_j$ do not dependent on the
+$.
+Actually, the $p_i$ and the $q_j$ do not depend on the
 $x_i$. Yet, this dependent product notation is convenient to
 explain our minimisation procedure.
 
+The fact that the conclusion is a disjunction $\bigvee_{j\in J} q_j$
+may trigger, for some tactics, a costly case-analysis which would be
+more efficiently performed at the level of the SAT solver. For this
+purpose, we leverage the type-class mechanism to perform theory
+propagation at the level of individual propositions. For instance, if one of
+the $q_j$ is an equality over \icoq{Z}, say \icoq{x=y}, we 
+directly return to the SAT solver the tautology clause
+\icoq{x<y #$\lor$# x=y #$\lor$# y<x}.
+
+If the tactic fails, the unsuccessful goal $G$ is a potential
+counter-example and is returned to the user for inspection.
+%
 If the tactic proves the goal, the clause $G$ holds and is therefore a
 conflict clause.  A sound, but naive, approach is to return this clause
 containing all the input literals.
 %
-Yet, to improve the efficiency of SAT solver, it is desirable to
+Yet, to improve the efficiency of the SAT solver, it is desirable to
 reduce the clause and produce a minimal \emph{unsatisfiable
   core}. In other words, we search for sets $I' \subseteq I$ and $J' \subseteq J$ such that
 $
@@ -1045,14 +1143,14 @@ In that case, the goal $G$ is equivalent to $G'$
 \[
   G' {:=} \forall_{i\in I} (x_i:p_i), \forall_{j\in J} (y_j:\neg p_j), \icoq{False}
 \]
-Using this formulation, the same syntactic analysis extract both a subset
+Using this formulation, the same syntactic analysis extracts both a subset
 $I' \subseteq I$ of the negative literals and a subset $J' \subseteq J$ of
 the positive literals.  When the propositions are not classical, we
 perform some partial iterative proof-search and try to prove each of
 the $q_i$, one at a time.
 %
 Once the minimisation is done, we adjust the proof-term for the minimised
-conflict clause. Essentially, this consists in recomputing the correct De Bruijn
+conflict clause: this consists in recomputing the correct De Bruijn
 indexes to accommodate for the removed hypotheses. 
 
 If the extracted SAT solver succeeds, we have the guarantee that the
@@ -1063,7 +1161,7 @@ information to remove from the context the propositions that are
 irrelevant for the proof.
 %
 Now, we enrich the context with all the conflict clauses that were
-generated during the SAT solver run, re-using the cached proofs.  At
+generated during the SAT solver run, re-using the cached proof terms.  At
 this stage, we have a goal that is a propositional tautology.  It is
 solved by re-running the SAT solver, without theory reasoning, by a classic
 proof by reflection.
@@ -1087,12 +1185,12 @@ Coq proof engine and to perform proof by reflection.
 %% propositions \icoq{Prop}.  This increases the scope of the solver. Our
 %% extended syntax of formula is defined below.
 %% \begin{minted}{coq}
-%% Inductive BForm : kind -> Type :=
+%% Inductive BForm : kind #$\to$# Type :=
 %% | BTT : forall (k: kind), BForm k
 %% | BFF : forall (k: kind), BForm k
-%% | BAT : forall (k: kind), int -> BForm k
-%% | BOP : forall (k: kind), op -> HCons.t (BForm k) -> HCons.t (BForm k) -> (BForm k)
-%% | BIT : (BForm IsBool) -> BForm IsProp.
+%% | BAT : forall (k: kind), int #$\to$# BForm k
+%% | BOP : forall (k: kind), op #$\to$# HCons.t (BForm k) #$\to$# HCons.t (BForm k) #$\to$# (BForm k)
+%% | BIT : (BForm IsBool) #$\to$# BForm IsProp.
 %% \end{minted}
 %% where \icoq{k: kind} is either \icoq{IsBool} or \icoq{IsProp} and
 %% \icoq{op} is one of the propositional operators \icoq{AND}, \icoq{OR}
@@ -1107,8 +1205,8 @@ Coq proof engine and to perform proof by reflection.
 %% The advantage is that a boolean, say \icoq{Z.ltb x y}, and its
 %% predicate counterpart \emph{i.e.}, \icoq{Z.lt x y} are reified by the
 %% same term. After translation, a goal such as
-%% \icoq{Z.ltb x y = true -> Z.lt x y}
-%% becomes the propositional tautology \icoq{Z.lt x y -> Z.lt x y}.
+%% \icoq{Z.ltb x y = true #$\to$# Z.lt x y}
+%% becomes the propositional tautology \icoq{Z.lt x y #$\to$# Z.lt x y}.
 
 \section{Experiments}
 \label{sec:experiments}
@@ -1121,20 +1219,20 @@ they are solved by our tactic.
 
 Consider again the goals in Example~\ref{exa:incomplete}.  For
 \icoq{Ex1}, the SAT solver has knowledge that \icoq{x>=0} is a classical
-proposition and therefore performs a case-split over \icoq{x>=0-> p}.
-The first sub-case is solved by theory reasoning (\icoq{x=0 -> ~ x>= 0 -> False}
-holds); and the second by propositional reasoning (\icoq{p -> p}).
+proposition and therefore performs a case-split over \icoq{x>=0#$\to$# p}.
+The first sub-case is solved by theory reasoning (\icoq{x=0 #$\to$# ~ x>= 0 #$\to$# False}
+holds); and the second by propositional reasoning (\icoq{p #$\to$# p}).
 %
 For \icoq{Ex2}, the SAT solver does not make progress. However, it
 asks the leaf tactic \icoq{congruence} whether a watched negative
 literal (\emph{i.e.}, \icoq{a=c}) may be deduced from the assigned
 literal (\emph{i.e.}, \icoq{a=b} and \icoq{b=c}).
 %
-As \icoq{a = b -> b = c -> a = c} can be proved by \icoq{congruence},
+As \icoq{a=b #$\to$# b=c #$\to$# a=c} can be proved by \icoq{congruence},
 the clause is asserted by theory reasoning. The proof follows by
 propositional reasoning.
 
-For Ex~\ref{ex:too-many-calls}, the goal is solved by
+For Example~\ref{ex:too-many-calls}, the goal is solved by
 \icoq{intuition congruence} using two identical calls to the leaf tactic
 \icoq{congruence}.
 %
@@ -1145,44 +1243,45 @@ the same goal is solved by \icoq{itauto congruence} by calling
 \subsection{Pigeon Hole}
 
 The Pigeon Hole Principle, stating that there is no way to fit n+1
-pigeon in n hole, is a hard problem for resolution based SAT solvers.
+pigeons in n holes, is a hard problem for resolution based SAT solvers.
 %
 The algorithm presented here is no exception and the running time will
 be exponential in $n$. This is however a useful benchmark for
 assessing scalability. We have benchmarked our \icoq{itauto} tactic
 against the existing \icoq{tauto} and \icoq{rtauto} tactics using a
-timeout of 1000s and a memory limit of 15GB on a laptop (Intel Core i7
-at 2.6GHz with 16GB of RAM).
+timeout of 3600s and a memory limit of 15GB on a laptop (Intel Core i7
+at 1.8GHz with 32GB of RAM).
 %
 The results are shown in Fig.~\ref{fig:pigeon}.
 \begin{figure}
   \centering
   \subfloat[\centering Running time of tactics.]
-  {\includegraphics[width=0.45\linewidth]{images/pigeon_tac.pdf}}
+  {\includegraphics[width=0.45\linewidth]{pdf/pigeon_tac.pdf}}
   \qquad
   \subfloat[\centering Running time of type-checking.]
-  {\includegraphics[width=0.45\linewidth]{images/pigeon_qed.pdf}}
+  {\includegraphics[width=0.45\linewidth]{pdf/pigeon_qed.pdf}}
   \caption{Pigeon Hole for \icoq{itauto}, \icoq{tauto} and \icoq{rtauto}}
   \label{fig:pigeon}
 \end{figure}
-For \icoq{itauto}, the time for running the tactic and type-checking
+For \icoq{itauto}, the running time of the tactic and the type-checking
 time (\icoq{Qed} time) are similar.  As we perform a pure proof by
-reflection, this is not surprising.  Tough \icoq{itauto} scales
+reflection, this is not surprising.  Though \icoq{itauto} scales
 slightly better, the running time are similar to \icoq{rtauto} which
 only performs proof by reflection to check certificates.
 %
-\icoq{tauto} is the least scalable and reaches the timeout quickly.
+\icoq{tauto} is the least scalable and the proof search reaches
+timeout for 5 pigeons.
 %
 \icoq{rtauto} exhausts its memory quota when checking its certificate for 7 pigeons.
-\icoq{itauto} reaches the time limit of 1000s for 9 pigeons.
+\icoq{itauto} reaches the time limit of 3600s for 10 pigeons.
 
 \subsection{On existing developments}
 
 We have benchmarked \icoq{itauto} against the existing Coq tactics
 \icoq{tauto} and \icoq{intuition} for the
-Bedrock2\footnote{https://github.com/mit-plv/bedrock2} and
+Bedrock2\footnote{\url{https://github.com/mit-plv/bedrock2}} and
 CompCert\footnote{\url{https://github.com/AbsInt/CompCert}}
-developments.
+developments using Coq 8.14+alpha.
 %
 We have replaced calls to \icoq{tauto} and \icoq{intuition tac} for
 \icoq{tac} $\in$ \{\icoq{idtac}, \icoq{assumption},
@@ -1197,51 +1296,53 @@ representative case of failure is given in Example~\ref{exa:counter}.
 \begin{example} The following goal is solved by \icoq{intuition congruence}.
   \label{exa:counter}
   \begin{minted}{coq}
-    Goal true = true <-> (Z -> (False <-> False)).
+    Goal true = true #$\leftrightarrow$# (Z #$\to$# (False #$\leftrightarrow$# False)).
   \end{minted}
   Yet, \icoq{itauto congruence} fails because \icoq{Z} (\emph{i.e.},
   the type of integers) has type \icoq{Set} and therefore the whole
-  expression \icoq{Z -> (False <-> False)} is reified as an opaque
+  expression \icoq{Z #$\to$# (False #$\leftrightarrow$# False)} is reified as an opaque
   atomic proposition. Our solution is to call \icoq{itauto}
   recursively \emph{i.e.}, \icoq{itauto (itauto congruence)} so that
   an hypothesis \icoq{x:Z} is explicitly introduced. The same approach
-  works in case of goals with inner universal quantifiers.
+  works for goals with inner universal quantifiers.
 \end{example}
-For a few instances, we also strengthen the leaf tactic \emph{e.g.},
+For a few instances, we also strengthen the leaf tactic replacing \emph{e.g.},
 \icoq{idtac} by \icoq{reflexivity}, and, \icoq{discriminate} by
 \icoq{congruence}. This is due to the fact that \icoq{intuition}
-implicitly calls \icoq{reflexivity} and that theory reasoning
+implicitly calls \icoq{reflexivity} and that our handling of theory reasoning
 sometimes introduces negations which fool the \icoq{discriminate} tactic.
 
 After modification, Bedrock2 performs 1621 calls to \icoq{itauto}. For
-almost 50\% of the goals, the running time differs by less than 1ms and
-\icoq{itauto} outperforms the historic tactics for 13\% of the
-cases. Overall, \icoq{itauto} is slower and there is an average slowdown of 66\%.
-Yet, all the calls are quickly solved; the slower goal solved in 0.4s.
+ 40\% of the goals, the running time differs by less than 1ms and
+\icoq{itauto} outperforms the historic tactics for 40\% of the
+cases. Overall, \icoq{itauto} is faster and there is an slight speedup of 1.07.
+Yet, all the calls are quickly solved; the slowest goal is solved in 0.18s.
 
-CompCert performs 924 calls to \icoq{itauto}.  For almost 55\% of the
+CompCert performs 924 calls to \icoq{itauto}.  For 76\% of the
 goals, the running time also differs by less than 1ms. \icoq{itauto}
-outperforms the  historic tactics for 16\% percent of the
+outperforms the  historic tactics for 19\% percent of the
 goals. Yet, when \icoq{itauto} is faster it can be by several orders
-of magnitudes: the 16\% percent of goals are solved almost 20 times
+of magnitudes: the 19\% percent of goals are solved more than 20 times
 faster by \icoq{itauto}.
 %
-For instance, the maximum running time of \icoq{tauto} is 7.26s to be
-compared to 0.018s for \icoq{itauto}. Overall, \icoq{itauto} performs
-better with a speedup of 2.4 for solving all the goals.
+For instance, the maximum running time of \icoq{tauto} is 5.26s to be
+compared to 0.81s for \icoq{itauto}. Overall, \icoq{itauto} performs
+better with a speedup of 2.8 for solving all the goals.
 
-In summary, the results are mixed and it is hard to draw definitive conclusions.
+In summary, the results are rather positive though the advantage may be slim. %mixed and it is hard to draw definitive conclusions.
 %
 It seems that \icoq{itauto} shows a decisive advantage for goals that
 are very slow with the existing tactics.
-As also shown by the Pigeon Hole experiment, this would indicate a better scalability.
+As shown by the Pigeon Hole experiment, this would indicate a better scalability.
 %
 It would not be surprising for \icoq{itauto} to be slower on simple goals where
 the overhead of setting up the proof by reflection cannot be amortised.
 %
-Yet, more work is needed to precisely understand the origin of the
-slowdown and how the time is spent between the different proof tasks:
-SAT solver, theory reasoning and proof by reflection.
+\icoq{itauto} spends time in different proof tasks: SAT solver, theory
+reasoning and proof by reflection. We are confident that the SAT
+solver is scalable and reasonably fast. Yet, this is not always the
+bottleneck, and, the positive results reported here were only made possible by 
+fine tuning other tasks \emph{e.g.}, the reification code.
 
 \section{Related Work}
 \label{sec:related-work}
@@ -1275,7 +1376,9 @@ variety of provers; Metis~\cite{Hurd03first-orderproof,PaulsonS07} is
 in charge of performing proof reconstruction.
 %
 We follow a different approach and verify a SAT solver interfaced with
-the tactics of Coq. What we loose in efficiency, we gain in flexibility.
+the tactics of Coq. What we loose in efficiency, we gain in
+flexibility because the user might use her own fine-tuned domain
+specific tactics.
 
 Claessen and Ros{\'{e}}n~\cite{ClaessenR15} build a prover for
 intuitionistic logic on top of a black-box SAT solver. Their
@@ -1313,8 +1416,7 @@ perform theory reasoning.
 We have presented \icoq{itauto} a reflexive tactic for intuitionistic
 propositional logic which can be parametrised by user-provided tactics.
 %
-The SAT solver is optimised to leverage classical reasoning when
-possible thus limiting, when possible, costly intuitionistic reasoning.
+The SAT solver is optimised to leverage classical reasoning thus limiting, when possible, costly intuitionistic reasoning.
 %
 Our SAT solver has several features found in modern SAT solver. Yet,
 the implementation could be improved further. A first improvement
@@ -1333,7 +1435,7 @@ allowing to implement efficiently more imperative algorithms
 
 %%% Local Variables:
 %%% mode: latex
-%%% TeX-engine: xetex
+%%% TeX-engine: default
 %%% TeX-master: t 
 %%% TeX-command-extra-options: "-shell-escape"
 %%% mode: flyspell
