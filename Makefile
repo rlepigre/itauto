@@ -62,6 +62,7 @@ cleanaux :
 
 clean : cleanaux
 	$(MAKE) -f CoqMakefile clean
+	$(MAKE) -f CoqMakefile_ml clean
 	rm -f CoqMakefile.conf CoqMakefile CoqMakefile_ml CoqMakefile_ml.conf
 
 
