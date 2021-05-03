@@ -3,8 +3,9 @@
 -I src/
 theories/ZArithDec.v
 theories/Itauto.v
+theories/Smt.v
 src/proverPatch.ml
 src/cdcl.ml
-#src/no.ml
+src/no.ml
 src/g_cdcl.mlg
 src/cdcl_plugin.mlpack

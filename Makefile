@@ -11,15 +11,18 @@ COQBIN:=$(COQBIN)/
 endif
 
 
-all : theories/Itauto.vo
+all : theories/Itauto.vo theories/Smt.vo
 
 theories/Prover.vo src/prover.ml : CoqMakefile 
 	$(MAKE) -f CoqMakefile theories/Prover.vo COQBIN=$(COQBIN) 
 
 theories/Itauto.vo : theories/Itauto.v theories/Prover.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml theories/Itauto.vo COQBIN=$(COQBIN) 
+	$(MAKE) -f CoqMakefile_ml theories/Itauto.vo COQBIN=$(COQBIN)
 
-src/cdcl_plugin.cmxs CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
+theories/Smt.vo : theories/Smt.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml theories/Smt.vo COQBIN=$(COQBIN) 
+
+src/cdcl_plugin.cmxs CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml src/no.ml
 	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 
 

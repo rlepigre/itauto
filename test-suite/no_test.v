@@ -1,13 +1,12 @@
-Require Import ZArith List Lia.
+Require Import ZArith List Lia ZifyClasses.
 Declare ML Module "cdcl_plugin".
+Require Import Cdcl.Smt.
 
-Require Import Cdcl.Formula.
-Require Import Cdcl.Itauto.
 
 Goal forall x, 1 + x :: nil = x + 1 :: nil.
 Proof.
   intros.
-  no congruence lia.
+  smt.
 Qed.
 
 Close Scope  Z_scope.
@@ -31,17 +30,9 @@ Goal forall x y (P:nat -> Prop) (p:Prop),
     (x :: nil = y + 1 :: nil -> P (x - y) -> P 1).
 Proof.
   intros.
-  no congruence lia.
+  smt.
 Qed.
 
-Goal forall x y (P:nat -> Prop) (p:Prop),
-    x::nil = y + 1 :: nil ->
-    P (x-y) ->
-    P 1.
-Proof.
-  intros.
-  no  congruence lia.
-Qed.
 
 Section test.
    Variable f : nat -> nat.
@@ -49,19 +40,19 @@ Section test.
    Goal forall m n, f (m + n) = f (n + m).
    Proof.
      intros.
-     no congruence lia.
+     smt.
    Qed.
 
    Goal forall m n, 2 * f (m + n) = (f (n + m)) * 2.
    Proof.
-     intros. no congruence lia.
+     intros.
+     smt.
    Qed.
 
    Goal forall m n, n = m -> 2 * f n = f m * 2.
    Proof.
      intros.
-     purify.
-     no congruence lia.
+     smt.
    Qed.
 End test.
 
@@ -69,16 +60,18 @@ Axiom f : nat -> nat.
 Goal forall m n, 2 * f (m + n) = f (m + n) + f (n + m).
 Proof.
   intros.
-  no congruence lia.
+  smt.
 Qed.
 
+Require Import Classical.
+
 Open Scope Z_scope.
-Goal forall (f g: Z -> Z) (a d x y: Z),
+Goal forall (h g: Z -> Z) (a d x y: Z),
     g x = g y ->
     0 < d ->
-    a < f (g y) ->
-    a < f (g x) + d.
+    a < h (g y) ->
+    a < h (g x) + d.
 Proof.
   intros.
-  no congruence lia.
+  smt.
 Qed.

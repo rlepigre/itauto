@@ -72,13 +72,6 @@ Tactic Notation "itauto" tactic(tac) :=
 
 Ltac itautor tac := let t := solve[tac | itauto tac] in itauto t.
 
-(*
-Ltac smt :=
-  let tac := no congruence lia in
-  (* zify of div mod generate propositional formulae *)
-  Zify.zify ; itauto tac.
- *)
-
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)
 
@@ -129,3 +122,4 @@ Module Bench.
     solve [apply_double ; [solve [ time "T1" t1] | solve [time "T2" t2]]].
 
 End Bench.
+

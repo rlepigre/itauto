@@ -1,5 +1,4 @@
 -Q theories/ Cdcl
-# theories/ZifyInt.v
 theories/ReifClasses.v
 theories/Coqlib.v
 theories/PatriciaR.v
