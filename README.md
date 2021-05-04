@@ -80,7 +80,8 @@ A few relevant tests are found in the `test-suite` directory.
 
 `itauto tac` calls `tac` when no propositional progress is possible.
 
-<!The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia`. -->
+`Require Import Cdcl.Smt` defined the `smt` tactic.
+The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia` (see `test-suite/no_test.v`).
 
 ## Bug report
 
@@ -104,10 +105,6 @@ Once the SAT solver has succeeded. All the unsat cores are asserted in
 the original goal. Eventually, the reflexive SAT solver is rerun  in Coq
 using an empty theory.
 
-<! ### Nelson-Oppen combination
-
-We also have a naive Nelson-Oppen scheme allowing to combine `congruence` and `lia`.
--->
 
 ### Design of the sat solver
 
@@ -138,10 +135,15 @@ prove $`g`$ assuming $`f`$.
 sent to the theory prover. If a conflict clause is generated, the SAT
 solver continues.
 
+### congruence + lia
+The combination of `congruence` and `lia` is using a black-box
+Nelson-Oppen scheme. This can be very costly as each tactic is asked
+to prove a quadratic number of equations.
+
 ### Future work
 
 - **Conflict Driven Clause Learning**, beyond backjumping, requires a
   finer tracking of dependencies to detect the set of input clauses
   responsible for a conflict.
 
-- À la Nelson-Oppen combination of theories.
+

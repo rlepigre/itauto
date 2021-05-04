@@ -3,11 +3,8 @@
 {
 
 open Ltac_plugin 
-(*open Stdarg*)
+open Stdarg
 open Tacarg 
-
-
-
 }
 
 DECLARE PLUGIN "cdcl_plugin"
@@ -21,8 +18,8 @@ TACTIC EXTEND CDCL
 END
 
 TACTIC EXTEND NO
-| [ "purify" ]     -> { No.purify_tac }
-| [ "no"  tactic(t1) tactic(t2) ] ->
-   { No.no_tac  (Tacinterp.tactic_of_value ist t1) (Tacinterp.tactic_of_value ist t2) }
+| [ "purify" reference(r) ]     -> { No.purify_tac r}
+| [ "no" reference(r) tactic(t1) tactic(t2) ] ->
+   { No.no_tac  r (Tacinterp.tactic_of_value ist t1) (Tacinterp.tactic_of_value ist t2) }
 END
 

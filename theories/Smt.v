@@ -1,22 +1,38 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 Require Import Cdcl.Itauto.
-Require Import Lia.
+Require Import ZifyClasses Lia.
 
-Ltac no_tac :=
-  match goal with
-  | H : ?X -> False |-  False => apply H ; no congruence lia
-  |  _  => no congruence lia
-  end.
+Record ZarithThy : Type.
 
-  
+Class TheorySig (Tid:Type) (T:Type) (Op: T) : Type.
+
+Class TheoryType (Tid:Type) (T:Type) : Type.
+
+Instance CstOpThy (S T: Type) (I : InjTyp S T) (C: S) (COp : @CstOp S T C I) :
+  TheorySig ZarithThy S C := {}.
+
+Instance UnOpThy (S1 S2 T1 T2: Type)
+         (I1 : InjTyp S1 T1) (I2 : InjTyp S2 T2)
+         (unop : S1 -> S2)
+         (UOp : @UnOp S1 S2 T1 T2 unop I1 I2) :
+  TheorySig ZarithThy (S1 -> S2) unop := {}.
+
+Instance BinOpThy (S1 S2 S3 T1 T2 T3: Type)
+         (I1 : InjTyp S1 T1) (I2 : InjTyp S2 T2)
+         (I3 : InjTyp S3 T3)
+         (binop : S1 -> S2 -> S3)
+         (BOp : @BinOp S1 S2 S3 T1 T2 T3 binop I1 I2 I3) :
+  TheorySig ZarithThy (S1 -> S2 -> S3) binop := {}.
+
+Instance BinRelThy (S T: Type) (I: InjTyp S T) (R: S -> S -> Prop)
+         (BR : @BinRel S T R I) : TheorySig ZarithThy (S -> S -> Prop) R := {}.
+
+Instance InjTypThy (S T: Type) (I: InjTyp S T) : TheoryType ZarithThy S := {}.
+
 
 Ltac smt :=
-  let tac := no_tac in
-  itauto tac.
+  itauto (no ZarithThy congruence lia).
 
-(* Missing in ZifyClasses *)
-Register ZifyClasses.InjTyp as ZifyClasses.InjTyp.
-Register ZifyClasses.CstOp as ZifyClasses.CstOp.
-Register ZifyClasses.UnOp as ZifyClasses.UnOp.
-Register ZifyClasses.BinOp as ZifyClasses.BinOp.
-Register ZifyClasses.BinRel as ZifyClasses.BinRel.
+Register TheorySig as No.TheorySig.
+Register TheoryType as No.TheoryType.
+Register ZarithThy as No.ZarithThy.

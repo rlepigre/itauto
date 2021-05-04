@@ -41,20 +41,18 @@ let decompose_app env evd e =
 
 (* end zify.ml *)
 
-
 let debug = false
-
 
 let constr_of_string str =
     EConstr.of_constr
     (UnivGen.constr_of_monomorphic_global
        (Coqlib.lib_ref str))
 
-let coq_BinRel  = lazy (constr_of_string "ZifyClasses.BinRel")
-let coq_BinOp  = lazy (constr_of_string "ZifyClasses.BinOp")
-let coq_UnOp   = lazy (constr_of_string "ZifyClasses.UnOp")
-let coq_CstOp  = lazy (constr_of_string "ZifyClasses.CstOp")
-let coq_InjTyp = lazy (constr_of_string "ZifyClasses.InjTyp")
+let coq_TheorySig  = lazy (constr_of_string "No.TheorySig")
+let coq_TheoryType = lazy (constr_of_string "No.TheoryType")
+let coq_ZarithThy  = lazy (constr_of_string "No.ZarithThy")
+
+let theory = Summary.ref ~name:"no_thy" coq_ZarithThy
 
 
 let eq_refl = lazy (constr_of_string "core.eq.refl")
@@ -144,98 +142,41 @@ let pp_purity = function Arith -> Pp.str "Arith" | NonArith -> Pp.str "NonArith"
 let pp_econstr_purity env evd (c, p) =
   Pp.(Printer.pr_econstr_env env evd c ++ str ":" ++ pp_purity p)
 
-let injTyp s t =
-  EConstr.mkApp(Lazy.force coq_InjTyp,[|s ; t|])
-        
-
-let mk_CstOp env evd c a =
-  let trm = EConstr.mkApp(c,a) in
-  let typS = Retyping.get_type_of env evd trm in
-  let typ = Retyping.get_type_of env evd typS in
-  let (evd,typT) = Evarutil.new_evar env evd typ in
-  let (evd,injST) = Evarutil.new_evar env evd (injTyp typS typT) in
-  (trm,[||],evd,EConstr.mkApp(Lazy.force coq_CstOp,[| typS;typT;trm;injST|]))
-
-let mk_UnOp env evd c a =
-  let (unop,a1,a) = 
-    if Array.length a = 1
-    then (c,a.(0),a)
-    else raise Not_found (* Should extract last argument *) in
-  let typS1 = Retyping.get_type_of env evd a1 in
-  let typS2 = Retyping.get_type_of env evd (EConstr.mkApp(unop,[|a1|])) in
-  let typ = Retyping.get_type_of env evd typS1 in
-  let (evd,typT1) = Evarutil.new_evar env evd typ in
-  let (evd,typT2) = Evarutil.new_evar env evd typ in
-  let (evd,injS1T1) = Evarutil.new_evar env evd (injTyp typS1 typT1) in
-  let (evd,injS2T2) = Evarutil.new_evar env evd (injTyp typS2 typT2) in
-  (unop,a,evd,EConstr.mkApp(Lazy.force coq_UnOp,[| typS1;typS2;typT1;typT2;unop;injS1T1; injS2T2|]))
-
-
-let mk_BinOp env evd c a =
-  let (binop,a1,a2,a) = 
-    if Array.length a = 2
-    then (c,a.(0),a.(1),a)
-    else raise Not_found (* Should extract last arguments *) in
-  let typS1 = Retyping.get_type_of env evd a1 in
-  let typS2 = Retyping.get_type_of env evd a2 in
-  let typS3 = Retyping.get_type_of env evd (EConstr.mkApp(binop,[|a1;a2|])) in
-  let typ = Retyping.get_type_of env evd typS1 in
-  let (evd,typT1) = Evarutil.new_evar env evd typ in
-  let (evd,typT2) = Evarutil.new_evar env evd typ in
-  let (evd,typT3) = Evarutil.new_evar env evd typ in
-  let (evd,injS1T1) = Evarutil.new_evar env evd (injTyp typS1 typT1) in
-  let (evd,injS2T2) = Evarutil.new_evar env evd (injTyp typS2 typT2) in
-  let (evd,injS3T3) = Evarutil.new_evar env evd (injTyp typS3 typT3) in
-  (binop,a,evd,EConstr.mkApp(Lazy.force coq_BinOp,[| typS1;typS2;typS3;typT1;typT2;typT3;binop;injS1T1; injS2T2; injS3T3|]))
-
-let mk_BinRel env evd c a =
-  let (binrel,a1,a2,a) = 
-    let len = Array.length a in
-    if len  = 2
-    then (c,a.(0),a.(1),a)
-    else if Array.length a > 2
-    then
-      let a1 = a.(len - 2) in
-      let a2 = a.(len -1) in
-      (EConstr.mkApp(c,Array.sub a 0 (len - 2)),a1  , a2 , [|a1;a2|])
-    else raise Not_found in
-  let typS = Retyping.get_type_of env evd a1 in
-  let typ = Retyping.get_type_of env evd typS in
-  let (evd,typT) = Evarutil.new_evar env evd typ in
-  let (evd,injST) = Evarutil.new_evar env evd (injTyp typS typT) in
-  (binrel,a,evd,EConstr.mkApp(Lazy.force coq_BinRel,[| typS;typT;binrel;injST|]))
-
-
-
-
-let is_op mk env evd c a =
-  try
-    let (op,a,evd,typ) = mk env evd c a in
-    ignore (Typeclasses.resolve_one_typeclass env evd typ) ;
-    Some(op,a)
-  with
-    Not_found -> None
-
-let declared_term env evd c a =
-  let l = [mk_CstOp; mk_UnOp; mk_BinOp; mk_BinRel] in
-
-  let rec op l =
-    match l with
-      [] -> raise Not_found
-    | e::l -> match is_op e env evd c a with
-              | None -> op l
-              | Some(o,a) -> (o,a) in
-  op l
-
-let is_declared_type env evd typS = 
-  let typ = Retyping.get_type_of env evd typS in
-  let (evd,typT) = Evarutil.new_evar env evd typ in
+let is_op env evd thy c =
+  let typ = Retyping.get_type_of env evd c in
+  let op = EConstr.mkApp (Lazy.force coq_TheorySig,[| thy ; typ; c|]) in
   try 
-    ignore (Typeclasses.resolve_one_typeclass env evd (injTyp typS typT)); true
+    ignore (Typeclasses.resolve_one_typeclass env evd op) ; true
+  with Not_found -> false
+
+let is_arity_op env evd thy c a n =
+  let len = Array.length a in
+  if len > n
+  then
+    let op = EConstr.mkApp(c, Array.sub a 0 (len - n)) in
+    if is_op env evd thy op
+    then (op, Array.sub a (len - n) n)
+    else raise Not_found
+  else raise Not_found
+
+
+let declared_term thy env evd c a =
+  if is_op env evd thy c
+  then (c,a)
+  else
+    match is_arity_op env evd thy c a 2 with
+    | res -> res
+    | exception Not_found -> is_arity_op env evd thy c a 1
+         
+
+let is_declared_type thy env evd  typS = 
+  let typ = EConstr.mkApp(Lazy.force coq_TheoryType,[|thy;typS|]) in
+  try 
+    ignore (Typeclasses.resolve_one_typeclass env evd typ); true
   with Not_found -> false
   
 
-let rec remember_term env evd senv t =
+let rec remember_term thy env evd senv t =
   let name k (c, p) senv =
     if k = p then
       try (EConstr.mkVar (HConstr.find c senv.map).expr, senv)
@@ -258,16 +199,16 @@ let rec remember_term env evd senv t =
   with Not_found -> (
     let c, a = decompose_app env evd t in
     let c, a, p =
-      match declared_term env evd c a with
+      match declared_term thy env evd c a with
       | c, a -> (c, a, Arith)
       | exception Not_found ->
-         if isVar evd c && a = [||] && is_declared_type env evd (Retyping.get_type_of env evd c)
+         if isVar evd c && a = [||] && is_declared_type thy env evd  (Retyping.get_type_of env evd c)
          then (c, a, Arith) else (c, a, NonArith)
     in
     let a, senv =
       Array.fold_right
         (fun e (l, senv) ->
-          let r, senv = remember_term env evd senv e in
+          let r, senv = remember_term thy env evd  senv e in
           (r :: l, senv))
         a ([], senv)
     in
@@ -278,6 +219,15 @@ let rec remember_term env evd senv t =
     | NonArith ->
       let a, senv = names Arith a senv in
       ((EConstr.mkApp (c, Array.of_list a), NonArith), senv) )
+
+let rec remember_prop thy env evd senv t =
+  match EConstr.kind evd t with
+  | Prod(a,p1,p2) when is_arrow env evd a p1 p2 ->
+     let senv = remember_prop thy env evd senv p1 in
+     remember_prop thy env evd senv p2
+  |  _  ->
+      snd (remember_term thy env evd senv t)
+  
 
 (** [eq_proof typ source target] returns (target = target : source = target) *)
 let eq_proof typ source target =
@@ -309,7 +259,7 @@ let remember_tac id h (s, ty, t) =
         (Names.Name tn) t None
         {Locus.onhyps = None; Locus.concl_occs = Locus.AllOccurrences})
 
-let collect_shared gl =
+let collect_shared thy gl =
   let terms =
     Tacmach.New.pf_concl gl :: List.map snd (Tacmach.New.pf_hyps_types gl)
   in
@@ -319,7 +269,7 @@ let collect_shared gl =
   let pr = Names.Id.of_string "pr" in
   let senv =
     List.fold_left
-      (fun acc t -> snd (remember_term env evd acc t))
+      (fun acc t ->  (remember_prop thy env evd acc t))
       (init_env pr s) terms
   in
   (senv.fresh, List.rev senv.remember)
@@ -393,7 +343,7 @@ let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
 
 let utactic tac = tac >>= fun _ -> Tacticals.New.tclIDTAC
 
-let no_tacs tacl =
+let no_tacs thy tacl =
   let rec prove_one_equation s acc ll =
     match ll with
     | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove any equation")
@@ -413,7 +363,7 @@ let no_tacs tacl =
   Tacticals.New.tclTHEN
     (Tacticals.New.tclREPEAT Tactics.intro)
     (Proofview.Goal.enter (fun gl ->
-         let s, l = collect_shared gl in
+         let s, l = collect_shared thy gl in
          let evd = Tacmach.New.project gl in
          let env = Tacmach.New.pf_env gl in
          let vars = (List.map
@@ -430,11 +380,15 @@ let no_tacs tacl =
 
 let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)
 
-let no_tac tac1 tac2 =
+let no_tac thy tac1 tac2 =
+  let thy  = EConstr.of_constr
+               (UnivGen.constr_of_monomorphic_global thy) in
   let tacs = List.mapi (fun i t -> (t, i)) [tac1; tac2] in
-  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs tacs)
+  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs thy tacs)
 
-let purify_tac =
+let purify_tac thy =
+  let thy  = EConstr.of_constr
+               (UnivGen.constr_of_monomorphic_global thy) in
   Proofview.Goal.enter (fun gl ->
-      let s, l = collect_shared gl in
+      let s, l = collect_shared thy gl in
       purify l)
