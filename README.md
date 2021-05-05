@@ -80,8 +80,11 @@ A few relevant tests are found in the `test-suite` directory.
 
 `itauto tac` calls `tac` when no propositional progress is possible.
 
-`Require Import Cdcl.Smt` defined the `smt` tactic.
-The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia` (see `test-suite/no_test.v`).
+`Require Import Cdcl.NOlia` defines the `smt` tactic.
+The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia` (see `test-suite/no_test_lia.v`).
+
+`Require Import Cdcl.NOlra` also defines the `smt` tactic but combine `congruence` and `lra` (see `test-suite/no_test_lra.v`).
+
 
 ## Bug report
 

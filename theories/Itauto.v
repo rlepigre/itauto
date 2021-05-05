@@ -65,7 +65,6 @@ Ltac vitauto :=
   vitautog.
 
 Tactic Notation "itauto" tactic(tac) :=
-(*Ltac itauto tac  := *)
   gen_conflicts tac ;
   vitautog.
 
@@ -75,6 +74,15 @@ Ltac itautor tac := let t := solve[tac | itauto tac] in itauto t.
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)
 
+(* Nelson Oppen Support *)
+Class TheorySig (Tid:Type) {T:Type} (Op: T) : Type.
+
+Class TheoryType (Tid:Type) (T:Type) : Type.
+
+Register TheorySig as No.TheorySig.
+Register TheoryType as No.TheoryType.
+
+(* Convenient for benchmarking against existing tactics *)
 Module Redef.
 
   (* old tauto and intuition *)
