@@ -6,24 +6,9 @@ open Names
 open Lazy
 
 (* From zify.ml *)
-let arrow =
-  let name x =
-    Context.make_annot (Name.mk_name (Names.Id.of_string x)) Sorts.Relevant
-  in
-  EConstr.mkLambda
-    ( name "x"
-    , EConstr.mkProp
-    , EConstr.mkLambda
-        ( name "y"
-        , EConstr.mkProp
-        , EConstr.mkProd
-            ( Context.make_annot Names.Anonymous Sorts.Relevant
-            , EConstr.mkRel 2
-            , EConstr.mkRel 2 ) ) )
 let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
   Sorts.is_prop sort
-
 
 let is_arrow env evd a p1 p2 =
   is_prop env evd p1
@@ -35,7 +20,6 @@ let is_arrow env evd a p1 p2 =
 
 let decompose_app env evd e =
   match EConstr.kind evd e with
-  | Prod (a, p1, p2) when is_arrow env evd a p1 p2 -> (arrow, [|p1; p2|])
   | App (c, a) -> (c, a)
   | _ -> (EConstr.whd_evar evd e, [||])
 
@@ -198,12 +182,12 @@ let rec remember_term thy env evd senv t =
     ((EConstr.mkVar id, p), senv)
   with Not_found -> (
     let c, a = decompose_app env evd t in
-    let c, a, p =
+    let a, p =
       match declared_term thy env evd c a with
-      | c, a -> (c, a, Arith)
+      | c, a -> (a, Arith)
       | exception Not_found ->
          if isVar evd c && a = [||] && is_declared_type thy env evd  (Retyping.get_type_of env evd c)
-         then (c, a, Arith) else (c, a, NonArith)
+         then (a, Arith) else (a, NonArith)
     in
     let a, senv =
       Array.fold_right
@@ -220,6 +204,8 @@ let rec remember_term thy env evd senv t =
       let a, senv = names Arith a senv in
       ((EConstr.mkApp (c, Array.of_list a), NonArith), senv) )
 
+(* TODO: traverse other propositional connectives.
+ *)
 let rec remember_prop thy env evd senv t =
   match EConstr.kind evd t with
   | Prod(a,p1,p2) when is_arrow env evd a p1 p2 ->
@@ -336,7 +322,7 @@ let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
   | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove using any prover")
   | (tac, i) :: tacl ->
     if select i then
-      Proofview.tclOR
+      Proofview.tclORELSE
         (by tac >>= fun () -> Proofview.tclUNIT i)
         (fun _ -> solve_with select by tacl)
     else solve_with select by tacl
@@ -348,7 +334,7 @@ let no_tacs thy tacl =
     match ll with
     | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove any equation")
     | (e1, ty, e2) :: ll ->
-      Proofview.tclOR
+      Proofview.tclORELSE
         ( solve_with (fun _ -> true) (prove_equation s e1 ty e2) tacl
         >>= fun i -> Proofview.tclUNIT (i, List.rev_append acc ll) )
         (fun _ -> prove_one_equation s ((e1, ty, e2) :: acc) ll)
@@ -356,7 +342,7 @@ let no_tacs thy tacl =
   let rec no_tac s ll =
     prove_one_equation s [] ll
     >>= fun (i, ll') ->
-    Proofview.tclOR
+    Proofview.tclORELSE
       (solve_with (fun i' -> i <> i') (fun x -> x) tacl)
       (fun e -> no_tac (Nameops.Subscript.succ s) ll')
   in
@@ -384,7 +370,7 @@ let no_tac thy tac1 tac2 =
   let thy  = EConstr.of_constr
                (UnivGen.constr_of_monomorphic_global thy) in
   let tacs = List.mapi (fun i t -> (t, i)) [tac1; tac2] in
-  Proofview.tclOR (solve_with_any tacs) (fun _ -> no_tacs thy tacs)
+  Proofview.tclORELSE (solve_with_any tacs) (fun _ -> no_tacs thy tacs)
 
 let purify_tac thy =
   let thy  = EConstr.of_constr

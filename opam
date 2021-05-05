@@ -5,7 +5,7 @@ dev-repo: "git://gitlab.inria.fr:fbesson/itauto.git"
 authors: ["Frédéric Besson"]
 bug-reports: "frederic.besson@inria.fr"
 license: "GPL 3"
-synopsis: "'itauto' is a reflexive SAT solver parameterised by a leaf tactic"
+synopsis: "'itauto' is a reflexive SAT solver parameterised by a leaf tactic and Nelson-Oppen support"
 build: [
   [make]
 ]
@@ -15,13 +15,12 @@ install: [
 remove: ["rm" "-R" "%{lib}%/coq/user-contrib/Cdcl"]
 depends: [
   "ocaml" {>= "4.9~"}
-  "dune" {>= "2.7.1"}
   "coq" {>= "8.13.~" }
   "ocamlbuild" {build }
 ]
 depopts: [ "ocamlformat" {build} ]
-  
+
 tags: [
-  "keyword:integers" "keyword:SAT" "keyword:SMT" "keyword:automation"
+  "keyword:integers" "keyword:SAT" "keyword:SMT" "keyword:Nelson-Oppen" "keyword:automation"
   "logpath:Cdcl"
 ]
