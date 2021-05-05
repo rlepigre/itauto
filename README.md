@@ -1,4 +1,4 @@
-# itauto : an  Extensible Intuitionistic SAT solver
+# itauto : an  Extensible Intuitionistic SAT solver 
 
 ## Contexte and Motivation
 

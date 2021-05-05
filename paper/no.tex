@@ -1,0 +1,179 @@
+% easychair.tex,v 3.5 2017/03/15
+
+\documentclass{easychair}
+%\documentclass[EPiC]{easychair}
+%\documentclass[EPiCempty]{easychair}
+%\documentclass[debug]{easychair}
+%\documentclass[verbose]{easychair}
+%\documentclass[notimes]{easychair}
+%\documentclass[withtimes]{easychair}
+%\documentclass[a4paper]{easychair}
+%\documentclass[letterpaper]{easychair}
+\usepackage{fullpage}
+\usepackage[]{minted}
+\usepackage{amsmath,amsthm}
+
+
+\newmintinline[icoq]{coq}{}
+\setminted[coq]{escapeinside=\#\#,mathescape=true} %,fontsize=\footnotesize}
+\newtheorem{example}{Example}
+
+%
+\title{À la Nelson-Oppen Combination for \icoq{congruence}, \icoq{lia} and \icoq{lra}}
+%
+\author{ Frédéric Besson}
+
+% Institutes for affiliations are also joined by \and,
+\institute{Inria, Rennes, France}
+
+\authorrunning{F. Besson}
+
+\titlerunning{À la Nelson-Oppen Combination for \icoq{congruence}, \icoq{lia} and \icoq{lra}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  We propose a tactic for combining decision procedures using a
+  black-box Nelson-Oppen scheme.
+  %
+  The tactic is instantiated for \icoq{congruence} and either \icoq{lia} or \icoq{lra}.
+  %
+  The development is available at \url{https://gitlab.inria.fr/fbesson/itauto}.
+\end{abstract}
+
+
+\section{Introduction}
+\label{sect:introduction}
+
+The Coq proof-assistant provides decision procedures for various logic
+fragments. In practice, most of the goals do not fall in those
+restricted fragments and, in that case, an interactive proof is
+required.
+%
+However, there is sometimes a sweet spot when the goal can be solved by a
+collaboration of decision procedures.
+%
+For instance, \icoq{intuition tac} enhances the expressive power of a
+tactic \icoq{tac} by providing support for propositional logic.  Our
+recent \icoq{itauto tac}~\cite{Itauto} shares the same goal but aims at improving the
+completeness and efficiency of the combination.
+%
+
+Unfortunately, there is currently no support for solving goals that are
+expressed in the combined decidable logic fragments of EUF~\cite{Ackermann} (Equality Logic with
+Uninterpreted Functions) and LIA~\cite{presburger} (Linear Integer Arithmetic).
+%
+Yet, \icoq{congruence}\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.congruence}}~\cite{Corbineau06} subsumes EUF and \icoq{lia}\footnote{\url{https://coq.inria.fr/refman/addendum/micromega.html\#coq:tacn.lia}}~\cite{BessonCP11,Besson06} solves LIA.
+Moreover, Nelson and Oppen~\cite{NelsonO79} propose a combination scheme which is complete for the combination EUF+LIA.
+
+In the following, we present our \icoq{smt}
+tactic\footnote{\url{https://gitlab.inria.fr/fbesson/itauto}} which implements the Nelson-Oppen combination scheme in a black-box manner.
+
+\section{Motivating Example}
+The crux of the Nelson-Oppen scheme is that equality sharing is
+sufficient\footnote{Under technical conditions that are not detailed here} for
+a complete combination of two decidable theories  when
+the unique shared symbol is equality. The following example
+illustrates a somewhat painful interactive proof that is automated by our
+\icoq{smt} tactic.
+\begin{example}
+  \label{exa:motivating}
+  Consider the following goal.
+\begin{minted}{coq}
+Goal #$\forall$# (x y: Z) (P:Z -> Prop), x :: nil = y + 1 :: nil -> P (x - y) -> P 1.
+\end{minted}
+Neither \icoq{congruence} nor \icoq{lia} solves the goal. Yet, it can
+be solved by only asserting equalities that are solved by either \icoq{congruence} or \icoq{lia}.
+This is illustrated by the following proof script.
+\begin{minted}{coq}
+Proof. intros. assert (x = y+1) by congruence. assert (x-y = 1) by lia. congruence. Qed.
+\end{minted}
+\end{example}
+
+\section{Nelson-Oppen Algorithm}
+The first task of the \icoq{smt} tactic is to identify equalities that
+are worth being propagated. This is done by the so-called
+\emph{purification} phase. The second task consists in propagating
+equalities until the goal is solved. These two phases are implemented
+as an OCaml plugin.
+
+\paragraph{Purification}
+The \emph{purification} introduces fresh variables and
+equations so that every term belongs to one and only one theory.
+For Example~\ref{exa:motivating}, we would obtain the following goal.
+\begin{minted}{coq}
+  hpr1 : 1 = pr1,  hpr3 : y + pr1 = pr3,  hpr2 : x - y = pr2
+  H  : x :: nil = pr3 :: nil,  H0 : P pr2
+  ==========================================================
+  P pr1
+\end{minted}
+The set of potential equations is then defined as
+$
+\{ x = y \mid (x,y) \in \mathit{Var} \times \mathit{Var} \}
+$
+where $\mathit{Var} = \{\icoq{pr1},\icoq{pr2}, \icoq{pr3}, \icoq{x} \}$.
+%
+The set of variables contains fresh variables but also the existing
+variables that are at the interface between the two theories.  Here,
+the variable \icoq{x} is an arithmetic variable using as argument of
+the constructor \icoq{::}.
+
+\paragraph{Theory Description} In order to perform the purification
+phase, it is necessary to have the signature of the theory that is combined with EUF
+\emph{i.e.}, the set of arithmetic types and operators.
+%
+This is done by declaring instances of the two following type-classes.
+\begin{minted}{coq}
+Class TheoryType(Tid:Type)(T:Type):Type. Class TheorySig(Tid:Type){T:Type}(Op:T):Type.
+\end{minted}
+Note that the type-classes are parametrised by an uninterpreted type
+\icoq{Tid} that only used to identify a theory. In our case, \icoq{ZarithThy} is associated to
+\icoq{lia} and \icoq{RarithThy} is associated to \icoq{lra}.
+
+\paragraph{Equality Sharing} Our current Nelson-Oppen tactic is binary and can combine
+\icoq{congruence} with either \icoq{lia} or \icoq{lra}.
+%
+After purification, we recursively try to prove one of the equality
+using either \icoq{congruence} or the arithmetic tactic.  If tactic
+$T_1$ succeeds at asserting an equation, we try to solve the goal
+using tactic $T_2$. If $T_2$ fails, we iterate the process until none
+of the equation can be proved.
+%
+As there is a quadratic number of possible equations, the combination
+requires, in the worst case, a cubic number of calls to the decision
+procedures.
+
+\section{Conclusion and Limitations}
+Our \icoq{smt} tactic improves automation and has the advantage of
+reusing the existing tactics \icoq{congruence}, \icoq{lia} and \icoq{lra} in a
+black-box manner. More experiments are needed to assess to what extent 
+automation is increased in practice and whether efficiency is satisfactory.
+%
+Improving efficiency would require to adapt the decision procedures so
+that they either prove a goal or assert equations.
+%
+Though this might not be a problem in practice, our implementation is
+not complete. LIA is a so-called \emph{non-convex} theory which
+requires propagating not only equalities but disjunctions of
+equalities. Moreover, \icoq{lia} is first running \icoq{zify}. It is
+currently unclear how this impacts the Nelson-Oppen scheme. 
+
+\label{sect:bib}
+\bibliographystyle{plain}
+%\bibliographystyle{alpha}
+%\bibliographystyle{unsrt}
+%\bibliographystyle{abbrv}
+\bibliography{biblio}
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-engine: default
+%%% TeX-master: t 
+%%% TeX-command-extra-options: "-shell-escape"
+%%% mode: flyspell
+%%% ispell-local-dictionary: "british"
+%%% End:
