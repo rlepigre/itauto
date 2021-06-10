@@ -74,3 +74,16 @@ Proof.
   intros.
   smt.
 Qed.
+
+(* Reviewer 1 Coq Workshop 2021 (worst-case) *)
+
+Goal forall f x0 x1 x2 x3 x4,
+    f (x0 + 0)%Z    = 0%Z ->
+    f (x1 + f x0)%Z = 0%Z ->
+    f (x2 + f x1)%Z = 0%Z ->
+    f (x3 + f x2)%Z = 0%Z ->
+    f (x4 + f x3)%Z = 0%Z ->
+    f x4 = 0%Z.
+Proof.
+Time intros; smt.
+Qed.

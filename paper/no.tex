@@ -65,7 +65,7 @@ Unfortunately, there is currently no support for solving goals that are
 expressed in the combined decidable logic fragments of EUF~\cite{Ackermann} (Equality Logic with
 Uninterpreted Functions) and LIA~\cite{presburger} (Linear Integer Arithmetic).
 %
-Yet, \icoq{congruence}\footnote{\url{https://coq.inria.fr/refman/proof-engine/tactics.html\#coq:tacn.congruence}}~\cite{Corbineau06} subsumes EUF and \icoq{lia}\footnote{\url{https://coq.inria.fr/refman/addendum/micromega.html\#coq:tacn.lia}}~\cite{BessonCP11,Besson06} solves LIA.
+Yet, \icoq{congruence}\footnote{\url{https://coq.inria.fr/distrib/V8.13.0/refman/proofs/automatic-tactics/logic.html\#coq:tacn.congruence}}~\cite{Corbineau06} subsumes EUF and \icoq{lia}\footnote{\url{https://coq.inria.fr/distrib/V8.13.0/refman/addendum/micromega.html\#coq:tacn.lia}}~\cite{BessonCP11,Besson06} solves LIA.
 Moreover, Nelson and Oppen~\cite{NelsonO79} propose a combination scheme which is complete for the combination EUF+LIA.
 
 In the following, we present our \icoq{smt}
@@ -93,10 +93,10 @@ Proof. intros. assert (x = y+1) by congruence. assert (x-y = 1) by lia. congruen
 \end{example}
 
 \section{Nelson-Oppen Algorithm}
-The first task of the \icoq{smt} tactic is to identify equalities that
-are worth being propagated. This is done by the so-called
-\emph{purification} phase. The second task consists in propagating
-equalities until the goal is solved. These two phases are implemented
+The first task of the \icoq{smt} tactic is the so-called
+\emph{purification} phase which identifies terms that are shared across
+theories. The second task consists in propagating equalities between
+\emph{pure} terms until the goal is solved. These two phases are implemented
 as an OCaml plugin.
 
 \paragraph{Purification}
