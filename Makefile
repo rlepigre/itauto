@@ -10,7 +10,6 @@ ifneq (,$(COQBIN))
 COQBIN:=$(COQBIN)/
 endif
 
-
 all : theories/Itauto.vo theories/NOlia.vo theories/NOlra.vo
 
 theories/Prover.vo src/prover.ml : CoqMakefile 

@@ -24,8 +24,9 @@
 %% decorations.footprints,%
 %% decorations.markings,%
 %% shadows}
-
-\setminted[Coq]{fontsize=\footnotesize}
+\newcommand\Lit[1]{\lfloor #1 \rfloor }
+\setminted[Coq]{style=simple,fontsize=\footnotesize}
+\setminted[coq]{style=simple,escapeinside=\#\#,mathescape=true}
 
 \tikzset{
   invisible/.style={opacity=0},
@@ -46,11 +47,11 @@ inner sep=3pt, thick, rounded corners, fill=none, opacity=1]
         inner sep = 2mm]
 \tikzstyle{obsline}=[->, dashed, thick]
 
-\title{Itauto\\ an Extensible Intuitionistic\\ SAT/SMT solver  }
+\title{Itauto: an Extensible\\ Intuitionistic SAT Solver }
   \author{F. Besson}
 %\titlegraphic{}
 \institute{Celtique/Inria/Univ Rennes}
-\date{Mars 2021}
+\date{Juin 2021}
 
 \newcommand*\circled[1]{\tikz[baseline=(char.base)]{
     \node[shape=circle,draw,inner sep=1pt, thick] (char) {\textbf{#1}};}}
@@ -66,68 +67,107 @@ inner sep=3pt, thick, rounded corners, fill=none, opacity=1]
   \maketitle
 \end{frame}
 
-\begin{frame}{Yet another SAT solver?}
-  \begin{itemize}
-  \item \icoq{tauto}: historic decision procedure for IPL\footnote{IPL = Intuitionistic Propositional Logic} 
-  \item \icoq{rtauto}: reflexive verifier for IPL
-  \item \icoq{intuition tac}: calls \icoq{tac} at the leaf of proof search
-  \item \icoq{lia}: linear arithmetics + classic  connectives
-  \end{itemize}
+%% \begin{frame}{Approaches for Automation}
+%%   \begin{itemize}
+%%   \item Call a trusted external prover (\emph{e.g.}, F* $\to$ Z3)
+%%   \item Call an untrusted prover (\emph{e.g.}, SledgeHammer, SMTCoq)
+%%   \item Implement your own prover (\emph{e.g.}, this talk)
+%%   \end{itemize}
+%% \end{frame}
+%% 
+%% \begin{frame}{Yet Another SAT Prover}
+%%   \begin{itemize}
+%%   \item [-] less efficient (but fast enough)
+%%   \item [+] proof generation (no reconstruction)
+%%   \item [+] integrated with the eco-system (extensible user tactics)
+%%   \item [+] bilingual (intuitionistic $\oplus$ classic) 
+%%   \end{itemize}
+%%   
+%% \end{frame}
 
+\begin{frame}{Yet another SAT solver?}
+  % \begin{itemize}
+%  \item \icoq{tauto}: historic decision procedure for IPL\footnote{IPL = Intuitionistic Propositional Logic}.
+ % \item \icoq{rtauto}: reflexive verifier for IPL
+%  \item \icoq{lia}: linear arithmetics + classic connectives
+%  \item 
+ % \end{itemize}
+  \icoq{intuition tac}: calls \icoq{tac} after  propositional proof search.
+  
   \medskip
   There are completeness and scalability issues:\\
   \medskip
   
-  \begin{tabular}{|l|c|c|c|c|}
+  \begin{tabular}{|l|c|c|c|c|c|}
     \hline
-    &IPL&CPL\footnote{Classic Propositional Logic}& SAT+Arith & Scalable  \\
+    &IPL\footnote{IPL = Intuitionistic Propositional Logic}& SAT+LIA & SAT+EUF& Scalable  \\
     \hline
-    \icoq{tauto} & \checkmark & \xmark & \xmark & \xmark\\
+ %   \icoq{tauto} & \checkmark &  - & - & \xmark\\
+%    \hline
+%    \icoq{rtauto} & \checkmark & - & - &\xmark\\
+%    \hline
+    \icoq{intuition lia} & \checkmark  & \xmark & -& \xmark\\
     \hline
-    \icoq{rtauto} & \checkmark & \xmark & \xmark & \xmark\\
+    \icoq{intuition congr} & \checkmark  & - &\xmark & \xmark\\
     \hline
-    \icoq{intuition lia} & \checkmark & \xmark & \xmark & \xmark\\
+    \icoq{itauto lia}\footnote{Intuitionistic if it must}   & \checkmark &  \checkmark & - & \checkmark \\
     \hline
-    \icoq{lia}           & \xmark & \xmark & \xmark & \xmark\\
-    \hline
-    \icoq{itauto lia}   & \checkmark & \checkmark & \checkmark & \checkmark \\
+    \icoq{itauto congr}\footnotemark[2]   & \checkmark &  - & \checkmark & \checkmark \\
     \hline
   \end{tabular}
-
 \end{frame}
 
 \begin{frame}[fragile]{Proof by Example}
-  \begin{minted}{Coq}
-    forall (x:Z), (x >= 0) \/ ~ (x >= 0).
-    (*Proof. Fail tauto. Abort. *)
-  \end{minted}
-  \bigskip
+%%   \begin{minted}{Coq}
+%% forall (x:Z), (x >= 0) \/ ~ (x >= 0).
+%% (*Proof. Fail tauto. Abort. *)
+%% \end{minted}
+%% \bigskip
 
-  \begin{minted}{Coq}
-    forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
-    (* Proof. Fail intuition lia. Abort. *)
-  \end{minted}
-  \bigskip
-  
-  \begin{minted}{Coq}
-    forall (A:Type) (p:Prop) (a b c:A),
-         a = b -> b = c -> (a = c -> p) -> p.
-  (* Proof. Fail intuition congruence. Abort. *)
-  \end{minted}
-  \bigskip
-  
-  \begin{minted}{Coq}
-    forall (A:Type) (x y t:A) (p q:Prop),
-    x = y -> p \/ q ->
+%% \begin{onlyenv}<1>
+%%   \begin{minted}{Coq}
+%% forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
+%% (* Proof. Fail intuition lia. Abort. *)
+%% \end{minted}
+%% \end{onlyenv}
+%% \begin{onlyenv}<2->
+%%   \begin{minted}{Coq}
+%% forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> True) -> False.
+%% (* Proof. Fail intuition lia. Abort. *)
+%% \end{minted}
+%% \end{onlyenv}
+%% \bigskip
+
+\begin{onlyenv}<1>
+\begin{minted}{Coq}
+forall (A:Type) (p:Prop) (a b c:A),
+  a = b -> b = c -> (a = c -> p) -> p.
+(* Proof. Fail intuition congruence. Abort. *)
+\end{minted}
+\end{onlyenv}
+\begin{onlyenv}<2>
+\begin{minted}{Coq}
+forall (A:Type) (p:Prop) (a b c:A),
+  a = b -> b = c -> True -> False.
+(* Proof. Fail intuition congruence. Abort. *)
+\end{minted}
+\end{onlyenv}
+
+
+\bigskip
+
+\begin{minted}{Coq}
+forall (A:Type) (x y t:A) (p q:Prop),
+  x = y -> p \/ q ->
              (p -> y = t) ->
              (q -> y = t) -> x = t.
-    (* Proof. intuition (time congruence). Qed.*)
-  \end{minted}
+(* Proof. intuition (time congruence). Qed.*)
+\end{minted}
 
 \end{frame}
 
 \begin{frame}{Contribution}
-  Itauto: a scalable SAT solver for Coq\\
+  Itauto: a scalable reflexive SAT solver for Coq\\
 
   Features of \emph{modern} SAT solvers
   \begin{itemize}
@@ -135,139 +175,175 @@ inner sep=3pt, thick, rounded corners, fill=none, opacity=1]
   \item à la Tseitin CNF
   \item lazy unit-propagation
   \item non-chronological backjumping
+  \item conflict clause learning
   \end{itemize}
   \bigskip
   
-  A kernel of SMT solver combining
+  A kernel of SMT solver % combining
   \begin{itemize}
-  \item Intuitionistic Propositional Logic 
-  \item Classic Propositional Logic
-  \item Theory as a Tactic (\emph{e.g}, \icoq{lia}, \icoq{congruence})
+  \item Classic $\oplus$ Intuitionistic
+  \item Theory as a Tactic (\emph{e.g}, LIA, EUF)
   \end{itemize}
   
 \end{frame}
 
-\begin{frame}{Classic Clausal Form}
-  The (classic) clausal form of a formula
-  \[
-    \begin{array}{lcl}
-      \mathit{literal} \ni l &{::=}& p \mid \bar{p} \\
-      \mathit{clause} \ni cl &{::=}& l_1 \lor \dots \lor l_i\\
-      \mathit{form} \ni  f &{::=}& cl_1 \land \dots \land cl_i
-    \end{array}
-  \]
-    In classic logic, we have \emph{reductio ad adbsurdum}
-  \[
-    {\neg \phi \vdash \bot} \Rightarrow
-    {\vdash \phi}
-  \]
-  $\Rightarrow$ Unsound for intuitionistic logic\\
-  \bigskip
-  
-  In classic logic, Tseitin CNF exploits De Morgan Laws\\
-  $\Rightarrow$ Unsound for intuitionistic logic\\
-  \bigskip
-  
-  A SAT solver needs a CNF!
+\begin{frame}{Organisation}
+  \tableofcontents
 \end{frame}
+
+\section{Reflexive SAT solver}
+
+
+%% \begin{frame}
+%%   \frametitle{Structure of a DPLL SAT solver}
+%%   \begin{enumerate}
+%%   \item \emph{Reductio as absurdum}:
+%%     $
+%%       \dfrac{
+%%         \neg \phi \vdash \bot}
+%%       { \vdash \phi }
+%%     $
+%%   \item Clausal Form - Conjunctive Normal Form
+%%     \[
+%%       \neg \phi \equiv (l_1^1 \lor \dots \lor l_1^{n_1}) \land \dots 
+%%       \land (l_i^1 \lor \dots \lor l_i^{n_i})
+%%     \]
+%%   \item Unit propagation 
+%%   \item Case-split
+%%   \end{enumerate}
+%%   \bigskip
+%%   1. and 2. are unsound for intuitionistic logic!
+%% 
+%% \end{frame}
+
+%% \begin{frame}{Classic Clausal Form is a NO GO }
+%%   \emph{Reductio ad adbsurdum}
+%%   $
+%%   \dfrac{
+%%     \neg \phi \vdash \bot}
+%%   { \vdash \phi }
+%%   $\\
+%%   $\Rightarrow$ Unsound for intuitionistic logic\\
+%%   \bigskip
+%%   
+%%   Clausal Form exploits De Morgan Laws\\
+%%   \[
+%%     \neg (a \land b) \equiv (\neg a \lor \neg b)
+%%   \]
+%%   $\Rightarrow$ Unsound for intuitionistic logic\\
+%% 
+%% 
+%% \end{frame}
 
 \begin{frame}{Intuitionistic (Pseudo)-Clausal Form}
+  Any intuitionistic formula can be put in Pseudo-Clausal form [Claessen and Rosén,2015]\\
   \[
-    \begin{array}{lcl}
-      \mathit{FClause}\ni cl&{::=}& p_1 \to \dots \to p_n \to q_1 \lor \dots q_n\\
-      \mathit{IClause}\ni i &{::=}& (p \to q) \to r\\
-      \mathit{CNF} \ni   form &{::=}& \bigwedge cl \land \bigwedge i \to p
+    \begin{array}{lclcl}
+      \mathit{flat\ clause}&\ni& c&{::=}& p_1 \to \dots \to p_n \to q_1 \lor \dots \lor q_n\\
+      \mathit{Implication\ clause}&\ni& i &{::=}& (p_1 \to \dots \to p_n \to q) \to r\\
+      \mathit{icnf} &\ni&   f &{::=}& (\bigwedge c \land \bigwedge i) \to p
     \end{array}
   \]
-  Any intuitionistic formula can be put in Pseudo-Clausal form [Classen and Rosén]\\
+  where $r$, $p_i$, $q_i$ are variables.\\
+  \bigskip
+
+  A variant of definitional CNF [Plaisted and Greenbaum,1986].\\
+  ([Tseitin,1983] with polarities and tabulation)
+  
+%%   
+%%   Reassuring fact, a flat clause is a clause (in classic logic)
+%%   \[
+%%     (p_1 \to \dots \to p_n \to q_1 \lor \dots \lor q_n)
+%%     \equiv
+%%     (\neg p_1 \lor \dots \lor  \neg p_n \lor q_1 \lor \dots \lor q_n)
+%%   \]
 \end{frame}
 
-\begin{frame}[fragile]{Syntax/Semantics of Formulae}
-Hash-consed n-ary propositional logic
+\begin{frame}[fragile]{Syntax of Formulae}
+Hash-consed n-ary propositional logic\\
 \begin{minted}{Coq}
-Inductive LForm : Type :=
+Inductive LForm :=
  | LFF
- | LAT : int -> LForm
- | LOP : lop -> list (HCons.t LForm) -> LForm
- | LIMPL : list (HCons.t LForm) ->  (HCons.t LForm)  -> LForm.
+ | LAT (id:int)
+ | LOP (o:lop) (a:list (HCons.t LForm))
+ | LIMPL (p:list (HCons.t LForm)) (c:HCons.t LForm).
 \end{minted}
+where \icoq{lop} $\in \{ \icoq{AND} , \icoq{OR}\}$\\
+and \icoq{HCons.t LForm = int * bool * LForm} \\
+\begin{itemize}
+\item \icoq{int} is a native 63 bits integers
+\item \icoq{bool} tells whether we have $\phi \lor \neg \phi$
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Syntax of Clauses}
+\begin{minted}{Coq}
+Inductive literal := POS (f: HFormula) | NEG (f: HFormula)
+\end{minted}
+\begin{itemize}
+\item where \icoq{HFormula := HCons.t LForm} 
+\item never inspect the \icoq{LForm}
+\end{itemize}
 \bigskip
+
+\begin{minted}{Coq}
+  Let clause  := list literal
+  Let iclause := (list HFormula * HFormula) * HFormula
+  Let iCnf    := list clause * list iclause
+\end{minted}
 
 \[
   \begin{array}{lcl}
-    \llbracket \mcoq{LFF} \rrbracket_e &=& \mcoq{False} \\
-    \llbracket \mcoq{LAT}\ i \rrbracket_e &=& e\ i \\
-    \llbracket \mcoq{LOP}\  \mcoq{AND}\ [f_1;\dots;f_n] \rrbracket_e &=& \llbracket f_1 \rrbracket_e \land \dots\land \llbracket f_n \rrbracket_e\\
-    % \bigwedge_{i\in [1;n]} \llbracket f_i \rrbracket_e \\
-    \llbracket \mcoq{LOP}\  \mcoq{OR}\  [f_1;\dots;f_n] \rrbracket_e &=& %\bigvee_{i\in [1;n]} \llbracket f_i \rrbracket_e \\
-    \llbracket f_1 \rrbracket_e \vee \dots\vee \llbracket f_n \rrbracket_e\\
-    \llbracket \mcoq{LIMPL}\ [f_1;\dots;f_n]\  f \rrbracket_e &=& \llbracket f_1\rrbracket_e \rightarrow \dots \rightarrow \llbracket f_n \rrbracket_e \to \llbracket f \rrbracket_e \\
+    \llbracket \icoq{NEG f} :: r \rrbracket &=& \llbracket f \rrbracket \to \llbracket r \rrbracket \\
+    \llbracket \icoq{POS f} :: r \rrbracket &=& \llbracket f \rrbracket \lor \llbracket r \rrbracket \\
+    \\
+    \llbracket (([f_1,\dots,f_n],r),f) \rrbracket &=& (\llbracket f_1 \rrbracket \to \dots \to \llbracket f_n \rrbracket \to \llbracket r \rrbracket) \to \llbracket f \rrbracket
   \end{array}
 \]
 
 \end{frame}
 
-\begin{frame}[fragile]{Pseudo-CNF construction}
-\begin{minted}{coq}
-  Inductive literal : Type :=
-  | POS (f: HFormula) | NEG (f: HFormula)
-\end{minted}
-\begin{itemize}
-\item where \icoq{HFormula := HCons.t LForm}
-\item and the moral contract to never look at the \icoq{LForm}
-\end{itemize}
 
-%% This facilitate the proofs: no need to \emph{fresh} literals.
-
+\begin{frame}[fragile]{Lazy Unit propagation [Zhang and Stickel,1996]}
+Linear sweep of every clause is prohibitively expensive 
 \[
-  \begin{array}{cc}
-  \icoq{AND-} \dfrac{ f = (f_1 \land \dots \land f_n) }
-  { (f \to f_1) \land \dots \land (f \to f_n) } &
-    %
-    \icoq{AND+} \dfrac{ f = (f_1 \land \dots \land f_n) }
-    { f_1 \to \dots \to f_n \to f } \\\\
-    %
-    \icoq{OR-}  \dfrac{ f = (f_1 \lor \dots \lor f_n) }
-    { (f \to f_1 \lor \dots \lor f_n) } &
-    %
-    \icoq{OR+}  \dfrac{ f = (f_1 \lor \dots \lor f_n) }
-    { (f_1 \to  f) \land  (f_n \to f) }\\\\
-    %
-    \icoq{IMPL-}  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
-                   { (f \to f_1 \to \dots \to f_n \to r) } &
-    % 
-    \icoq{IMPL+}  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
-                   { (r \to f) \land \bigwedge_{(\icoq{is_dec}\ f_i)} (f_i \lor f)   }\\\\
-  \end{array}
+  \dfrac{ \mathbf{p_i} \quad p_1 \to \dots \to \mathbf{p_i} \to r}
+  { p_1 \to \dots \to \mathbf{\top} \to r}
+  \kern -2.5cm {\textnormal{\Huge\xmark} }
 \]
-If  $\neg \bigwedge_{(\icoq{is_dec}\ f_i)}$, we keep the $\mathit{IClause}$
-$
-(f_1 \to \dots \to f_n \to r) \to f
-$
-\end{frame}
 
-\begin{frame}[fragile]{Unit propagation}
-Unit propagation
-\begin{enumerate}
-\item discards clauses (\icoq{R1}, \icoq{R2})
-\item simplified clauses (\icoq{M1}, \icoq{M2})
-\item generate new unit clauses
-\item goto 1
-\end{enumerate}
-\[
-  \icoq{R1}\dfrac{ p }{ p \lor r } \qquad
-  \icoq{R2}\dfrac {\neg p }{ p \to r } \qquad 
-  \icoq{M1}\dfrac{p \quad p \to r}
-  { r }  \qquad
-  \icoq{M2}\dfrac{\neg p \quad p \lor r}{r} 
-\]
-Naive algorithm performs a linear sweep \xmark\\
-Key insight: we only care about unit vs non-unit clauses
+Key insight: we only care about unit vs non-unit clauses\\
+
+%% \begin{enumerate}
+%% \item Simplification Rules (leading literal)
+%% \[
+%%   \begin{array}{c}  
+%%   \dfrac{ p  \quad p \to r}
+%%     {r}\qquad
+%%   \dfrac{\neg q  \quad  q \lor r}
+%%     {r}
+%%   \end{array}
+%% \]
+%% \item Simplification Rules (second leading literal)
+%%   \[
+%%   \begin{array}{c}  
+%%   \dfrac{ p_2  \quad p_1 \to p_2 \to r}
+%%     {p_1 \to r}\qquad
+%%   \dfrac{\neg q  \quad  p_1 \to q \lor  r}
+%%     {p_1 \to r }\qquad
+%%     \dfrac{\neg q_2  \quad  q_1 \lor q_2 \lor  r}
+%%     {q_1 \lor r }
+%%   \end{array}
+%% \]
+%% \item Generate new unit clauses 
+%% \item Goto 1
+%% \end{enumerate}
+
 \end{frame}
 
 
-\begin{frame}[fragile]{Lazy Unit Propgation}
-Identify 2 unassigned literals (watched literals)
+\begin{frame}[fragile]{Unit Propagation with Watched Literals}
+Identify 2 literals (watched literals)
 \begin{minted}{Coq}
   Record watched_clause := {
   watch1 : literal;
@@ -275,162 +351,146 @@ Identify 2 unassigned literals (watched literals)
   unwatched: list literal }.
 \end{minted}
 \begin{itemize}
+\item Invariant: $\{\icoq{watched literals} \} \cap \{ \icoq{unit clauses} \} = \emptyset$
 \item Clauses are indexed on watched literals.
-\item Unit-propagation $p$ only considers clauses watched by $\neg p$
-\item and search for the first unassigned in \icoq{unwatched} literal.
+\item Unit-propagation $l$ only considers clauses watched by $\bar{l}$
+\item and search for the first $l' \in \{\icoq{unwatched}\} \setminus \{ \icoq{unit clauses} \}$
 \end{itemize}
-NB: their may be assigned literals in \icoq{unwatched}.\\
+NB: maybe $\{ \icoq{unwatched} \} \cap \{ \icoq{unit clauses} \} \neq \emptyset$.
 \end{frame}
 
-\begin{frame}{Case splitting over a Clause}
-  \begin{itemize}
-  \item Intuitionistic 
-    \[
-      \dfrac{\Gamma,p_1 \vdash q \qquad \Gamma, p_2 \vdash q}
-      {\Gamma, p_1 \lor p_2 \vdash q}
-    \]
-  \item Classic 
-    \[
-      \dfrac{ p_1 \lor \neg p_1 \qquad
-        \Gamma, \neg p_1 \vdash q \qquad \Gamma, p_2 \vdash q }
-      {\Gamma, p_1 \to p_2 \vdash q}
-    \]
-  \item Classic/Intuitionistic 
-    \[
-      \dfrac{ \Gamma, \neg p_1 \vdash \bot \qquad \Gamma, p_2 \vdash \bot}
-      {\Gamma, p_1 \to p_2 \vdash \bot}
-    \]
-  \end{itemize}  
-  NB: SAT solvers do not do that.
-\end{frame}
 
 \begin{frame}{Backjumping}
-  Backjumping= \emph{a posteriori} detection of spurious case-splitting
+  Backjumping= \emph{a posteriori} detection of spurious case-splits
   \[
    \dfrac{\Gamma,p_1 \vdash q \qquad \Gamma, p_2 \vdash q}
    {\Gamma, p_1 \lor p_2 \vdash q}
  \]
  \begin{theorem}
-   If \emph{proof} $\Pi$ of $\Gamma,p_1 \vdash q$ does not use $p_1$
-   \begin{itemize}
-   \item $\Pi$ is also a proof of $\Gamma \vdash q$
-   \item $\Pi$ is also a proof of $\Gamma, p_1 \lor p_2 \vdash q$
-   \item $\Pi$ is also a proof of $\Gamma, p_2 \vdash q$
-   \end{itemize}
+   If \emph{proof} $\Pi$ of $\Gamma,p_1 \vdash q$ does not use $p_1$\\
+   Then $\Pi$ is also a proof of $\Gamma, p_1 \lor p_2 \vdash q$
  \end{theorem}
- $\Rightarrow$ Let skip the sub-goal $\Gamma, p_2 \vdash q$
+%% $\Rightarrow$ Let skip the sub-goal $\Gamma, p_2 \vdash q$
  
- Each clauses is annotated with a set of literals.
+ Each clause is annotated with the set of necessary literals.
 \[
   \llbracket c_{\{l_1,\dots,l_n\}} \rrbracket = \llbracket l_1
-  \rrbracket \land \dots \llbracket l_n \rrbracket \rightarrow
+  \rrbracket \land \dots \land \llbracket l_n \rrbracket \rightarrow
   \llbracket c \rrbracket
 \]
 We have a SAT solver! 
 \end{frame}
 
-\begin{frame}{Dealing with IClause}
-  A $\mathit{IClause}$ is of the form $(f_1 \to \dots f_n \to r) \to f$.\\
+\begin{frame}{Dealing with \emph{implication} clauses}
+  Implication clauses are of the form $(f_1 \to \dots f_n \to r) \to f$.\\
   \bigskip
   \[
     \dfrac{\Gamma, f_1,\dots, f_n \vdash r \qquad \Gamma, f \vdash \phi}
     { \Gamma , (f_1 \to \dots f_n \to r) \to f \vdash \phi}
   \]
-  This trigger a recursive proof-search and \emph{backtracking} may be necessary.\\
-  (The choice and order of the $\mathit{IClause}$ matters.)\\
+  A recursive proof-search and \emph{backtracking} may be necessary.\\
   \bigskip    
-  People think $NP \subset PSpace$\\
-  \bigskip
-We have an Intuitionistic SAT solver!
+%  People think $NP \subset PSpace$\\
+%  \bigskip
+
+  We have an Intuitionistic SAT solver!
 \end{frame}
 
 \newmintinline[scoq]{coq}{fontsize=\footnotesize}
 
 \begin{frame}[fragile]{Theory Reasoning}
-  At the end of the proof search, we run the \icoq{thy_prover}.\\
-  \scoq{thy_prover : hmap -> list literal -> option (hmap * clause)}
+%  At the end of the proof search, we run the \icoq{thy_prover}.\\
+  \scoq{thy_prover : list literal -> option clause}
   \begin{itemize}
-  \item Input a list of assigned literals + watched literals
+  \item Input a list of unit literals %+ watched literals
   \item Returns (optionally) a clause (a tautology)
   \end{itemize}
+  \bigskip
+  
 The returned  clause can be
 \begin{itemize}
 \item a conflict clause (unsatisfiable subset of input literals)
-\item a clause to deduce a watched literal (from the assigned literals)
+\item a clause to deduce a watched literal (from the unit literals)
 \item an arbitrary clause (theory propagation)
 \end{itemize}
+\bigskip
+
 We have a SMT solver!
 
 \end{frame}
 
+\section{Hybrid Proof by Reflection}
 
 \begin{frame}{Hybrid Proof by Reflection}
   How to use Coq tactics as theory provers?\\
   \medskip
   
-  Tactics are Ocaml programs generating proof terms\\
+  Tactics are Ocaml programs generating proof terms.\\
   \medskip
 
-  The SMT prover is a Coq program (with a correctness theorem).\\
+  The SAT solver is a Gallina program (with a correctness theorem).\\
 
   \medskip
   In Ocaml:
   \begin{itemize}
-  \item Run the Coq extracted the SMT prover
-  \item Build a goal from literals and run the tactics
-  \item Extract an unsat core (reduced clause) from the proof-term
-  \item Adjust the proof term and return the unsat core
+  \item Run the extracted Gallina SAT solver.
+  \item Build a goal from literals and run the tactics.
+  \item Extract an unsat core (reduced clause) from the proof-term.
+  \item Adjust the proof term and return the unsat core.
   \end{itemize}
 
   In Coq:
   \begin{itemize}
-  \item Augment the goal with unsat cores (reusing their proof)
-  \item Run the SMT prover (in Coq) without theory reasoning
+  \item Augment the goal with unsat cores (reusing their proof-term).
+  \item Run the SAT solver (in Coq) without theory reasoning.
   \end{itemize}
   
 \end{frame}
 
-\begin{frame}[fragile]{Micro Benchmarks}
-  \begin{minted}{Coq}
-    forall (x:Z), (x >= 0) \/ ~ (x >= 0).
-    (*x >= 0 \/ ~ x >= 0 -> ... *)
-  \end{minted}
-  \bigskip
+%% \begin{frame}[fragile]{Micro Benchmarks}
+%%   \begin{minted}{Coq}
+%%     forall (x:Z), (x >= 0) \/ ~ (x >= 0).
+%%     (*x >= 0 \/ ~ x >= 0 -> ... *)
+%%   \end{minted}
+%%   \bigskip
+%% 
+%%   \begin{minted}{Coq}
+%%     forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
+%%     (*(x = 0 -> (x >= 0 -> False) -> False) -> ... *)
+%%   \end{minted}
+%%   \bigskip
+%%   
+%%   \begin{minted}{Coq}
+%%     forall (A:Type) (p:Prop) (a b c:A),
+%%          a = b -> b = c -> (a = c -> p) -> p.
+%%    (* (b = c -> a = b -> a = c) -> ... *)
+%%  \end{minted}
+%%   \bigskip
+%%   
+%%   \begin{minted}{Coq}
+%%     forall (A:Type) (x y t:A) (p q:Prop),
+%%     x = y -> p \/ q ->
+%%              (p -> y = t) ->
+%%              (q -> y = t) -> x = t.
+%%     (* (y = t -> x = y -> x = t) -> ... *)
+%%   \end{minted}
+%% 
+%% \end{frame}
 
-  \begin{minted}{Coq}
-    forall (p:Prop) (x:Z), x = 0 -> (x >= 0 -> p) -> p.
-    (*(x = 0 -> (x >= 0 -> False) -> False) -> ... *)
-  \end{minted}
-  \bigskip
-  
-  \begin{minted}{Coq}
-    forall (A:Type) (p:Prop) (a b c:A),
-         a = b -> b = c -> (a = c -> p) -> p.
-   (* (b = c -> a = b -> a = c) -> ... *)
- \end{minted}
-  \bigskip
-  
-  \begin{minted}{Coq}
-    forall (A:Type) (x y t:A) (p q:Prop),
-    x = y -> p \/ q ->
-             (p -> y = t) ->
-             (q -> y = t) -> x = t.
-    (* (y = t -> x = y -> x = t) -> ... *)
-  \end{minted}
+\section{Benchmarks}
 
-\end{frame}
 
 \begin{frame}{Scalability Benchmark}
-  Pigeon Hole: Can n pigeon fit in n-1 holes?\\
-  No! But the \emph{resolution proof} is exponential!\\
+  Pigeon Hole: Can n+1 pigeons fit in n holes?\\
+  No! But the \emph{resolution proof} is exponential.
   \bigskip
   \begin{figure}
   \centering
   \subfloat[\centering Running time of tactics.]
-  {\includegraphics[width=0.45\linewidth]{images/pigeon_tac.pdf}}
+  {\includegraphics[width=0.45\linewidth]{pdf/pigeon_tac.pdf}}
   \qquad
   \subfloat[\centering Running time of type-checking.]
-  {\includegraphics[width=0.45\linewidth]{images/pigeon_qed.pdf}}
+  {\includegraphics[width=0.45\linewidth]{pdf/pigeon_qed.pdf}}
   \caption{Pigeon Hole for \icoq{itauto}, \icoq{tauto} and \icoq{rtauto}}
   \label{fig:pigeon}
 \end{figure}
@@ -438,10 +498,10 @@ We have a SMT solver!
 \end{frame}
 
 \begin{frame}[fragile]{Coq Benchmarks (1/2)}
-  Replace all calls of \scoq{tauto}, \scoq{intuition tac} for\\
-  \scoq{tac} $\in$ \{\scoq{idtac}, \scoq{assumption},
-  \scoq{discriminate}, \scoq{congruence}, \scoq{lia}, \scoq{auto},
-  \scoq{eauto} \}.\\
+  Replace all calls of \scoq{tauto}, \scoq{intuition tac}.
+%%   \scoq{tac} $\in$ \{\scoq{idtac}, \scoq{assumption},
+%%   \scoq{discriminate}, \scoq{congruence}, \scoq{lia}, \scoq{auto},
+%%   \scoq{eauto} \}.\\
   \medskip
   
   \scoq{itauto} solves almost every goals but \dots
@@ -470,29 +530,31 @@ Proof. Fail itauto congruence.
     \hline
     & \#goals & \%faster & \%equal & \%slower \\
     \hline
-    Bedrock2  & 1621   &   13   &   55    &   32     \\
+    Bedrock2  & 1621   &   40   &   40    &   20     \\
     \hline
-    CompCert  & 924    &   16   &   55    &   29      \\
+    CompCert  & 924    &   19   &   76    &   5      \\
     \hline
   \end{tabular}
   \bigskip
   
   \begin{itemize}
-  \item  For Bedrock2, slowdown of 0.6
-  \item  For CompCert, speed-up of 2.4\\
-    16\% are solved 20 times faster!
+  \item  For Bedrock2, speed-up of 1.07
+  \item  For CompCert, speed-up of 2.8\\
+    19\% are solved 20 times faster!
   \end{itemize}
 
-  Benchmarks are inconclusive\dots\\
-  No clear suspect yet\dots
+  Benchmarks are encouraging\dots\\
+  Careful implementation is key\dots
   
 \end{frame}
 
+\section*{Conclusion}
+
 \begin{frame}{Related Work}
   \begin{itemize}
-  \item External SMT provers \emph{e.g.} SMTCoq\\
-    classic logic, not extensible
-  \item Reflexive (classic) SAT solver in Coq [Lescuyer, Conchon]
+  \item External SMT provers \emph{e.g.} SMTCoq, SledgeHammer\\
+    classic logic, not extensible, much faster
+  \item Reflexive (classic) SAT solver in Coq [Lescuyer \& Conchon, 2008]
     \begin{itemize}
     \item CNF \checkmark
     \item Intuitionistic \xmark
@@ -501,14 +563,14 @@ Proof. Fail itauto congruence.
     \item Backjumping \xmark
     \item Theory   \xmark
     \end{itemize}
-  \item Formalisation of SAT [Blanchette, Lamich, Fleury]
+  \item Formalisation of SAT [Blanchette \& Lammich \& Fleury, 2018]
     \begin{itemize}
-    \item Reflexive \xmark
-    \item Intuitionistic \xmark
-    \item Theory \xmark
     \item 2-watched \checkmark
     \item clause learning \checkmark
     \item imperative \checkmark
+    \item Reflexive \xmark
+    \item Intuitionistic \xmark
+    \item Theory \xmark
     \end{itemize}
   \end{itemize}
   
@@ -527,12 +589,118 @@ Proof. Fail itauto congruence.
   \item Clause learning (à la Cdcl)
   \item 2-watched literals 
   \item Imperative arrays
-  \item à la Nelson-Oppen theory combination
+  \item À la Nelson-Oppen theory combination [Coq Workshop] 
   \end{itemize}
   \bigskip
-  Try it out \url{https://gitlab.inria.fr/fbesson/itauto}\footnote{Happy user of the Patricia Trie library of Alix Trieu}
-  
+  Try it out \url{https://gitlab.inria.fr/fbesson/itauto}\footnote{Happy user of the Patricia Trie library of Alix Trieu}\\
+  \icoq{opam install itauto  (deps coq >= 8.13)}
 \end{frame}
+
+%%\begin{frame}{Backup Material}
+%%  
+%%\end{frame}
+%%
+%%\begin{frame}[fragile]{Definitional CNF à la Plaisted and Greenbaum}
+%%
+%%%% This facilitate the proofs: no need to \emph{fresh} literals.
+%%
+%%\[
+%%  \begin{array}{c}
+%%    \dfrac{ f = (f_1 \land \dots \land f_n) }
+%%    {
+%%    \begin{array}{l}
+%%      \icoq{AND-}(f) = \{\Lit{f} \to \Lit{f_1}; \dots; \Lit{f} \to \Lit{f_n}\}  \\
+%%      \icoq{AND+}(f) = \{\Lit{f_1} \to \dots \to \Lit{f_n} \to \Lit{f} \}
+%%    \end{array}}\\\\
+%%    \dfrac{ f = (f_1 \lor \dots \lor f_n) }
+%%    {
+%%    \begin{array}{l}
+%%      \icoq{OR-}(f)=\{\Lit{f} \to \Lit{f_1} \lor \dots \lor \Lit{f_n}\}\\
+%%      \icoq{OR+}(f)=\{\Lit{f_1} \to  \Lit{f} ;  \ldots ; \Lit{f_n} \to \Lit{f}\}               
+%%    \end{array}
+%%    }\\\\
+%%  \dfrac{ f = (f_1 \to \dots \to f_n \to r) }
+%%  {
+%%    \begin{array}{l}    
+%%      \icoq{IMPL-}(f)= \{\Lit{f} \to \Lit{f_1} \to \dots \to \Lit{f_n} \to \Lit{r}\} \\
+%%      \icoq{IMPL+}(f)= \{\Lit{r} \to \Lit{f}\} \cup  \bigcup_{\icoq{is_dec}\ f_i} \{\Lit{f_i} \lor \Lit{f}\}
+%%    \end{array}
+%%    }
+%%  \end{array}
+%%\]
+%%For \icoq{IMPL+}, if  $\neg \bigwedge_{(\icoq{is_dec}\ f_i)}$, keep the \emph{implication clause}
+%%$(\Lit{f_1} \to \dots \to \Lit{f_n} \to \Lit{r}) \to \Lit{f} $.
+%%\end{frame}
+%%
+%%\begin{frame}{Proof in a Nutshell}
+%%  Well-formedness
+%%  \begin{itemize}
+%%  \item The initial formula $f$ is hash-consed\\
+%%    (Hash-consing is checked w.r.t \icoq{hm:ptrie LForm})
+%%  \item Every literal $l$ is hash-consed
+%%    ($l$ is a sub-formula of $f$)
+%%  \end{itemize}
+%%  \[
+%%    \phi_i \in \icoq{hm} \land \psi_i \in \icoq{hm} \Rightarrow \phi = \psi
+%%  \]
+%%  Soundness of dependencies
+%%  \begin{itemize}
+%%  \item Each clause $c$ is annotated with a set $d$ of literals
+%%    \[
+%%      \llbracket c_d \llbracket = \bigwedge_{l\in d} \llbracket l \rrbracket \to \llbracket c \rrbracket
+%%    \]
+%%  \item Unit propagation creates new clauses
+%%    \[
+%%  \begin{array}{c}
+%%  \dfrac{ d_1 \to p  \qquad d_2 \to (p \to r) }
+%%    {d_1 \land d_2 \to r } \qquad
+%%  \dfrac{ d_1 \to \neg q  \qquad d_2 \to (q \lor r) }
+%%    {d_1 \land d_2 \to r }\\\\
+%%  \end{array}
+%%\]
+%%\end{itemize}
+%%
+%%\end{frame}
+%%
+%%\begin{frame}[fragile]{Soundness theorem}
+%%  \begin{minted}[escapeinside=\#\#,mathescape=true]{Coq}
+%%Definition sound_prover (prover: ProverT) (st: state) :=
+%% #$\forall$# g lc d, wf_state st #$\to$# g #$\in$# hconsmap st #$\to$#
+%% prover st g = Success (lc,d) #$\to$#
+%% (#$\llbracket$#st#$\rrbracket$# #$\to$# #$\llbracket$#st#$\rrbracket^{dep}$# #$\to$# #$\llbracket$#g#$\rrbracket$#) #$\land$# (#$\llbracket$#st#$\rrbracket^{dep}$# #$\to$# #$\llbracket$#d#$\rrbracket$# #$\to$# #$\llbracket$#g#$\rrbracket$#)  #$\land$# #$\bigwedge_{c \in lc}$# #$\llbracket$#c#$\rrbracket$#
+%%\end{minted}
+%%\bigskip
+%%\begin{enumerate}
+%%\item The learned clauses are tautologies
+%%\item The set of clauses (and their annotations) entails $g$
+%%\item The annotations and the necessary literals (also) entails $g$
+%%\end{enumerate}
+%%
+%%  
+%%\end{frame}
+%% \begin{frame}{Case splitting over a Clause}
+%%   \begin{itemize}
+%%   \item Intuitionistic 
+%%     \[
+%%       \dfrac{\Gamma,p_1 \vdash q \qquad \Gamma, p_2 \vdash q}
+%%       {\Gamma, p_1 \lor p_2 \vdash q}
+%%     \]
+%%   \item Classic 
+%%     \[
+%%       \dfrac{ p_1 \lor \neg p_1 \qquad
+%%         \Gamma, \neg p_1 \vdash q \qquad \Gamma, p_2 \vdash q }
+%%       {\Gamma, p_1 \to p_2 \vdash q}
+%%     \]
+%%   \item Classic/Intuitionistic 
+%%     \[
+%%       \dfrac{ \Gamma, \neg p_1 \vdash \bot \qquad \Gamma, p_2 \vdash \bot}
+%%       {\Gamma, p_1 \to p_2 \vdash \bot}
+%%     \]
+%%   \end{itemize}  
+%%   NB: SAT solvers simply branch over literals.
+%% \end{frame}
+
+
 
 
 

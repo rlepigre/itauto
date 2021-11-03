@@ -5,4 +5,6 @@ theories/PatriciaR.v
 theories/KeyInt.v
 theories/Formula.v
 theories/Prover.v
-
+theories/ZArithDec.v
+theories/NOlia.v
+theories/NOlra.v

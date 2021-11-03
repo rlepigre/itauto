@@ -8,8 +8,8 @@ Proof.
   destruct (a <=? b); intuition congruence.
 Qed.
 
-Instance leb_le : Reflect.Rbool2 leb := Reflect.mkrbool2 _ _ leb le is_true_le.
-Instance le_leb : Reflect.RProp2 le := Reflect.mkrProp2 _ _ le leb is_true_le.
+#[local] Instance leb_le : Reflect.Rbool2 leb := Reflect.mkrbool2 _ _ leb le is_true_le.
+#[local] Instance le_leb : Reflect.RProp2 le := Reflect.mkrProp2 _ _ le leb is_true_le.
 
 Require Import Cdcl.Itauto.
 Require Import Int63.

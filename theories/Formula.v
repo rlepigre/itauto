@@ -1,6 +1,6 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses Cdcl.Coqlib.
-Require Import  Bool Setoid ZifyBool  ZArith Int63 Lia List.
+Require Import  Bool Setoid ZifyBool  ZArith Uint63 Lia List.
 Import ZifyClasses.
 
 Set Primitive Projections.
@@ -38,54 +38,54 @@ Ltac destruct_in_hyp H eqn :=
   end.
 
 
-Lemma compare_refl : forall i, (i ?= i)%int63 = Eq.
+Lemma compare_refl : forall i, (i ?= i)%uint63 = Eq.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  replace (i <? i)%int63 with false by lia.
-  replace (i =? i)%int63 with true by lia.
+  replace (i <? i)%uint63 with false by lia.
+  replace (i =? i)%uint63 with true by lia.
   reflexivity.
 Qed.
 
-Lemma compare_Eq : forall x y, (x ?= y)%int63 = Eq <-> (x =? y = true)%int63.
+Lemma compare_Eq : forall x y, (x ?= y)%uint63 = Eq <-> (x =? y = true)%uint63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <?y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%uint63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x =?y)%int63 ;   intuition (congruence || lia).
+  destruct (x =?y)%uint63 ;   intuition (congruence || lia).
 Qed.
 
-Lemma compare_Lt : forall x y, (x ?= y)%int63 = Lt <-> (x <? y = true)%int63.
+Lemma compare_Lt : forall x y, (x ?= y)%uint63 = Lt <-> (x <? y = true)%uint63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <?y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%uint63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x =?y)%int63 ;   intuition (congruence || lia).
+  destruct (x =?y)%uint63 ;   intuition (congruence || lia).
 Qed.
 
-Lemma compare_Gt : forall x y, (x ?= y)%int63 = Gt <-> (y <? x = true)%int63.
+Lemma compare_Gt : forall x y, (x ?= y)%uint63 = Gt <-> (y <? x = true)%uint63.
 Proof.
   intros.
   rewrite compare_def_spec.
   unfold compare_def.
-  destruct (x <?y)%int63 eqn:LT; try congruence.
+  destruct (x <?y)%uint63 eqn:LT; try congruence.
   intuition (congruence || lia).
-  destruct (x =?y)%int63 eqn:EQ;   intuition (congruence || lia).
+  destruct (x =?y)%uint63 eqn:EQ;   intuition (congruence || lia).
 Qed.
 
 Ltac elim_compare :=
   match goal with
-  | H : (?X ?= ?Y)%int63 = Eq |- _ => rewrite compare_Eq in H
-  | H : (?X ?= ?Y)%int63 = Lt |- _ => rewrite compare_Lt in H
-  | H : (?X ?= ?Y)%int63 = Gt |- _ => rewrite compare_Gt in H
-  | |-  (?X ?= ?Y)%int63 = Eq  => rewrite compare_Eq
-  | |-  (?X ?= ?Y)%int63 = Lt  => rewrite compare_Lt
-  | |-  (?X ?= ?Y)%int63 = Gt  => rewrite compare_Gt
+  | H : (?X ?= ?Y)%uint63 = Eq |- _ => rewrite compare_Eq in H
+  | H : (?X ?= ?Y)%uint63 = Lt |- _ => rewrite compare_Lt in H
+  | H : (?X ?= ?Y)%uint63 = Gt |- _ => rewrite compare_Gt in H
+  | |-  (?X ?= ?Y)%uint63 = Eq  => rewrite compare_Eq
+  | |-  (?X ?= ?Y)%uint63 = Lt  => rewrite compare_Lt
+  | |-  (?X ?= ?Y)%uint63 = Gt  => rewrite compare_Gt
   end.
 
 Lemma lift_if : forall (P: bool -> Prop), forall x, (x =  true -> P true) /\ (x = false -> P false)  -> P x.
@@ -132,7 +132,7 @@ Module HCons.
       destruct f ; reflexivity.
     Qed.
 
-    Definition eq_hc (f1 f2 : t) := (id f1 =? id f2)%int63 && Bool.eqb (is_dec f1) (is_dec f2).
+    Definition eq_hc (f1 f2 : t) := (id f1 =? id f2)%uint63 && Bool.eqb (is_dec f1) (is_dec f2).
 
 
   End S.
@@ -186,7 +186,7 @@ Qed.
     constructor.
   Qed.
 
-  Hint Resolve wf_map_add : wf.
+#[local] Hint Resolve wf_map_add : wf.
 
   Lemma wf_map_remove :
     forall {A: Type} x
@@ -198,7 +198,7 @@ Qed.
     apply IntMap.wf_remove'; auto.
   Qed.
 
-  Hint Resolve wf_map_remove : wf.
+#[local]  Hint Resolve wf_map_remove : wf.
 
 
 Inductive op :=
@@ -240,7 +240,7 @@ Inductive op :=
       List.fold_right (fun e acc => max (Depth e.(elt)) acc) O l.
 
     Lemma in_max_elt : forall l x (IN: In x l),
-        Depth (elt x) < S(max_list  l).
+        (Depth (elt x) < S(max_list  l))%nat.
     Proof.
       induction l; simpl ; auto.
       - tauto.
@@ -395,7 +395,7 @@ Inductive op :=
   Proof. destruct f ; reflexivity. Qed.
 
 
-  Open Scope int63.
+  Open Scope uint63.
 
 
 
@@ -1128,7 +1128,7 @@ Inductive op :=
     destruct (is_positive_literal l); auto with wf.
   Qed.
 
-  Hint Resolve wf_map_add_clause_old : wf.
+#[local]  Hint Resolve wf_map_add_clause_old : wf.
 
   Lemma wf_map_add_clause :
     forall l id cl cls
@@ -2510,13 +2510,13 @@ Inductive op :=
           * firstorder.
           * firstorder.
           * firstorder congruence.
-            apply 0%int63. (* ?? *)
+            apply 0%uint63. (* ?? *)
         + simpl.
           intuition subst.
           firstorder.
           firstorder.
           firstorder congruence.
-          apply 0%int63. (* ?? *)
+          apply 0%uint63. (* ?? *)
   Qed.
 
 

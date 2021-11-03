@@ -44,17 +44,17 @@ Proof.
 Qed.
 
 
-Instance Zge_dec : DecP2 Z.ge.
+#[local] Instance Zge_dec : DecP2 Z.ge.
 Proof.
  unfold DecP2. intros. lia.
 Qed.
 
-Instance Zle_dec : DecP2 Z.le.
+#[local] Instance Zle_dec : DecP2 Z.le.
 Proof.
  unfold DecP2. intros. lia.
 Qed.
 
-Instance Zeq_dec : DecP2 (@eq Z).
+#[local] Instance Zeq_dec : DecP2 (@eq Z).
 Proof.
  unfold DecP2. intros. lia.
 Qed.
@@ -199,14 +199,14 @@ Require Import Bool.
 
 Open Scope bool_scope.
 Require Import ZifyClasses.
-Program Instance Op_eq_bool : BinRel (@eq bool) :=
+#[local] Program Instance Op_eq_bool : BinRel (@eq bool) :=
   {TR := fun x y => Is_true (implb x y) /\ Is_true (implb y x) ; TRInj := _ }.
 Next Obligation.
   destruct n,m; simpl; intuition congruence.
 Qed.
 Add Zify BinRel Op_eq_bool.
 
-Program Instance Op_negb : UnOp negb :=
+#[local] Program Instance Op_negb : UnOp negb :=
   {TUOp := fun x => implb x false ;  TUOpInj:= _ }.
 Add Zify UnOp Op_negb.
 
