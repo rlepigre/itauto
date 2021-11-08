@@ -1,5 +1,5 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
-Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses Cdcl.Coqlib.
+Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses.
 Require Import  Bool Setoid ZifyBool  ZArith Uint63 Lia List.
 Import ZifyClasses.
 
@@ -5815,7 +5815,7 @@ Lemma fold_up : forall  (P: hmap -> Annot.t watched_clause -> Prop) (Q:  dresult
 Proof.
   intros.
   set (P':= fun (o:dresult) cl => match o with Progress st => P (hconsmap st) cl | Success (h,_) => P h cl | _ => True end).
-  apply fold_lemma with (P0:= P'); eauto.
+  apply (fold_lemma _ P'); eauto.
   unfold P'. intros.
   destruct acc ; auto.
   - apply QOUT in H1. tauto.

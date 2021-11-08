@@ -893,8 +893,6 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
     | S q => if testbit k (n - p)%nat then (n - p)%nat else find_lowest n k q
     end.
 
-  Require Import Cdcl.Coqlib.
-
   Lemma find_lowest_spec:
     forall n p k,
       testbit k n = true ->
@@ -902,7 +900,7 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Proof.
     induction p; intros.
     - simpl. split; auto. intros; lia.
-    - exploit IHp; eauto. intros [HA HB].
+    - apply IHp in H. destruct H as [HA HB].
       simpl. case_eq (testbit k (n - S p)%nat); intros.
       + split; intros; auto; lia.
       + split; intros; auto.

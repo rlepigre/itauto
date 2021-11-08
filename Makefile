@@ -25,9 +25,11 @@ theories/NOlra.vo : theories/NOlra.v theories/Itauto.vo src/cdcl_plugin.cmxs  Co
 	$(MAKE) -f CoqMakefile_ml theories/NOlra.vo COQBIN=$(COQBIN) 
 
 
-src/cdcl_plugin.cmxs CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml src/no.ml
-	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
+src/cdcl_plugin.cmxs  : CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 
+
+CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
+	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
 
 CoqMakefile CoqMakefile.conf : _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
@@ -47,7 +49,7 @@ else
 	cp src/proverPatch.in src/proverPatch.ml
 endif
 
-UINT := $(shell coqc -config | grep COQLIB | cut -f2 -d'=')/kernel
+UINT := $(shell $(COQBIN)coqc -config | grep COQCORELIB | cut -f2 -d'=')/kernel
 
 src/prover.cmx : src/prover.ml
 	ocamlc -annot -I $(UINT) -rectypes -c src/prover.mli
@@ -63,7 +65,7 @@ uninstall:
 cleanaux : 
 	rm -f src/prover.*  src/proverPatch.ml src/patch/mlpatch
 
-clean : cleanaux
+clean : cleanaux 
 	$(MAKE) -f CoqMakefile clean
 	$(MAKE) -f CoqMakefile_ml clean
 	rm -f CoqMakefile.conf CoqMakefile CoqMakefile_ml CoqMakefile_ml.conf

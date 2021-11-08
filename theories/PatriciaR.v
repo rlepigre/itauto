@@ -2,8 +2,29 @@
   * Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> adapted from functor to record
 *)
 
-Require Import Lia.
-Require Import Cdcl.Coqlib.
+Require Import List Bool ZArith Lia.
+
+Ltac inv H := inversion H ; try subst; clear H.
+
+Definition lazy_and (b:bool) (f: unit -> bool) :=
+  match b with
+  | false => false
+  | true  => f tt
+  end.
+
+Definition lazy_or (b:bool) (f: unit -> bool) :=
+  match b with
+  | true => true
+  | false => f tt
+  end.
+
+Lemma lazy_and_andb : forall b f, lazy_and b f = b && f tt.
+Proof.  destruct b ; reflexivity.  Qed.
+
+Lemma lazy_or_orb : forall b f, lazy_or b f = b || f tt.
+Proof.  destruct b ; reflexivity.  Qed.
+
+
 
 Definition le_o (o : option nat) (n:nat) :=
   match o with
@@ -16,7 +37,8 @@ Lemma le_o_dec :
     le_o o n \/ ~ le_o o n.
 Proof.
   destruct o; simpl.
-  - intros. destruct (le_dec n n0); auto.
+  - intros.
+    destruct (le_dec n n0); auto.
   - tauto.
 Qed.
 
@@ -174,7 +196,7 @@ Module PTrie.
   Proof.
     induction p; intros.
     - simpl. split; auto. intros; lia.
-    - exploit IHp; eauto. intros [HA HB].
+    - apply IHp in H. destruct H as [HA HB].
       simpl. case_eq (testbit k (n - S p)%nat); intros.
       + split; intros; auto; lia.
       + split; intros; auto.
@@ -238,7 +260,7 @@ Module PTrie.
         unfold lowest_bit in H0. rewrite land_spec in H0.
         rewrite lxor_spec in H0. red; intros.
         rewrite H1 in H0. rewrite xorb_nilpotent in H0.
-        simpl in H0. inv H0. }
+        simpl in H0. discriminate. }
   Qed.
 
   Theorem branching_bit_sym:
@@ -290,7 +312,7 @@ Module PTrie.
           generalize (proj2 (match_prefix_spec k _ _ _ H H0)). intros.
           assert (match_prefix k p m = true).
           { apply H2. intros; apply HB; lia. }
-          unfold match_prefix in H3. unfold proj_sumbool in H3.
+          unfold match_prefix in H3.
           rewrite eqb_spec in H3; congruence.
         * apply HA; auto.
     - destruct H1 as [H1 [n' [H2 H3]]].
@@ -362,7 +384,7 @@ Module PTrie.
         wf (Some (p, m, n, lr)) pt ->
         wf None pt.
     Proof.
-      destruct pt; intros; inv H; econstructor; eauto.
+      destruct pt; intros; inversion H; econstructor; eauto.
     Qed.
 
     Lemma wf_weaken:
@@ -375,14 +397,14 @@ Module PTrie.
     Proof.
       intros A t; induction t; intros.
       - constructor.
-      - inv H; constructor; auto.
+      - inversion H; constructor; auto.
         + symmetry. rewrite ! (zerobit_spec _ _ _ H0).
           f_equal. auto.
         + eapply mask_spec'. eauto.
         + intros. eapply mask_spec; eauto.
         + intros. rewrite <- Hprefix; try lia.
           eapply mask_spec; eauto.
-      - inv H; econstructor; trivial.
+      - inversion H; econstructor; trivial.
         + symmetry. rewrite ! (zerobit_spec _ _ _ H0).
           f_equal. auto.
         + eapply mask_spec'. eauto.
@@ -1083,7 +1105,7 @@ Module PTrie.
     Qed.
 
     Lemma eqb_is_dec : forall k1 k2,
-        eqb k1 k2 = proj_sumbool (eq k1 k2).
+        eqb k1 k2 = if (eq k1 k2) then true else false.
     Proof.
       intros.
       destruct (eq k1 k2); simpl.
@@ -1091,6 +1113,7 @@ Module PTrie.
       rewrite eqb_false.
       auto.
     Qed.
+
 
     Lemma gso':
       forall (A: Type) opt (i j: key) (x: A) (m: ptrie A),
@@ -1545,44 +1568,6 @@ Module PTrie.
 
     Definition keys' {A: Type} (m: ptrie A) :=
       List.map (@fst key A) (elements' m nil).
-
-    Lemma keys_norepet':
-      forall (A: Type) (m: ptrie A) opt,
-        wf opt m ->
-        list_norepet (keys' m).
-    Proof.
-      induction m; intros.
-      - constructor.
-      - constructor; auto. constructor.
-      - unfold keys'. rewrite elements_branch'.
-        rewrite map_app. apply list_norepet_append.
-        + inv H; eapply IHm1; eauto.
-        + inv H; eapply IHm2; eauto.
-        + red; intros.
-          eapply in_map_iff in H0; eapply in_map_iff in H1.
-          destruct H0 as [x1 [HA HB]]. destruct H1 as [x2 [HC HD]].
-          destruct x1; destruct x2; subst.
-          simpl. inv H.
-          * eapply in_elements' in HB; eauto.
-            eapply in_elements' in HD; eauto.
-            destruct HB; auto. destruct HD; auto.
-            case_eq (zerobit k brbit); intros; case_eq (zerobit k0 brbit); intros.
-            { generalize (get_not_same_lr  H6 H2). congruence. }
-            { red; intros; congruence. }
-            { generalize (get_not_same_lr H3 H1). congruence. }
-            { generalize (get_not_same_lr H3 H1). congruence. }
-          * eapply in_elements' in HB; eauto.
-            eapply in_elements' in HD; eauto.
-            destruct HB; auto. destruct HD; auto.
-            case_eq (zerobit k brbit); intros; case_eq (zerobit k0 brbit); intros.
-            { generalize (get_not_same_lr H6 H2). congruence. }
-            { red; intros; congruence. }
-            { generalize (get_not_same_lr H3 H1). congruence. }
-            { generalize (get_not_same_lr H3 H1). congruence. }
-    Qed.
-
-
-
 
 
 
@@ -2100,7 +2085,7 @@ Module PTrie.
     Qed.
 
     Ltac destruct_eq X Y :=
-      rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y) ; unfold proj_sumbool in *.
+      rewrite? (eqb_is_dec X Y) in *; destruct (eq X Y).
 
     Fixpoint beq' {A B: Type} (beq_elt: A -> B -> bool) (m1 : ptrie A) (m2: ptrie B): bool :=
       match m1, m2 with

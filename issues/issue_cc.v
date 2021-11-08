@@ -7,7 +7,7 @@ Variable P : A -> bool.
 Variable R : A -> B -> Prop.
 Definition Q (b : B) (r : A) :=  P r = true -> R r b.
 
-Goal forall
+(*Goal forall
     (b : B)
     (r r0 : A)
     (H0 : Q b r)
@@ -16,9 +16,9 @@ Goal forall
 Proof.
   intros.
   Fail congruence.
-  Opaque Q.
-  itauto congruence.
+  simple congruence.
 Qed.
+*)
 
 Goal  (False -> False \/ False) /\ (False \/ False -> False).
 Proof.

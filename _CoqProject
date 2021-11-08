@@ -1,6 +1,5 @@
 -Q theories/ Cdcl
 theories/ReifClasses.v
-theories/Coqlib.v
 theories/PatriciaR.v
 theories/KeyInt.v
 theories/Formula.v

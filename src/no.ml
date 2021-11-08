@@ -29,7 +29,7 @@ let debug = false
 
 let constr_of_string str =
     EConstr.of_constr
-    (UnivGen.constr_of_monomorphic_global
+    (UnivGen.constr_of_monomorphic_global (Global.env ())
        (Coqlib.lib_ref str))
 
 let coq_TheorySig  = lazy (constr_of_string "No.TheorySig")
@@ -368,13 +368,13 @@ let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)
 
 let no_tac thy tac1 tac2 =
   let thy  = EConstr.of_constr
-               (UnivGen.constr_of_monomorphic_global thy) in
+               (UnivGen.constr_of_monomorphic_global (Global.env ()) thy) in
   let tacs = List.mapi (fun i t -> (t, i)) [tac1; tac2] in
   Proofview.tclORELSE (solve_with_any tacs) (fun _ -> no_tacs thy tacs)
 
 let purify_tac thy =
   let thy  = EConstr.of_constr
-               (UnivGen.constr_of_monomorphic_global thy) in
+               (UnivGen.constr_of_monomorphic_global (Global.env ()) thy) in
   Proofview.Goal.enter (fun gl ->
       let s, l = collect_shared thy gl in
       purify l)

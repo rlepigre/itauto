@@ -18,7 +18,7 @@ let debug = Goptions.declare_bool_option_and_ref ~depr:false
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
 let constr_of_gref r =
-  EConstr.of_constr (UnivGen.constr_of_monomorphic_global r)
+  EConstr.of_constr (UnivGen.constr_of_monomorphic_global (Global.env ()) r)
 
 let constr_of_ref str = constr_of_gref (Coqlib.lib_ref str)
 let coq_True = lazy (Coqlib.lib_ref "core.True.type")
@@ -144,8 +144,23 @@ module Env = struct
   module OMap = Map.Make (struct
     type t = (P.op * Uint63.t * Uint63.t)
 
-    let compare : t -> t -> int = Stdlib.compare
-  end)
+    let compare_op  o1 o2 =
+      P.(match o1 , o2 with
+      | AND , AND -> 0
+      | AND , _ -> -1
+      | _   , AND -> 1
+      | OR , OR   -> 0
+      | OR , _    -> -1
+      | _  , OR   -> 1
+      | IMPL , IMPL -> 0)
+
+    
+    let compare ((o1,i1,j1):t) ((o2,i2,j2):t) = 
+      match compare_op o1 o2 with
+      | 0 -> let ci = Uint63.compare i1 i2 in
+             if ci = 0 then Uint63.compare j1 j2 else ci
+      | c -> c
+                  end)
 
   module AMap = Map.Make (Int)
 
@@ -221,10 +236,8 @@ module Env = struct
   let eq_constr (env, sigma) x y =
     match EConstr.eq_constr_universes_proj env sigma x y with
     | Some csts -> (
-      let csts =
-        UnivProblem.to_constraints ~force_weak:false (Evd.universes sigma) csts
-      in
-      match Evd.add_constraints sigma csts with
+      let csts = UnivProblem.Set.force csts in
+      match Evd.add_universe_constraints sigma csts with
       | evd -> Some sigma
       | exception Univ.UniverseInconsistency _ -> None )
     | None -> None
