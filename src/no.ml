@@ -226,14 +226,14 @@ let show_goal =
   Proofview.Goal.enter (fun gl ->
       Feedback.msg_debug
         Pp.(str " Current  goal " ++ Printer.pr_goal (Proofview.Goal.print gl));
-      Tacticals.New.tclIDTAC)
+      Tacticals.tclIDTAC)
 
 let remember_tac id h (s, ty, t) =
   let tn = Nameops.add_subscript id s in
   let hn = Nameops.add_subscript h s in
   Proofview.Goal.enter (fun gl ->
-      let env = Tacmach.New.pf_env gl in
-      let evd = Tacmach.New.project gl in
+      let env = Tacmach.pf_env gl in
+      let evd = Tacmach.project gl in
       if debug then
         Feedback.msg_debug
           Pp.(
@@ -247,10 +247,10 @@ let remember_tac id h (s, ty, t) =
 
 let collect_shared thy gl =
   let terms =
-    Tacmach.New.pf_concl gl :: List.map snd (Tacmach.New.pf_hyps_types gl)
+    Tacmach.pf_concl gl :: List.map snd (Tacmach.pf_hyps_types gl)
   in
-  let env = Tacmach.New.pf_env gl in
-  let evd = Tacmach.New.project gl in
+  let env = Tacmach.pf_env gl in
+  let evd = Tacmach.project gl in
   let s = fresh_subscript env in
   let pr = Names.Id.of_string "pr" in
   let senv =
@@ -262,8 +262,8 @@ let collect_shared thy gl =
 
 let purify l =
   Proofview.Goal.enter (fun gl ->
-      let env = Tacmach.New.pf_env gl in
-      let evd = Tacmach.New.project gl in
+      let env = Tacmach.pf_env gl in
+      let evd = Tacmach.project gl in
       if debug then
         Feedback.msg_debug
           Pp.(
@@ -275,10 +275,10 @@ let purify l =
                    | Some t -> pp_var v ++ str " = " ++Printer.pr_econstr_env env evd t)
                  l);
       let hpr = Names.Id.of_string "hpr" in
-      Tacticals.New.tclMAP
+      Tacticals.tclMAP
         (fun ({name; sub; typ}, t) ->
           match t with
-          | None -> Tacticals.New.tclIDTAC
+          | None -> Tacticals.tclIDTAC
           | Some t -> remember_tac name hpr (sub, typ, t))
         l)
 
@@ -304,22 +304,22 @@ let pr_all_pairs env evd  l =
   Feedback.msg_debug Pp.(pr_enum (fun (x,_,y) -> Printer.pr_econstr_env env evd x ++ str" = " ++ Printer.pr_econstr_env env evd y) l)
 
 
-let or_prover tac1 tac2 = Tacticals.New.tclSOLVE [tac1; tac2]
+let or_prover tac1 tac2 = Tacticals.tclSOLVE [tac1; tac2]
 
 let idtac_constr msg l =
   Proofview.Goal.enter (fun gl ->
-      let env = Tacmach.New.pf_env gl in
-      let evd = Tacmach.New.project gl in
+      let env = Tacmach.pf_env gl in
+      let evd = Tacmach.project gl in
       if debug then
         Feedback.msg_debug
           Pp.(str msg ++ pr_enum (Printer.pr_econstr_env env evd) l);
-      Tacticals.New.tclIDTAC)
+      Tacticals.tclIDTAC)
 
 open Proofview.Notations
 
 let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
   match tacl with
-  | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove using any prover")
+  | [] -> Tacticals.tclFAIL 0 (Pp.str "Cannot prove using any prover")
   | (tac, i) :: tacl ->
     if select i then
       Proofview.tclORELSE
@@ -327,12 +327,12 @@ let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
         (fun _ -> solve_with select by tacl)
     else solve_with select by tacl
 
-let utactic tac = tac >>= fun _ -> Tacticals.New.tclIDTAC
+let utactic tac = tac >>= fun _ -> Tacticals.tclIDTAC
 
 let no_tacs thy tacl =
   let rec prove_one_equation s acc ll =
     match ll with
-    | [] -> Tacticals.New.tclFAIL 0 (Pp.str "Cannot prove any equation")
+    | [] -> Tacticals.tclFAIL 0 (Pp.str "Cannot prove any equation")
     | (e1, ty, e2) :: ll ->
       Proofview.tclORELSE
         ( solve_with (fun _ -> true) (prove_equation s e1 ty e2) tacl
@@ -346,12 +346,12 @@ let no_tacs thy tacl =
       (solve_with (fun i' -> i <> i') (fun x -> x) tacl)
       (fun e -> no_tac (Nameops.Subscript.succ s) ll')
   in
-  Tacticals.New.tclTHEN
-    (Tacticals.New.tclREPEAT Tactics.intro)
+  Tacticals.tclTHEN
+    (Tacticals.tclREPEAT Tactics.intro)
     (Proofview.Goal.enter (fun gl ->
          let s, l = collect_shared thy gl in
-         let evd = Tacmach.New.project gl in
-         let env = Tacmach.New.pf_env gl in
+         let evd = Tacmach.project gl in
+         let env = Tacmach.pf_env gl in
          let vars = (List.map
                 (fun ({name; sub; typ}, _) ->
                   (EConstr.mkVar (Nameops.add_subscript name sub), typ))
@@ -362,7 +362,7 @@ let no_tacs thy tacl =
          then
            (Feedback.msg_debug Pp.(pr_enum (Printer.pr_econstr_env env evd) (List.map fst vars));
             pr_all_pairs env  evd ll);
-         Tacticals.New.tclTHENLIST [purify l; utactic (no_tac s ll)]))
+         Tacticals.tclTHENLIST [purify l; utactic (no_tac s ll)]))
 
 let solve_with_any tacl = utactic (solve_with (fun _ -> true) (fun x -> x) tacl)
 

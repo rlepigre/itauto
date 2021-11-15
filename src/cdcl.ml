@@ -875,9 +875,9 @@ module Theory = struct
       We assume that there is no name conflict. *)
 
   let dirty_intros cids =
-    Tacticals.New.tclTHEN 
-      (Tacticals.New.tclMAP Tactics.introduction cids)
-      (Tacticals.New.tclREPEAT Tactics.intro)
+    Tacticals.tclTHEN 
+      (Tacticals.tclMAP Tactics.introduction cids)
+      (Tacticals.tclREPEAT Tactics.intro)
 
 
 
@@ -895,9 +895,9 @@ module Theory = struct
         Proofview.apply
           ~name:(Names.Id.of_string "unsat_core")
           ~poly:false env
-          (Tacticals.New.tclTHENLIST
+          (Tacticals.tclTHENLIST
              [ dirty_intros cids
-             ; Tacticals.New.tclCOMPLETE tac ])
+             ; Tacticals.tclCOMPLETE tac ])
           pv
       in
       match Proofview.partial_proof e pv with
@@ -1096,7 +1096,7 @@ module Theory = struct
 end
 
 let get_env = Proofview.Goal.enter_one (fun gl ->
-                   Proofview.tclUNIT (Tacmach.New.pf_env gl))
+                   Proofview.tclUNIT (Tacmach.pf_env gl))
 
 let dirty_clear ep (env, sigma) =
   let gl = Theory.constr_of_clause ep (Env.all_literals ep) in
@@ -1144,10 +1144,10 @@ let fresh_ids n id env =
 
 (* let clear_all_no_check =
   Proofview.Goal.enter (fun gl ->
-      let concl = Tacmach.New.pf_concl gl in
+      let concl = Tacmach.pf_concl gl in
       let env =
         Environ.reset_with_named_context Environ.empty_named_context_val
-          (Tacmach.New.pf_env gl)
+          (Tacmach.pf_env gl)
       in
       Refine.refine ~typecheck:false (fun sigma ->
           Evarutil.new_evar env sigma ~principal:true concl))
@@ -1177,8 +1177,8 @@ let assert_conflicts  ids l gl =
   let cc = List.rev_map2
              (fun id (c,prf) ->
                Tactics.assert_by (Names.Name id) c  (Tactics.exact_no_check prf)) ids l in
-  Tacticals.New.tclTHEN
-    (Tacticals.New.tclTHENLIST cc)
+  Tacticals.tclTHEN
+    (Tacticals.tclTHENLIST cc)
     (Tactics.revert ids) 
 
   
@@ -1218,10 +1218,10 @@ and needed_hyp_form f d =
 (** [assert_conflict_clauses tac] runs the sat prover in ml 
     and asserts conflict_clauses *)
 let collect_conflict_clauses tac gl =
-  let sigma = Tacmach.New.project gl in
-  let genv = Tacmach.New.pf_env gl in
-  let concl = Tacmach.New.pf_concl gl in
-  let hyps = Tacmach.New.pf_hyps_types gl in
+  let sigma = Tacmach.project gl in
+  let genv = Tacmach.pf_env gl in
+  let concl = Tacmach.pf_concl gl in
+  let hyps = Tacmach.pf_hyps_types gl in
   let hyps, concl, env = reify_goal genv (Env.empty sigma) hyps concl in
   if debug () then
     begin
@@ -1285,10 +1285,10 @@ let assert_conflict_clauses tac =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
       match collect_conflict_clauses tac gl with
-      | None -> Tacticals.New.tclFAIL 0 (Pp.str "Not a tautology")
+      | None -> Tacticals.tclFAIL 0 (Pp.str "Not a tautology")
       | Some (sigma, cc, d) ->
         let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
-        Tacticals.New.tclTHENLIST
+        Tacticals.tclTHENLIST
           [
             Proofview.Unsafe.tclEVARS sigma ; 
             (* Generalize the used hypotheses *)
@@ -1303,15 +1303,15 @@ let assert_conflict_clauses tac =
 
 let generalize_prop =
   Proofview.Goal.enter (fun gl ->
-      let sigma = Tacmach.New.project gl in
-      let genv = Tacmach.New.pf_env gl in
-      let hyps = Tacmach.New.pf_hyps_types gl in
+      let sigma = Tacmach.project gl in
+      let genv = Tacmach.pf_env gl in
+      let hyps = Tacmach.pf_hyps_types gl in
       let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
       Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
 
 let feedback msg =
   Proofview.Goal.enter (fun gl ->
-      Feedback.msg_debug msg; Tacticals.New.tclIDTAC)
+      Feedback.msg_debug msg; Tacticals.tclIDTAC)
 
 let generalize l =
   let l = List.map (fun c -> ((Locus.AllOccurrences, c), Anonymous)) l in
@@ -1327,20 +1327,20 @@ let generalize l =
   in
   let gen_list l =
     let n = List.length l in
-    Tacticals.New.tclTRY
-      (Tacticals.New.tclTHEN (generalize l)
-         (Tacticals.New.tclDO n Tactics.intro))
+    Tacticals.tclTRY
+      (Tacticals.tclTHEN (generalize l)
+         (Tacticals.tclDO n Tactics.intro))
   in
-  let gen_tac tac a = Tacticals.New.tclTHEN tac (gen_list (prop_of_atom a)) in
-  List.fold_left gen_tac Tacticals.New.tclIDTAC env.Env.vars
+  let gen_tac tac a = Tacticals.tclTHEN tac (gen_list (prop_of_atom a)) in
+  List.fold_left gen_tac Tacticals.tclIDTAC env.Env.vars
  *)
 
 let change_goal =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
-      let sigma = Tacmach.New.project gl in
-      let genv = Tacmach.New.pf_env gl in
-      let concl = Tacmach.New.pf_concl gl in
+      let sigma = Tacmach.project gl in
+      let genv = Tacmach.pf_env gl in
+      let concl = Tacmach.pf_concl gl in
       let hyps, concl, env = reify_goal genv (Env.empty sigma) [] concl in
       let form, env = make_formula env (List.rev hyps) concl in
 
@@ -1354,7 +1354,7 @@ let change_goal =
           with Not_found -> false
         in
         match
-          run_prover Tacticals.New.tclIDTAC (ref []) (ref [])
+          run_prover Tacticals.tclIDTAC (ref []) (ref [])
             (genv, ref sigma)
             (ref env)
             (P.hlform (P.BForm.to_hformula has_bool form))
@@ -1397,7 +1397,7 @@ let change_goal =
       if debug () then
         Feedback.msg_debug
           Pp.(str "change " ++ Printer.pr_econstr_env genv sigma change);
-      Tacticals.New.tclTHENLIST [Tactics.change_concl change(*; generalize_env env*)])
+      Tacticals.tclTHENLIST [Tactics.change_concl change(*; generalize_env env*)])
 
 let is_loaded_library d =
   let make_dir l = DirPath.make (List.rev_map Id.of_string l) in
@@ -1413,4 +1413,4 @@ let nnpp =
   Proofview.Goal.enter (fun gl ->
       if is_loaded_library ["Coq"; "Logic"; "Classical_Prop"] then
         Tactics.apply (Lazy.force coq_nnpp)
-      else Tacticals.New.tclIDTAC)
+      else Tacticals.tclIDTAC)
