@@ -1,0 +1,8 @@
+*.cache
+CoqMakefile*
+*.cm*
+*.o
+*.a
+*.d
+_build
+
