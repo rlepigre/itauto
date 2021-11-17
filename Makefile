@@ -3,12 +3,16 @@
 
 .PHONY: clean cleanaux coq test cleantest benchmark paper
 
+.NOTPARALLEL:
+
 -include CoqMakefile.conf
 
 ifneq (,$(COQBIN))
 # add an ending /
 COQBIN:=$(COQBIN)/
 endif
+
+
 
 all : theories/Itauto.vo theories/NOlia.vo theories/NOlra.vo
 
