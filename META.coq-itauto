@@ -1,0 +1,10 @@
+package "plugin" (
+  description = "Coq CDCL Plugin"
+  requires = "coq-core.plugins.ltac"
+  archive(byte) = "cdcl_plugin.cma"
+  archive(native) = "cdcl_plugin.cmxa"
+  plugin(byte) = "cdcl_plugin.cma"
+  plugin(native) = "cdcl_plugin.cmxs"
+  directory = "src"
+)
+directory = "."

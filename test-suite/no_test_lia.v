@@ -1,5 +1,5 @@
 Require Import ZArith List Lia ZifyClasses.
-Declare ML Module "cdcl_plugin".
+Declare ML Module "coq-itauto.plugin".
 Require Import Cdcl.NOlia.
 
 Goal forall x, 1 + x :: nil = x + 1 :: nil.
