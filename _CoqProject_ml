@@ -1,4 +1,4 @@
-META.coq-itauto
+-generate-meta-for-package coq-itauto
 -Q theories/ Cdcl
 -Q src/ Cdcl
 -I src/
