@@ -319,7 +319,7 @@ open Proofview.Notations
 
 let rec solve_with select by (tacl : (unit Proofview.tactic * int) list) =
   match tacl with
-  | [] -> Tacticals.tclFAIL 0 (Pp.str "Cannot prove using any prover")
+  | [] -> Tacticals.tclFAIL (Pp.str "Cannot prove using any prover")
   | (tac, i) :: tacl ->
     if select i then
       Proofview.tclORELSE
@@ -332,7 +332,7 @@ let utactic tac = tac >>= fun _ -> Tacticals.tclIDTAC
 let no_tacs thy tacl =
   let rec prove_one_equation s acc ll =
     match ll with
-    | [] -> Tacticals.tclFAIL 0 (Pp.str "Cannot prove any equation")
+    | [] -> Tacticals.tclFAIL (Pp.str "Cannot prove any equation")
     | (e1, ty, e2) :: ll ->
       Proofview.tclORELSE
         ( solve_with (fun _ -> true) (prove_equation s e1 ty e2) tacl

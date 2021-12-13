@@ -1285,7 +1285,7 @@ let assert_conflict_clauses tac =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
       match collect_conflict_clauses tac gl with
-      | None -> Tacticals.tclFAIL 0 (Pp.str "Not a tautology")
+      | None -> Tacticals.tclFAIL (Pp.str "Not a tautology")
       | Some (sigma, cc, d) ->
         let ids = fresh_ids (List.length cc) "__cc" (Proofview.Goal.env gl) in
         Tacticals.tclTHENLIST
