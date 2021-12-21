@@ -224,8 +224,7 @@ let eq_proof typ source target =
 
 let show_goal =
   Proofview.Goal.enter (fun gl ->
-      Feedback.msg_debug
-        Pp.(str " Current  goal " ++ Printer.pr_goal (Proofview.Goal.print gl));
+      Feedback.msg_debug Pp.(str " Current  goal " ++ Printer.Debug.pr_goal gl);
       Tacticals.tclIDTAC)
 
 let remember_tac id h (s, ty, t) =
