@@ -5,4 +5,4 @@ CoqMakefile*
 *.a
 *.d
 _build
-
+META.coq-itauto

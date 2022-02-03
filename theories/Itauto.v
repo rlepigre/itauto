@@ -7,7 +7,7 @@ Require Import Lia.
 Require Import List.
 Require Import Int63.
 
-Declare ML Module "cdcl_plugin".
+Declare ML Module "coq-itauto.plugin".
 Require Import Cdcl.Formula.
 
 Ltac gen_conflicts tac :=

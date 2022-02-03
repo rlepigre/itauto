@@ -7,7 +7,7 @@ open Stdarg
 open Tacarg 
 }
 
-DECLARE PLUGIN "cdcl_plugin"
+DECLARE PLUGIN "coq-itauto.plugin"
 
 TACTIC EXTEND CDCL
 | [ "cdcl_generalize" ]      -> { Cdcl.generalize_prop }
