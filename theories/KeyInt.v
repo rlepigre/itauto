@@ -1,14 +1,14 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
-Require Import Bool ZifyClasses ZifyInt63 ZArith Lia.
+Require Import Bool ZifyClasses ZifyUint63 ZArith Lia.
 Require Import Cdcl.PatriciaR.
 
-Require Int63.
+Require Uint63.
 
 Section S.
-  Import Int63.
-  Definition zero := 0%int63.
-  Definition one :=  1%int63.
+  Import Uint63.
+  Definition zero := 0%uint63.
+  Definition one :=  1%uint63.
 End S.
 
 Definition int_of_nat (n:nat) := Uint63.of_Z (Z.of_nat n).
@@ -279,8 +279,8 @@ Lemma testbit_spec: forall k1 k2, (forall n, testbit k1 n = testbit k2 n) -> k1 
   Qed.
 
   Lemma bit_ones : forall n p,
-                          (*(SMALL: (n < Uint63.digits = true)%int63),*)
-      bit (ones n) p = if (ltb p n && (ltb p  63))%int63 then true else false.
+                          (*(SMALL: (n < Uint63.digits = true)%uint63),*)
+      bit (ones n) p = if (ltb p n && (ltb p  63))%uint63 then true else false.
   Proof.
     unfold ones,one.
     intros.

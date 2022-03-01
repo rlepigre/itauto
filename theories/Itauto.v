@@ -5,7 +5,7 @@ Require Export Cdcl.ReifClasses Cdcl.ZArithDec.
 Require Import Lia.
 
 Require Import List.
-Require Import Int63.
+Require Import Uint63.
 
 Declare ML Module "coq-itauto.plugin".
 Require Import Cdcl.Formula.

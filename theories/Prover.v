@@ -1,18 +1,18 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
 Require Extraction.
-Require Import Int63.
+Require Import Uint63.
 
 Extract Constant int => "Uint63.t".
 Extract Constant Uint63.ltb => "Uint63.lt".
-Extract Constant Int63.eqb => "Uint63.equal".
-Extract Constant Int63.add => "Uint63.add".
-Extract Constant Int63.lsl => "Uint63.l_sl".
-Extract Constant Int63.lsr => "Uint63.l_sr".
-Extract Constant Int63.land => "Uint63.l_and".
-Extract Constant Int63.lor => "Uint63.l_or".
-Extract Constant Int63.lxor => "Uint63.l_xor".
-Extract Constant Int63.sub => "Uint63.sub".
+Extract Constant Uint63.eqb => "Uint63.equal".
+Extract Constant Uint63.add => "Uint63.add".
+Extract Constant Uint63.lsl => "Uint63.l_sl".
+Extract Constant Uint63.lsr => "Uint63.l_sr".
+Extract Constant Uint63.land => "Uint63.l_and".
+Extract Constant Uint63.lor => "Uint63.l_or".
+Extract Constant Uint63.lxor => "Uint63.l_xor".
+Extract Constant Uint63.sub => "Uint63.sub".
 Extract Inductive bool => bool [ true false ].
 Extract Inductive option => option [ Some None ].
 Extract Inductive prod => "( * )" [ "(,)" ].
