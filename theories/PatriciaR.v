@@ -408,7 +408,7 @@ Module PTrie.
         + symmetry. rewrite ! (zerobit_spec _ _ _ H0).
           f_equal. auto.
         + eapply mask_spec'. eauto.
-        + eapply lt_trans; eauto.
+        + eapply Nat.lt_trans; eauto.
         + assumption.
         + assumption.
         + intros; eapply mask_spec; eauto.
@@ -3028,7 +3028,7 @@ Module PTrie.
           * rewrite <- H0. econstructor; trivial.
             { eapply mask_spec'; eauto. }
             { rewrite (zerobit_spec _ _ _ HA) in H0. apply negb_true_iff in H0.
-              eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+              eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { assumption. }
             { assumption. }
             { eapply mask_spec; eauto. }
@@ -3103,7 +3103,7 @@ Module PTrie.
           * rewrite <- H0. econstructor; trivial.
             { eapply mask_spec'; eauto. }
             { rewrite (zerobit_spec _ _ _ HA) in H0. apply negb_true_iff in H0.
-              eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+              eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { assumption. }
             { assumption. }
             { eapply mask_spec; eauto. }
@@ -3130,7 +3130,7 @@ Module PTrie.
             { eapply mask_spec'; auto. exact HA. }
             { inv H5; auto; congruence. }
             { auto. }
-            { eapply lt_trans; try eassumption.
+            { eapply Nat.lt_trans; try eassumption.
               eapply ltb_spec; try eapply HLT; eauto. }
             { auto. }
             { auto. }
@@ -3171,7 +3171,7 @@ Module PTrie.
             { eapply mask_spec'; eauto. }
             { inv H5; auto; congruence. }
             { rewrite (zerobit_spec _ _ _ HA) in H0. apply negb_true_iff in H0.
-              eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+              eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { assumption. }
             { assumption. }
             { eapply mask_spec; eauto. }
@@ -3248,7 +3248,7 @@ Module PTrie.
               apply negb_true_iff in H0. destruct (testbit p2 n); auto; congruence. }
             { eapply mask_spec'; eauto. }
             { rewrite (zerobit_spec _ _ _ HA) in H0. apply negb_true_iff in H0.
-              eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+              eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { assumption. }
             { assumption. }
             { eapply mask_spec; eauto. }
@@ -3297,7 +3297,7 @@ Module PTrie.
             { eapply mask_spec'; auto. exact HA. }
             { auto. }
             { auto. }
-            { eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+            { eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { auto. }
             { auto. }
             { intros; eapply mask_spec. exact HA. auto. }
@@ -3347,7 +3347,7 @@ Module PTrie.
             { eapply mask_spec'; eauto. }
             { inv H4; auto; congruence. }
             { rewrite (zerobit_spec _ _ _ HA) in H0. apply negb_true_iff in H0.
-              eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+              eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { assumption. }
             { assumption. }
             { eapply mask_spec; eauto. }
@@ -3368,7 +3368,7 @@ Module PTrie.
             { eapply mask_spec'; auto. exact HA. }
             { inv H4; auto; congruence. }
             { auto. }
-            { eapply lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
+            { eapply Nat.lt_trans; try eassumption. eapply ltb_spec; try eapply HLT; eauto. }
             { inv H4; auto; congruence. }
             { auto. }
             { intros; eapply mask_spec. exact HA. auto. }
@@ -3892,14 +3892,14 @@ Module PTrie.
                         erewrite zerobit_spec in H0; eauto.
                         apply negb_true_iff in H; apply negb_true_iff in H0.
                         eapply get_not_same_prefix with (n := n'); eauto.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t2_2 = None).
                         + rewrite branching_bit_sym in HA.
                           erewrite zerobit_spec in H; eauto.
                           erewrite zerobit_spec in H0; eauto.
                           apply negb_true_iff in H; apply negb_true_iff in H0.
                           eapply get_not_same_prefix with (n := n'); eauto.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H4, H6. destruct (if zerobit i brbit then get' i t1_1 else get' i t1_2); destruct (zerobit i brbit0); auto. }
                     { assert (get' i t1_1 = None).
                       - rewrite branching_bit_sym in HA.
@@ -3934,14 +3934,14 @@ Module PTrie.
                         erewrite zerobit_spec in H0; eauto.
                         apply negb_false_iff in H; apply negb_false_iff in H0.
                         eapply get_not_same_prefix with (n := n'); eauto.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t2_2 = None).
                         + rewrite branching_bit_sym in HA.
                           erewrite zerobit_spec in H; eauto.
                           erewrite zerobit_spec in H0; eauto.
                           apply negb_false_iff in H; apply negb_false_iff in H0.
                           eapply get_not_same_prefix with (n := n'); eauto.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H4, H6. destruct (if zerobit i brbit then get' i t1_1 else get' i t1_2); destruct (zerobit i brbit0); auto. }
                 + assert (Hmask': mask prefix brbit = prefix) by (inv H7; auto; congruence).
                   generalize (proj1 (match_prefix_spec' _ _ _ _ Hbrbit' Hmask') H2). intros [Hne [n' [HLT Hbr]]].
@@ -3955,14 +3955,14 @@ Module PTrie.
                         erewrite zerobit_spec in H0; eauto.
                         apply negb_true_iff in H; apply negb_true_iff in H0.
                         eapply get_not_same_prefix with (n := n'); eauto.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t2_2 = None).
                         + rewrite branching_bit_sym in HA.
                           erewrite zerobit_spec in H; eauto.
                           erewrite zerobit_spec in H0; eauto.
                           apply negb_true_iff in H; apply negb_true_iff in H0.
                           eapply get_not_same_prefix with (n := n'); eauto.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H4, H5. destruct (if zerobit i brbit then get' i t1_1 else get' i t1_2); destruct (zerobit i brbit0); auto. }
                     { assert (get' i t1_1 = None).
                       - rewrite branching_bit_sym in HA.
@@ -3997,14 +3997,14 @@ Module PTrie.
                         erewrite zerobit_spec in H0; eauto.
                         apply negb_false_iff in H; apply negb_false_iff in H0.
                         eapply get_not_same_prefix with (n := n'); eauto.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t2_2 = None).
                         + rewrite branching_bit_sym in HA.
                           erewrite zerobit_spec in H; eauto.
                           erewrite zerobit_spec in H0; eauto.
                           apply negb_false_iff in H; apply negb_false_iff in H0.
                           eapply get_not_same_prefix with (n := n'); eauto.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H4, H5. destruct (if zerobit i brbit then get' i t1_1 else get' i t1_2); destruct (zerobit i brbit0); auto. } }
           * simpl. case_eq (ltb brbit0 brbit); intros.
             { case_eq (match_prefix prefix prefix0 brbit0); intros; simpl.
@@ -4096,13 +4096,13 @@ Module PTrie.
                         erewrite zerobit_spec in H5; eauto.
                         apply negb_true_iff in H4; apply negb_false_iff in H5.
                         eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t1_2 = None).
                         + erewrite zerobit_spec in H4; eauto.
                           erewrite zerobit_spec in H5; eauto.
                           apply negb_true_iff in H4; apply negb_false_iff in H5.
                           eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H, H0. destruct (if zerobit i brbit0 then get' i t2_1 else get' i t2_2); destruct (zerobit i brbit); auto. }
                     { assert (Hmask'0: mask prefix0 brbit0 = prefix0) by (inv H8; auto; congruence).
                       generalize (proj1 (match_prefix_spec' _ _ _ _ Hbrbit'0 Hmask'0) H3). intros [Hne [n' [HLT Hbr]]].
@@ -4113,13 +4113,13 @@ Module PTrie.
                         erewrite zerobit_spec in H5; eauto.
                         apply negb_true_iff in H4; apply negb_false_iff in H5.
                         eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t1_2 = None).
                         + erewrite zerobit_spec in H4; eauto.
                           erewrite zerobit_spec in H5; eauto.
                           apply negb_true_iff in H4; apply negb_false_iff in H5.
                           eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H, H0. destruct (if zerobit i brbit0 then get' i t2_1 else get' i t2_2); destruct (zerobit i brbit); auto. }
                 + case_eq (zerobit i (branching_bit prefix prefix0)); intros.
                   * inv H; inv H0.
@@ -4131,13 +4131,13 @@ Module PTrie.
                         erewrite zerobit_spec in H5; eauto.
                         apply negb_true_iff in H4; apply negb_false_iff in H5.
                         eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t1_2 = None).
                         + erewrite zerobit_spec in H4; eauto.
                           erewrite zerobit_spec in H5; eauto.
                           apply negb_true_iff in H4; apply negb_false_iff in H5.
                           eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H, H0. destruct (if zerobit i brbit0 then get' i t2_1 else get' i t2_2); destruct (zerobit i brbit); auto. }
                     { assert (Hmask'0: mask prefix0 brbit0 = prefix0) by (inv H8; auto; congruence).
                       generalize (proj1 (match_prefix_spec' _ _ _ _ Hbrbit'0 Hmask'0) H3). intros [Hne [n' [HLT Hbr]]].
@@ -4148,13 +4148,13 @@ Module PTrie.
                         erewrite zerobit_spec in H5; eauto.
                         apply negb_true_iff in H4; apply negb_false_iff in H5.
                         eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                        eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                        eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                       - assert (get' i t1_2 = None).
                         + erewrite zerobit_spec in H4; eauto.
                           erewrite zerobit_spec in H5; eauto.
                           apply negb_true_iff in H4; apply negb_false_iff in H5.
                           eapply get_not_same_prefix with (n := n'); eauto; try congruence.
-                          eapply lt_trans; eauto. eapply ltb_spec; eauto.
+                          eapply Nat.lt_trans; eauto. eapply ltb_spec; eauto.
                         + rewrite H, H0. destruct (if zerobit i brbit0 then get' i t2_1 else get' i t2_2); destruct (zerobit i brbit); auto. }
                   * inv H; inv H0.
                     { generalize (proj1 (match_prefix_spec' _ _ _ _ Hbrbit'0 Hmask'0) H3). intros [Hne [n' [HLT Hbr]]].
