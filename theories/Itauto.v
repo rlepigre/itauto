@@ -68,6 +68,9 @@ Tactic Notation "itauto" tactic(tac) :=
   gen_conflicts tac ;
   vitautog.
 
+Tactic Notation "itauto" :=
+  itauto auto.
+
 
 Ltac itautor tac := let t := solve[tac | itauto tac] in itauto t.
 
