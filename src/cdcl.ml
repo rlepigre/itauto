@@ -686,6 +686,9 @@ let nat_of_int i =
     let rec nat_of_int i = if i = 0 then P.O else P.S (nat_of_int (i - 1)) in
     nat_of_int i
 
+type failed_proof = Pp.t * (P.literal list) * EConstr.t 
+
+
 module Theory = struct
   open ProverPatch
 
@@ -881,7 +884,7 @@ module Theory = struct
 
 
 
-  let find_unsat_core ep cl tac env sigma =
+  let find_unsat_core ep cl tac env sigma : failed_proof core =
     let gl = constr_of_clause_dec !ep cl in
     let cids = List.fold_right (fun x acc ->
                    if P.is_positive_literal x then acc
@@ -923,9 +926,9 @@ module Theory = struct
       if debug () then
         Feedback.msg_debug
           Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
-      NoCore (CErrors.print e, gl)
+      NoCore (CErrors.print e, cl, gl)
 
-  let find_unsat_core ep cl tac env sigma =
+  let find_unsat_core ep cl tac env sigma : failed_proof core =
     let t1 = System.get_time () in
     let res = find_unsat_core ep cl tac env sigma in
     let t2 = System.get_time () in
@@ -947,7 +950,7 @@ module Theory = struct
 
   let core_list c = match c with UnsatCore _ -> c | NoCore c -> NoCore [c]
 
-  let find_unsat_core ep cl tac env sigma =
+  let find_unsat_core ep cl tac env sigma : failed_proof list core =
     let ln, lp = split_clause cl in
     let rec all_cores c =
       match c with
@@ -966,7 +969,7 @@ module Theory = struct
   let pp_no_core env sigma l =
     Pp.(
       pr_enum
-        (fun (fail, gl) -> fail ++ str " for " ++ pr_constr env sigma gl)
+        (fun (fail, _, gl) -> fail ++ str " for " ++ pr_constr env sigma gl)
         l)
 
   let compare_atom a a' =
@@ -1070,24 +1073,29 @@ module Theory = struct
   let hcons_literals hm l =
     List.fold_left (fun m l -> hcons_form m (P.form_of_literal l)) hm l
 
-  let thy_prover tac cc err (genv, sigma) ep hm l =
+  let thy_prover tac cc (err: (failed_proof) list ref)
+      (genv, sigma) ep hm l =
     let l = List.sort_uniq compare_atom l in
     match search (fun ((ck, x), _) -> ck = CC && subset_clause x l) !cc with
     | None -> (
-      match thy_prop_atoms cc (genv, sigma) ep l with
+        match thy_prop_atoms cc (genv, sigma) ep l with
       | Some l ->
         if debug () then
           Printf.fprintf stdout "Thy ⊢p %a\n" P.output_literal_list l;
         Some (hcons_literals hm l, l) (* We did not augment hm... *)
       | None -> (
         (* Really run the prover *)
-        match find_unsat_core ep l tac genv sigma with
-        | NoCore r -> err := r @ !err ; None
-        | UnsatCore (core, prf) ->
-          if debug () then
-            Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
-          cc := ((CC, List.sort compare_atom core), (core, prf)) :: !cc;
-          Some (hm, core) ) )
+          if List.exists (fun (_,cl,_) ->  cl = l) !err
+          then None
+          else
+          match find_unsat_core ep l tac genv sigma with
+            | NoCore r ->
+              err := r @ !err ; None
+            | UnsatCore (core, prf) ->
+              if debug () then
+                Printf.fprintf stdout "Thy ⊢ %a\n" P.output_literal_list core;
+              cc := ((CC, List.sort compare_atom core), (core, prf)) :: !cc;
+              Some (hm, core) ) )
     | Some (core, prf) ->
       if debug () then
         Printf.fprintf stdout "Thy[Again] ⊢ %a\n" P.output_literal_list
@@ -1108,7 +1116,7 @@ let dirty_clear ep (env, sigma) =
   env
 
 
-let run_prover tac cc err (genv, sigma) ep f =
+let run_prover tac cc (err: (failed_proof) list ref) (genv, sigma) ep f =
   let is_dec i =
     try
       let d = Env.AMap.find (Uint63.hash i) !ep.Env.amap in
@@ -1248,7 +1256,7 @@ let collect_conflict_clauses tac gl =
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
     flush stdout );
   let cc = ref [] in
-  let err = ref [] in
+  let err = ref ([]: failed_proof list) in
   let sigma = ref sigma in
   let env = ref env in
   let save_deps = !P.deps in
