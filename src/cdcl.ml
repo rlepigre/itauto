@@ -686,7 +686,7 @@ let nat_of_int i =
     let rec nat_of_int i = if i = 0 then P.O else P.S (nat_of_int (i - 1)) in
     nat_of_int i
 
-type failed_proof = Pp.t * (P.literal list) * EConstr.t 
+type failed_proof = (P.literal list) * EConstr.t 
 
 
 module Theory = struct
@@ -926,7 +926,7 @@ module Theory = struct
       if debug () then
         Feedback.msg_debug
           Pp.(str "find_unsat_core (non-critical): " ++ CErrors.print e);
-      NoCore (CErrors.print e, cl, gl)
+      NoCore (cl, gl)
 
   let find_unsat_core ep cl tac env sigma : failed_proof core =
     let t1 = System.get_time () in
@@ -968,8 +968,9 @@ module Theory = struct
 
   let pp_no_core env sigma l =
     Pp.(
+      str "Leaf tactic cannot prove any of the following formulae:\n" ++
       pr_enum
-        (fun (fail, _, gl) -> fail ++ str " for " ++ pr_constr env sigma gl)
+        (fun (_, gl) -> pr_constr env sigma gl )
         l)
 
   let compare_atom a a' =
@@ -1085,7 +1086,7 @@ module Theory = struct
         Some (hcons_literals hm l, l) (* We did not augment hm... *)
       | None -> (
         (* Really run the prover *)
-          if List.exists (fun (_,cl,_) ->  cl = l) !err
+          if List.exists (fun (cl,_) ->  cl = l) !err
           then None
           else
           match find_unsat_core ep l tac genv sigma with
