@@ -239,7 +239,7 @@ module Env = struct
       let csts = UnivProblem.Set.force csts in
       match Evd.add_universe_constraints sigma csts with
       | evd -> Some sigma
-      | exception Univ.UniverseInconsistency _ -> None )
+      | exception UGraph.UniverseInconsistency _ -> None )
     | None -> None
 
   let is_dec_constr env evd t =
