@@ -1,6 +1,6 @@
-# itauto : an  Extensible Intuitionistic SAT solver 
+# itauto: an extensible intuitionistic SAT solver
 
-## Contexte and Motivation
+## Context and motivation
 
 The Coq proof assistant features several decision procedures for various logic fragments.
 For instance, we have:
@@ -47,30 +47,44 @@ In other words, reuse learned theory clauses along the propositional proof searc
 
 ## Installation
 
-<!-- The development uses a fork of coq https://github.com/fajb/coq/tree/for_itauto -->
+### Installing releases
 
-Clone the current repository:
+The recommended way to install the latest released version of itauto
+is via [opam](https://opam.ocaml.org/doc/Install.html),
+which will also install all dependencies:
 
-`git clone https://gitlab.inria.fr/fbesson/itauto.git`
+```shell
+opam repo add coq-released https://coq.inria.fr/opam/released
+opam install coq-itauto
+```
 
-and move to the `itauto` directory.
+### Repository installation using opam
 
-### Using opam
+The development version of itauto and its dependencies can
+be installed via opam using the repository:
 
-<!-- `opam pin add dune https://github.com/ocaml/dune.git#master` -->
-<!-- `opam pin add coq https://github.com/coq/coq.git#master` -->
+```shell
+git clone https://gitlab.inria.fr/fbesson/itauto.git
+cd itauto
+opam install .
+```
 
-`opam install .`
+### Manual repository installation
 
-### Manual install
+To manually build and install the development
+version of itauto, first install all dependencies:
 
-Once the dependancies are build:
+- [Coq](https://github.com/coq/coq)
+- [OCamlbuild](https://github.com/ocaml/ocamlbuild)
 
-- `dune` from https://github.com/ocaml/dune.git#master
-- `coq` from https://github.com/coq/coq.git#master
-- `ocamlbuild` https://ocaml.org/learn/tutorials/
+Then do:
 
-In the `itauto` top directory, `make; make install` builds and installs the plugin.
+```
+git clone https://gitlab.inria.fr/fbesson/itauto.git
+cd itauto
+make
+make install
+```
 
 ## Usage
 
