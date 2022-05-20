@@ -1,6 +1,5 @@
 Require Import Cdcl.Itauto.
 Require Import List.
-Require Import cnf.
 
 Goal forall A a a0 (r l l' : list A), (In a l' <-> In a l /\ ~ In a r) ->
 ~ (~ In a0 r) ->

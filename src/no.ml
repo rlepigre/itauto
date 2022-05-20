@@ -153,6 +153,19 @@ let declared_term thy env evd c a =
     | exception Not_found -> is_arity_op env evd thy c a 1
          
 
+let declared_term thy env evd c a =
+  match declared_term thy env evd c a with
+  | (c',a') ->
+    if debug then Feedback.msg_debug (Pp.(str "declared_term " ++
+                            Printer.pr_econstr_env env evd (EConstr.mkApp(c,a)) ++
+                            str "=>"  ++
+                            Printer.pr_econstr_env env evd (EConstr.mkApp(c',a')) ++
+                            str "\n")) ; (c',a')
+  | exception e -> if debug then     Feedback.msg_debug (Pp.(str "declared_term " ++
+                            Printer.pr_econstr_env env evd (EConstr.mkApp(c,a)) ++
+                            str "=>"  ++ str (Printexc.to_string e) ++
+                            str "\n")) ; raise e
+
 let is_declared_type thy env evd  typS = 
   let typ = EConstr.mkApp(Lazy.force coq_TheoryType,[|thy;typS|]) in
   try 
@@ -182,12 +195,12 @@ let rec remember_term thy env evd senv t =
     ((EConstr.mkVar id, p), senv)
   with Not_found -> (
     let c, a = decompose_app env evd t in
-    let a, p =
+    let c, a, p =
       match declared_term thy env evd c a with
-      | c, a -> (a, Arith)
+      | c, a -> (c, a, Arith)
       | exception Not_found ->
          if isVar evd c && a = [||] && is_declared_type thy env evd  (Retyping.get_type_of env evd c)
-         then (a, Arith) else (a, NonArith)
+         then (c, a, Arith) else (c, a, NonArith)
     in
     let a, senv =
       Array.fold_right
@@ -356,7 +369,7 @@ let no_tacs thy tacl =
                   (EConstr.mkVar (Nameops.add_subscript name sub), typ))
                 l) in
          let ll =
-           all_pairs (EConstr.eq_constr evd) vars in
+           all_pairs (Reductionops.is_conv env evd) vars in
          if debug
          then
            (Feedback.msg_debug Pp.(pr_enum (Printer.pr_econstr_env env evd) (List.map fst vars));
