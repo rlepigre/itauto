@@ -12,7 +12,7 @@ Qed.
 #[local] Instance le_leb : Reflect.RProp2 le := Reflect.mkrProp2 _ _ le leb is_true_le.
 
 Require Import Cdcl.Itauto.
-Require Import Int63.
+Require Import Uint63.
 
 Lemma map : forall a b, Is_true (a <=? b) -> a <= b.
 Proof.

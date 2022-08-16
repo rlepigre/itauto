@@ -1,6 +1,6 @@
 Require Import Cdcl.Itauto.
 
-Require Import Int63 Bool  ZArith Lia.
+Require Import Uint63 Bool  ZArith Lia.
 
 Import Formula.
 Import HCons.

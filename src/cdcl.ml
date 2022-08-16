@@ -2,6 +2,7 @@
 
 open Names
 open Constr
+  
 module P = ProverPatch
 
 let show_theory_time =
