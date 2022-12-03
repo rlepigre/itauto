@@ -8,7 +8,7 @@ open Lazy
 (* From zify.ml *)
 let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
-  Sorts.is_prop sort
+  Sorts.is_prop (EConstr.ESorts.kind sigma sort)
 
 let is_arrow env evd a p1 p2 =
   is_prop env evd p1

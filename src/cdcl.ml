@@ -119,7 +119,7 @@ let get_projection env evd c =
 
 let is_prop env sigma term =
   let sort = Retyping.get_sort_of env sigma term in
-  Sorts.is_prop sort
+  Sorts.is_prop (EConstr.ESorts.kind sigma sort)
 
 let constr_of_option typ constr_of_val = function
   | None -> EConstr.mkApp (Lazy.force coq_None, [|typ|])
