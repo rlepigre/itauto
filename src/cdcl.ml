@@ -7,12 +7,14 @@ module P = ProverPatch
 
 let show_theory_time =
   Goptions.declare_bool_option_and_ref ~depr:false
+    ~stage:Interp
     ~key:["Itauto"; "Theory"; "Time"]
     ~value:false
 
 let thy_time = ref 0.
 
 let debug = Goptions.declare_bool_option_and_ref ~depr:false
+    ~stage:Interp
     ~key:["Itauto"; "Debug"]
     ~value:false
 
