@@ -951,8 +951,6 @@ module Theory = struct
     | NoCore l -> (
       match f a with UnsatCore c -> UnsatCore c | NoCore e -> NoCore (e :: l) )
 
-  let core_list c = match c with UnsatCore _ -> c | NoCore c -> NoCore [c]
-
   let find_unsat_core ep cl tac env sigma : failed_proof list core =
     let ln, lp = split_clause cl in
     let rec all_cores c =
