@@ -5,7 +5,7 @@ open Prover
 
 let deps = ref LitSet.empty
 
-let lift_printer (p : out_channel -> 'a -> unit) o v = p o (Annot.elt v)
+let lift_printer (p : out_channel -> 'a -> unit) o v = p o v.Annot.elt
 let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
 let string_lop = function LAND -> "∧" | LOR -> "∨"
 let op_of_lop = function LAND -> AND | LOR -> OR
@@ -115,7 +115,7 @@ let rec output_list out o l =
   | e :: l -> out o e; output_string o ";"; output_list out o l
 
 let output_map out o m =
-  IntMap.fold' (fun _ i cl -> Printf.fprintf o "%a;" out (Annot.elt cl)) m ()
+  IntMap.fold' (fun _ i cl -> Printf.fprintf o "%a;" out cl.Annot.elt) m ()
 
 let output_clauses o m =
   IntMap.fold'
@@ -131,7 +131,7 @@ let output_units hm o m =
     | Some (b', f) ->
       let hf = HCons.{id = i; is_dec = b'; elt = f} in
       Printf.fprintf o "%i:%a;" (Uint63.hash i) output_lit
-        (if Annot.elt b then POS hf else NEG hf)
+        (if b.Annot.elt then POS hf else NEG hf)
   in
   IntMap.fold' (fun _ i b -> out_elt i b) m ()
 
@@ -259,7 +259,7 @@ let progress_arrow l st  =
   let res = find_lit (POS (form_of_literal l)) (st.units) in
   (match res with
   | None -> Printf.printf "find_lit %a -> None\n" output_lit l ;
-  | Some b -> Printf.printf "find_lit %a -> Some %b \n" output_lit l (Annot.elt b ));
+  | Some b -> Printf.printf "find_lit %a -> Some %b \n" output_lit l b.Annot.elt ));
   let res = progress_arrow l st  in
   Printf.printf "progress_arrow %a -> %b\n" output_lit l res;
   res
