@@ -14,7 +14,7 @@ endif
 
 
 
-all : theories/Itauto.vo theories/NOlia.vo theories/NOlra.vo 
+all : theories/Itauto.vo theories/Ctauto.vo theories/NOlia.vo theories/NOlra.vo 
 
 theories/Prover.vo src/prover.ml : CoqMakefile 
 	$(MAKE) -f CoqMakefile theories/Prover.vo COQBIN=$(COQBIN) 
@@ -22,12 +22,18 @@ theories/Prover.vo src/prover.ml : CoqMakefile
 theories/Itauto.vo : theories/Itauto.v theories/Prover.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml theories/Itauto.vo COQBIN=$(COQBIN)
 
+theories/Ctauto.vo : theories/Ctauto.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml theories/Ctauto.vo COQBIN=$(COQBIN)
+
+
 theories/NOlia.vo : theories/NOlia.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml theories/NOlia.vo COQBIN=$(COQBIN) 
 
 theories/NOlra.vo : theories/NOlra.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml theories/NOlra.vo COQBIN=$(COQBIN) 
 
+.merlin : CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml .merlin
 
 src/cdcl_plugin.cmxs  : CoqMakefile_ml
 	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 

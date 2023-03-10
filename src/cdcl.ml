@@ -14,9 +14,17 @@ let show_theory_time =
 let thy_time = ref 0.
 
 let debug = Goptions.declare_bool_option_and_ref ~depr:false
-    ~stage:Interp
-    ~key:["Itauto"; "Debug"]
-    ~value:false
+              ~stage:Interp
+              ~key:["Itauto"; "Debug"]
+              ~value:false
+
+
+let use_classic = Goptions.declare_bool_option_and_ref ~depr:false
+                    ~stage:Interp
+                    ~key:["Itauto"; "Classic"]
+                    ~value:false
+
+
 
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
@@ -465,9 +473,9 @@ let reify_formula genv env k (f : EConstr.t) =
   let tt k = hcons 1 true (P.BTT k) in
   let ff k = hcons 0 true (P.BFF k) in
   let mkop k o f1 f2 = P.BOP (k, o, f1, f2) in
-  let eq_ind r i = GlobRef.equal r (GlobRef.IndRef i) in
-  let eq_constructor r c = GlobRef.equal r (GlobRef.ConstructRef c) in
-  let eq_const r c = GlobRef.equal r (GlobRef.ConstRef c) in
+  let eq_ind r i = Environ.QGlobRef.equal genv r (GlobRef.IndRef i) in
+  let eq_constructor r c = Environ.QGlobRef.equal genv r (GlobRef.ConstructRef c) in
+  let eq_const r c = Environ.QGlobRef.equal genv r (GlobRef.ConstRef c) in
   let is_True = eq_ind (Lazy.force coq_True) in
   let is_False = eq_ind (Lazy.force coq_False) in
   let is_and = eq_ind (Lazy.force coq_and) in
@@ -1421,6 +1429,6 @@ let is_loaded_library d =
 
 let nnpp =
   Proofview.Goal.enter (fun gl ->
-      if is_loaded_library ["Coq"; "Logic"; "Classical_Prop"] then
+      if use_classic () && is_loaded_library ["Coq"; "Logic"; "Classical_Prop"] then
         Tactics.apply (Lazy.force coq_nnpp)
       else Tacticals.tclIDTAC)

@@ -4,6 +4,7 @@
 -I src/
 theories/ZArithDec.v
 theories/Itauto.v
+theories/Ctauto.v
 theories/NOlia.v
 theories/NOlra.v
 src/proverPatch.ml

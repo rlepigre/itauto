@@ -1,0 +1,13 @@
+*Coq 8.18*
+
+	- Before Coq 8.18, itauto is using the classic axiom
+	`Classical,nnpp` as soon as it is loaded.  From Coq 8.18, the use
+	of `Classical.nnpp` depends on the flag `Itauto Classic`.  When it
+	is off, itauto` is purely intuitionistic.  When it is on, `itauto`
+	is using the classic axiom `Classical.nnpp`.
+
+	Note that this may introduce regressions for proofs
+	that relied on the classic axiom.
+	A possible fix consists in using the convenience module `Cdcl.Ctauto`
+	(classical itauto) instead of `Cdcl.Itauto`.
+
