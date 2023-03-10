@@ -20,5 +20,5 @@ let args =
   ; ("-ifile", Arg.Set_string ifile, "File to parse") ]
 
 let _ =
-  Arg.parse args (fun s -> ()) "";
+  Arg.parse args (fun _ -> ()) "";
   if !ifile <> "" && !pfile <> "" then process_file !pfile !ifile

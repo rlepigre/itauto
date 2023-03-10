@@ -20,7 +20,7 @@ let output_patch_elt o = function
     Printf.fprintf o "Before declaration of %s, insert <%a>" s
       (output_list output_string)
       l
-  | After (s, c) -> Printf.fprintf o "After code of %s, insert <%s>" s s
+  | After (s, _) -> Printf.fprintf o "After code of %s, insert <%s>" s s
 
 let output_patch = output_list output_patch_elt
 let split = Str.regexp "[ \n\r\t]+"
@@ -43,7 +43,7 @@ let rec get_code l =
   | Code str :: l ->
     let l1, l2 = get_code l in
     (str :: l1, l2)
-  | Comment str :: _ -> ([], l)
+  | Comment _ :: _ -> ([], l)
 
 let rec gen_patch_file l =
   match l with
