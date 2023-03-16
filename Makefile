@@ -44,13 +44,13 @@ CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
 CoqMakefile CoqMakefile.conf : _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
-src/patch/mlpatch :
-	cd src/patch ; $(MAKE)
+src/patch/mlpatch.exe :
+	$(MAKE) -C src/patch
 
 HASOCAMLFORMAT := $(shell command -v ocamlformat 2> /dev/null)
 
-src/proverPatch.in : src/prover.ml src/ppprover.ml src/patch/mlpatch
-	./src/patch/mlpatch -ifile src/prover.ml -pfile src/ppprover.ml > src/proverPatch.in
+src/proverPatch.in : src/prover.ml src/ppprover.ml src/patch/mlpatch.exe
+	./src/patch/mlpatch.exe -ifile src/prover.ml -pfile src/ppprover.ml > src/proverPatch.in
 
 src/proverPatch.ml : src/proverPatch.in
 ifdef $(HASOCAMLFORMAT)
@@ -78,6 +78,7 @@ cleanaux :
 clean : cleanaux 
 	$(MAKE) -f CoqMakefile clean
 	$(MAKE) -f CoqMakefile_ml clean
+	$(MAKE) -C src/patch clean
 	rm -f CoqMakefile.conf CoqMakefile CoqMakefile_ml CoqMakefile_ml.conf
 
 
