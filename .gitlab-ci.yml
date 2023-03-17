@@ -7,7 +7,6 @@ stages:
   before_script:
     - if [ -n "${COMPILER_EDGE}" ]; then opam switch ${COMPILER_EDGE} && eval $(opam env); fi
     - opam update -y
-    - opam install -y -v -j ${NJOBS} coq-mathcomp-ssreflect
     - opam config list
     - opam repo list
     - opam list
