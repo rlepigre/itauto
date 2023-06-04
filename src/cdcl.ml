@@ -5,25 +5,24 @@ open Constr
   
 module P = ProverPatch
 
-let show_theory_time =
-  Goptions.declare_bool_option_and_ref ~depr:false
-    ~stage:Interp
+let { Goptions.get = show_theory_time } =
+  Goptions.declare_bool_option_and_ref
     ~key:["Itauto"; "Theory"; "Time"]
     ~value:false
+    ()
 
 let thy_time = ref 0.
 
-let debug = Goptions.declare_bool_option_and_ref ~depr:false
-              ~stage:Interp
-              ~key:["Itauto"; "Debug"]
-              ~value:false
+let { Goptions.get = debug } = Goptions.declare_bool_option_and_ref
+    ~key:["Itauto"; "Debug"]
+    ~value:false
+    ()
 
 
-let use_classic = Goptions.declare_bool_option_and_ref ~depr:false
-                    ~stage:Interp
-                    ~key:["Itauto"; "Classic"]
-                    ~value:false
-
+let { Goptions.get = use_classic } = Goptions.declare_bool_option_and_ref
+    ~key:["Itauto"; "Classic"]
+    ~value:false
+    ()
 
 
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
