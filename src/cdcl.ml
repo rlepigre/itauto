@@ -1196,7 +1196,7 @@ let assert_conflicts  ids l gl =
                Tactics.assert_by (Names.Name id) c  (Tactics.exact_no_check prf)) ids l in
   Tacticals.tclTHEN
     (Tacticals.tclTHENLIST cc)
-    (Tactics.revert ids) 
+    (Generalize.revert ids)
 
   
 
@@ -1309,7 +1309,7 @@ let assert_conflict_clauses tac =
           [
             Proofview.Unsafe.tclEVARS sigma ; 
             (* Generalize the used hypotheses *)
-            Tactics.generalize (List.rev_map EConstr.mkVar d);
+            Generalize.generalize (List.rev_map EConstr.mkVar d);
             (* Assert the conflict clauses *)
             assert_conflicts  ids cc gl;
             Tactics.keep []
@@ -1324,7 +1324,7 @@ let generalize_prop =
       let genv = Tacmach.pf_env gl in
       let hyps = Tacmach.pf_hyps_types gl in
       let hyps = List.filter (fun (_, t) -> is_prop genv sigma t) hyps in
-      Tactics.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
+      Generalize.generalize (List.map (fun x -> EConstr.mkVar (fst x)) hyps))
 
 let feedback msg =
   Proofview.Goal.enter (fun gl ->
@@ -1332,7 +1332,7 @@ let feedback msg =
 
 let generalize l =
   let l = List.map (fun c -> ((Locus.AllOccurrences, c), Anonymous)) l in
-  Tactics.generalize_gen l
+  Generalize.generalize_gen l
 
 (*let generalize_env env =
   let prop_of_atom (a, _) =
