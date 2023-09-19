@@ -111,7 +111,7 @@ let coq_NegBinRel = lazy (constr_of_ref "cdcl.NegBinRel.type")
 let coq_neg_bin_rel_clause = lazy (constr_of_ref "cdcl.neg_bin_rel_clause")
 let coq_neg_bin_rel_correct = lazy (constr_of_ref "cdcl.neg_bin_rel_correct")
 
-let whd = Reductionops.clos_whd_flags CClosure.all
+let whd = Reductionops.clos_whd_flags RedFlags.all
 
 let get_projection env evd c =
   match EConstr.kind evd c with
@@ -1039,7 +1039,7 @@ module Theory = struct
         let tc = EConstr.mkApp (Lazy.force coq_NegBinRel, [|t1; t2; c|]) in
         try
           let sigma', c' = Typeclasses.resolve_one_typeclass env !sigma tc in
-          let rc = Reductionops.clos_whd_flags CClosure.delta env sigma' c' in
+          let rc = Reductionops.clos_whd_flags RedFlags.delta env sigma' c' in
           match EConstr.kind sigma' rc with
           | App (c, a) ->
             sigma := sigma';
