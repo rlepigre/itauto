@@ -6,7 +6,7 @@ open Prover
 let deps = ref LitSet.empty
 
 let lift_printer (p : out_channel -> 'a -> unit) o v = p o v.Annot.elt
-let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→"
+let string_op = function AND -> "∧" | OR -> "∨" | IMPL -> "→" | IFF _ -> "⇔" | NOT -> "¬"
 let string_lop = function LAND -> "∧" | LOR -> "∨"
 let op_of_lop = function LAND -> AND | LOR -> OR
 
@@ -14,6 +14,7 @@ let string_of_failure = function
   | OutOfFuel ->"OutOfFuel"
   | Stuck -> "Stuck"
   | HasModel -> "HasModel"
+  | InternalError -> "InternalError"
 
 let output_option p s o = function
     None -> output_string o s
@@ -54,6 +55,22 @@ and dbg_output_formula o = function
     Printf.fprintf o "(%s [%a] %a)" (string_op IMPL)(dbg_output_op_list ) l  dbg_output_hform  r
 and dbg_output_hform o f = Printf.printf "{%a}.(%i)" dbg_output_formula f.HCons.elt (Uint63.hash f.HCons.id)
 
+let rec dbg_output_formula_simpl o =
+  function
+  | LFF  -> output_string o "⊥"
+  | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
+  | LOP (op, l) -> Printf.fprintf o "(%a)" (dbg_output_op_list_simpl (op_of_lop op))  l
+  | LIMPL (l, r) -> Printf.fprintf o "(%a → %a)" (dbg_output_op_list_simpl IMPL)  l dbg_output_formula_simpl r.HCons.elt
+  and
+    dbg_output_op_list_simpl op o  l =
+    match l with
+    | [] -> if op = AND || op = IMPL then output_string o "⊤"
+            else output_string o "⊥"
+    | [e] -> dbg_output_formula_simpl o e.HCons.elt
+    | e1::l -> Printf.fprintf o "%a %s %a" dbg_output_formula_simpl e1.HCons.elt (string_op op)
+                 (dbg_output_op_list_simpl op) l
+
+
 let rec output_bformula o = function
   | BTT _ -> output_string o "⊤"
   | BFF _ -> output_string o "⊥"
@@ -62,7 +79,16 @@ let rec output_bformula o = function
     Printf.fprintf o "({%a}.(%i) %s {%a}.(%i))" output_bformula f1.HCons.elt
       (Uint63.hash f1.HCons.id) (string_op op) output_bformula f2.HCons.elt
       (Uint63.hash f2.HCons.id)
-  | BIT _ -> ()
+  | BPROP(_,f1,f2) -> Printf.fprintf o "({%a}.(%i) = {%a}.(%i))" output_bformula f1.HCons.elt
+      (Uint63.hash f1.HCons.id)  output_bformula f2.HCons.elt
+      (Uint63.hash f2.HCons.id)
+  | BITE(_,_,c,f1,f2)  -> Printf.fprintf o "(if {%a}.(%i) then  {%a}.(%i) else {%a}.(%i))"
+                          output_bformula c.HCons.elt
+                          (Uint63.hash c.HCons.id)
+                          output_bformula f1.HCons.elt
+                          (Uint63.hash f1.HCons.id)  output_bformula f2.HCons.elt
+                          (Uint63.hash f2.HCons.id)
+
 
 let output_hbformula o f =
   Printf.fprintf o "{%a}.(%i)" output_bformula f.HCons.elt

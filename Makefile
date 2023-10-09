@@ -12,37 +12,17 @@ ifneq (,$(COQBIN))
 COQBIN:=$(COQBIN)/
 endif
 
+VFILES := Formula.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v
+VFILESTHY := $(addprefix theories/,$(VFILES))
+ALLVFILES := Itauto.v  NOlia.v Itauto.v Ctauto.v $(VFILES)
+ALLVFILESTHY := $(addprefix theories/,$(ALLVFILES))
+
+all : CoqMakefile CoqMakefile_ml src/patch/mlpatch.exe $(ALLVFILESTHY)
+	$(MAKE) -f CoqMakefile_ml  COQBIN=$(COQBIN) 
 
 
-all : theories/Itauto.vo theories/Ctauto.vo theories/NOlia.vo theories/NOlra.vo 
-
-theories/Prover.vo src/prover.ml : CoqMakefile 
+src/prover.ml :  CoqMakefile $(VFILESTHY)
 	$(MAKE) -f CoqMakefile theories/Prover.vo COQBIN=$(COQBIN) 
-
-theories/Itauto.vo : theories/Itauto.v theories/Prover.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml theories/Itauto.vo COQBIN=$(COQBIN)
-
-theories/Ctauto.vo : theories/Ctauto.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml theories/Ctauto.vo COQBIN=$(COQBIN)
-
-
-theories/NOlia.vo : theories/NOlia.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml theories/NOlia.vo COQBIN=$(COQBIN) 
-
-theories/NOlra.vo : theories/NOlra.v theories/Itauto.vo src/cdcl_plugin.cmxs  CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml theories/NOlra.vo COQBIN=$(COQBIN) 
-
-.merlin : CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml .merlin
-
-src/cdcl_plugin.cmxs  : CoqMakefile_ml
-	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 
-
-CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
-	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
-
-CoqMakefile CoqMakefile.conf : _CoqProject
-	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
 src/patch/mlpatch.exe :
 	$(MAKE) -C src/patch
@@ -58,6 +38,21 @@ ifdef $(HASOCAMLFORMAT)
 else
 	cp src/proverPatch.in src/proverPatch.ml
 endif
+
+
+.merlin : CoqMakefile_ml
+	$(MAKE) -f CoqMakefile_ml .merlin
+
+src/cdcl_plugin.cmxs  : CoqMakefile_ml src/cdcl.ml
+	$(MAKE) -f CoqMakefile_ml src/cdcl_plugin.cmxs COQBIN=$(COQBIN) 
+
+CoqMakefile_ml CoqMakefile_ml.conf : src/proverPatch.ml
+	$(COQBIN)coq_makefile -f _CoqProject_ml -o CoqMakefile_ml
+
+CoqMakefile CoqMakefile.conf : _CoqProject
+	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
+
+
 
 UINT := $(shell $(COQBIN)coqc -config | grep COQCORELIB | cut -f2 -d'=')/kernel
 
@@ -84,7 +79,7 @@ clean : cleanaux
 
 
 
-TESTSUITE = arith.v  refl_bool.v no_test_lia.v no_test_lra.v
+TESTSUITE = arith.v  refl_bool.v no_test_lia.v no_test_lra.v btauto.v
 ISSUES    =  cnf.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.v issue_10.v \
 	issue_11.v issue_12.v issue_13.v issue_14.v issue_15.v issue_16.v issue_19.v issue_20.v issue_21.v \
 	issue_22.v issue_23.v issue_cc.v issue_25.v issue_28.v

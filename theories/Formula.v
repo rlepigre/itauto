@@ -1,118 +1,11 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
-Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses.
+Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses Cdcl.Lib.
 Require Import  Bool Setoid ZifyBool  ZArith Uint63 Lia List.
+Require FMapAVL FMapFacts.
+Require OrderedTypeAlt.
 Import ZifyClasses.
 
 Set Primitive Projections.
-
-
-Ltac inv H := inversion H ; try subst ; clear H.
-Ltac split_and :=
-  repeat
-    match goal with
-    | |- ?A /\ ?B => split ; split_and
-    end.
-
-Lemma and_first : forall A B : Prop,
-    A -> (A -> B) -> A /\ B.
-Proof.  tauto. Qed.
-
-Ltac split_and_first :=
-  match goal with
-  | |- _ /\ _ => apply and_first ; [| intro ; split_and_first]
-  | |- _ => idtac
-  end.
-
-Ltac destruct_in_goal eqn :=
-  match goal with
-  | |- context[match ?X with
-               | _ => _
-               end] => destruct X eqn: eqn
-  end.
-
-Ltac destruct_in_hyp H eqn :=
-  match type of H with
-  | context[match ?X with
-                | _ => _
-            end]  => destruct X eqn: eqn
-  end.
-
-
-Lemma compare_refl : forall i, (i ?= i)%uint63 = Eq.
-Proof.
-  intros.
-  rewrite compare_def_spec.
-  unfold compare_def.
-  replace (i <? i)%uint63 with false by lia.
-  replace (i =? i)%uint63 with true by lia.
-  reflexivity.
-Qed.
-
-Lemma compare_Eq : forall x y, (x ?= y)%uint63 = Eq <-> (x =? y = true)%uint63.
-Proof.
-  intros.
-  rewrite compare_def_spec.
-  unfold compare_def.
-  destruct (x <?y)%uint63 eqn:LT; try congruence.
-  intuition (congruence || lia).
-  destruct (x =?y)%uint63 ;   intuition (congruence || lia).
-Qed.
-
-Lemma compare_Lt : forall x y, (x ?= y)%uint63 = Lt <-> (x <? y = true)%uint63.
-Proof.
-  intros.
-  rewrite compare_def_spec.
-  unfold compare_def.
-  destruct (x <?y)%uint63 eqn:LT; try congruence.
-  intuition (congruence || lia).
-  destruct (x =?y)%uint63 ;   intuition (congruence || lia).
-Qed.
-
-Lemma compare_Gt : forall x y, (x ?= y)%uint63 = Gt <-> (y <? x = true)%uint63.
-Proof.
-  intros.
-  rewrite compare_def_spec.
-  unfold compare_def.
-  destruct (x <?y)%uint63 eqn:LT; try congruence.
-  intuition (congruence || lia).
-  destruct (x =?y)%uint63 eqn:EQ;   intuition (congruence || lia).
-Qed.
-
-Ltac elim_compare :=
-  match goal with
-  | H : (?X ?= ?Y)%uint63 = Eq |- _ => rewrite compare_Eq in H
-  | H : (?X ?= ?Y)%uint63 = Lt |- _ => rewrite compare_Lt in H
-  | H : (?X ?= ?Y)%uint63 = Gt |- _ => rewrite compare_Gt in H
-  | |-  (?X ?= ?Y)%uint63 = Eq  => rewrite compare_Eq
-  | |-  (?X ?= ?Y)%uint63 = Lt  => rewrite compare_Lt
-  | |-  (?X ?= ?Y)%uint63 = Gt  => rewrite compare_Gt
-  end.
-
-Lemma lift_if : forall (P: bool -> Prop), forall x, (x =  true -> P true) /\ (x = false -> P false)  -> P x.
-Proof.
-  destruct x ; tauto.
-Qed.
-
-Ltac lift_if :=
-  match goal with
-  | |- context[if ?x then _ else _ ] => pattern x ; apply lift_if
-  end.
-
-Ltac elim_match_comparison :=
-  match goal with
-  | |- context[match ?X with
-       | Eq => _
-       | Lt => _
-       | Gt => _
-       end] => let F := fresh in destruct X eqn:F
-  | H: context[match ?X with
-       | Eq => _
-       | Lt => _
-       | Gt => _
-       end] |- _ => let F := fresh in destruct X eqn:F
-  end.
-
-
 
 Module HCons.
   Section S.
@@ -202,12 +95,13 @@ Qed.
 
 
 Inductive op :=
-| AND | OR | IMPL.
-(* IFF - is complicated.  The main reason is that the clausal encoding
-   introduces IMPL.  Those are not sub-formulae and therefore this
-   requires some ad'hoc specific treatment *)
+| NOT | AND | OR | IMPL | IFF (i1 i2:int).
 
-  Inductive kind : Type :=
+Inductive bprop := EQB (i1 i2:int).
+
+Inductive ite := ITE (i1 i2:int).
+
+Inductive kind : Type :=
   |IsProp
   |IsBool.
 
@@ -216,9 +110,11 @@ Inductive op :=
   | BFF   : forall (k: kind), BForm k
   | BAT   : forall (k: kind), int -> BForm k
   | BOP   : forall (k: kind), op -> HCons.t (BForm k) ->
-                             HCons.t (BForm k) -> (BForm k)
-  | BIT   : (BForm IsBool) -> BForm IsProp.
-
+                              HCons.t (BForm k) -> BForm k
+  | BITE  : forall (k:kind), ite -> HCons.t (BForm IsBool) -> HCons.t (BForm k) ->
+                              HCons.t (BForm k) -> BForm k
+  | BPROP   : bprop -> HCons.t (BForm IsBool) -> HCons.t (BForm IsBool) -> BForm IsProp
+  .
 
   Inductive lop := LAND | LOR.
 
@@ -424,6 +320,118 @@ Inductive op :=
 
   Definition hmap := IntMap.ptrie (key:=int) (bool*LForm)%type.
 
+  Module OrdLFormAlt <: OrderedTypeAlt.OrderedTypeAlt.
+
+    Definition t := LForm.
+
+    Definition lop_compare (o1 o2:lop) :=
+      match o1, o2 with
+      | LAND , LAND | LOR , LOR => Eq
+      | LAND , _ => Lt
+      | _    , LAND => Gt
+      end.
+
+    Fixpoint list_compare (l1 l2 : list HFormula) : comparison :=
+      match l1 , l2 with
+      | nil , nil => Eq
+      | nil  , _  => Lt
+      | _    , nil => Gt
+      | e1::l1 , e2::l2 => match e1.(id) ?= e2.(id) with
+                           | Eq => list_compare l1 l2
+                           | x  => x
+                           end
+      end.
+
+
+    Definition compare (f1 f2:LForm) : comparison :=
+      match f1, f2 with
+      | LFF, LFF => Eq
+      | LFF , _  => Lt
+      |  _  , LFF => Gt
+      | LAT i , LAT j => i ?= j
+      | LAT i ,   _   => Lt
+      |  _    , LAT i => Gt
+      | LOP o1 l1 , LOP o2 l2 => match lop_compare o1 o2 with
+                                 | Eq => list_compare l1 l2
+                                 |  x => x
+                                 end
+      | LOP _ _   ,  _    => Lt
+      |  _   , LOP  _ _   => Gt
+      | LIMPL l1 f1 , LIMPL l2 f2 => match f1.(id) ?= f2.(id) with
+                                     | Eq => list_compare l1 l2
+                                     | x  => x
+                                     end
+      end.
+
+    Lemma lop_compare_sym : forall x y, lop_compare y x = CompOpp (lop_compare x y).
+    Proof.
+      destruct x,y; reflexivity.
+    Qed.
+
+    Lemma uint_compare_sym : forall x y, y ?= x = CompOpp (x?= y).
+    Proof.
+      intros.
+      destruct (x?= y) eqn:CMP; simpl;
+        repeat  Lib.elim_compare; lia.
+    Qed.
+
+    
+    Lemma list_compare_sym : forall x y, list_compare y x = CompOpp (list_compare x y).
+    Proof.
+      induction x; destruct y; simpl;auto.
+      rewrite uint_compare_sym.
+      destruct (id a ?= id h); simpl;auto.
+    Qed.
+    
+    Lemma compare_sym : forall x y : t, compare y x = CompOpp (compare x y).
+    Proof.
+      destruct x.
+      - simpl. destruct y; simpl; auto.
+      - destruct y; simpl;auto.
+        apply uint_compare_sym.
+      - destruct y; simpl;auto.
+        rewrite lop_compare_sym.
+        destruct (lop_compare l l1); simpl; auto.
+        apply list_compare_sym.
+      - destruct y; simpl;auto.
+        rewrite uint_compare_sym.
+        destruct (id t0 ?= id t1); simpl; auto.
+        apply list_compare_sym.
+    Qed.
+
+    Lemma list_compare_trans : forall (c : comparison) x y z, list_compare x y = c -> list_compare y z = c -> list_compare x z = c.
+    Proof.
+      induction x; destruct y; destruct z; simpl; try congruence; auto.
+      destruct (id a ?= id h) eqn:IDA ;
+        destruct (id h ?= id h0) eqn:IDH ;
+        destruct (id a ?= id h0) eqn:IDH0 ; repeat  Lib.elim_compare; try lia; try congruence.
+      eapply IHx;eauto.
+    Qed.
+      
+      
+    
+    Lemma compare_trans : forall (c : comparison) (x y z : t), compare x y = c -> compare y z = c -> compare x z = c.
+    Proof.
+      induction x; simpl.
+      - intros. destruct y; destruct z; simpl in *;intuition try congruence.
+      - intros. destruct y; destruct z; simpl in *;intuition try congruence.
+        destruct c; repeat Lib.elim_compare; lia.
+      - intros. destruct y; destruct z; simpl in *;intuition try congruence.
+        destruct l,l1,l3; simpl in *; auto; try congruence.
+        eapply list_compare_trans; eauto.
+        eapply list_compare_trans; eauto.
+      - intros. destruct y; destruct z; simpl in *;intuition try congruence.
+        destruct (id t0 ?= id t1) eqn:IDA ;
+          destruct (id t1 ?= id t2) eqn:IDH ;
+          destruct (id t0 ?= id t2) eqn:IDH0 ; repeat  Lib.elim_compare; try lia; try congruence.
+        eapply list_compare_trans;eauto.
+    Qed.
+        
+  End OrdLFormAlt.
+
+  Module OrdLForm := OrderedTypeAlt.OrderedType_from_Alt(OrdLFormAlt).
+  Module LFormMap := FMapAVL.Make OrdLForm.
+  Module LFormMapFacts := FMapFacts.Facts(LFormMap).
 
   Inductive literal : Type :=
   | POS (f:HFormula)
@@ -1767,7 +1775,9 @@ Inductive op :=
     match o with
     | AND => f1 /\ f2
     | OR  => f1 \/ f2
-    | IMP => f1 -> f2
+    | IMPL => f1 -> f2
+    | NOT  => f1 -> False
+    | IFF _ _  => f1 <-> f2
     end.
 
   Section EvalList.
@@ -2162,7 +2172,7 @@ Inductive op :=
     (lform_app o nil (List.map (nform lform) l)).
   Proof.
     intros.
-    replace l  with (l++nil) at 1 by (rewrite app_nil_end; reflexivity).
+    replace l  with (l++nil) at 1 by (rewrite app_nil_r; reflexivity).
     generalize (nil (A:= HCons.t LForm)).
     assert (forall f, eval_hformula (nform lform f) <-> eval_hformula f).
     {
@@ -2272,7 +2282,7 @@ Inductive op :=
     induction f' using form_ind.
     - simpl. intros.
       inv IND ; simpl in EQ ; subst ; simpl in *; try congruence.
-      inv EQ. auto.
+      tauto.
     - simpl. intros.
       inv IND ; simpl in EQ ; subst ; simpl in *; try congruence.
       inv EQ. auto.
@@ -2384,7 +2394,7 @@ Inductive op :=
         *);
       }.
 
-  Inductive failure := OutOfFuel | Stuck | HasModel.
+  Inductive failure := OutOfFuel | Stuck | HasModel |InternalError.
 
   Inductive result (A B: Type):=
   | Fail (f: failure)
@@ -2609,14 +2619,14 @@ Inductive op :=
     | LAND => cnf_minus_and
     | LOR  => cnf_minus_or
     end.
-
+(*
   Definition polarity_of_op_1 (o: op) (b:bool):=
     match o with
     | AND => b
     | OR  => b
     | IMPL => negb b
     end.
-
+*)
   Section S.
     Variable cnf : forall (pol:bool) (is_classic: bool) (cp cm: IntMap.ptrie (key:= int) unit)
                           (ar:list literal) (acc : list watched_clause)   (f: LForm) (hf: HFormula),
@@ -2847,7 +2857,7 @@ Inductive op :=
       simpl.
       unfold rev_map.
       rewrite xmap_rev.
-      rewrite <- app_nil_end.
+      rewrite app_nil_r.
       rewrite eval_literal_list_POS.
       rewrite eval_or_list_rev.
       simpl. tauto.
@@ -7170,7 +7180,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       rewrite Forall_rew;split; auto.
       unfold rev_map.
       rewrite xmap_rev.
-      rewrite <- app_nil_end.
+      rewrite app_nil_r.
       rewrite map_rev.
       rewrite Forall_rev_iff.
       apply Forall_has_literal_POS;auto.
@@ -7850,7 +7860,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
         * simpl in *. tauto.
         * simpl in *; intros.
           intuition.
-        * intuition congruence.
+        *  intuition congruence.
       + simpl in *. tauto.
   Qed.
 
@@ -8643,7 +8653,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => ProverT st'' g
           | Fail f        => Fail f
           end
-        | Fail OutOfFuel as e => e
+        | Fail (OutOfFuel|InternalError) as e => e
         | Fail (HasModel | Stuck)  | Progress _ =>  prover_arrows l st g
         end
       end.
@@ -8662,7 +8672,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           | Progress st'' => ProverT st'' g
           | Fail f        => Fail f
           end
-        | Fail OutOfFuel as e => e
+        | Fail (OutOfFuel|InternalError) as e => e
         | Fail (HasModel | Stuck)  | Progress _ =>  prover_arrows l st g
         end
       end.
@@ -10612,7 +10622,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Definition prover_formula thy (up: bool) (m: hmap) (n:nat) (f: HFormula)  :=
     if wfb m && chkHc m f.(elt) f.(id) f.(is_dec)
     then prover_intro (prover_opt thy up n) (insert_unit (annot_lit hTT) (empty_state m)) (Some f)
-    else Fail HasModel.
+    else Fail InternalError.
 
   Definition prover_bformula thy (m: hmap) (n:nat) (f: HFormula)  :=
     match prover_formula thy false m n f with
@@ -10816,7 +10826,14 @@ Module BForm.
       | AND => eval_binop and andb k
       | OR  => eval_binop or orb k
       | IMPL => eval_binop (fun x y => x -> y) implb k
+      | IFF _ _  => eval_binop (fun x y => x <-> y) Bool.eqb k
+      | NOT      => eval_binop (fun x y => not x)  (fun x y => negb x) k
       end.
+
+    Definition eval_bprop (o:bprop) := @eq bool.
+
+    Definition eval_ite (k:kind) (o:ite) : bool -> eval_kind k -> eval_kind k -> eval_kind k :=
+      fun (b:bool) e1 e2 => if b then e1 else e2.
 
     Fixpoint eval_bformula (k:kind) (f: BForm k) : eval_kind k :=
       match f with
@@ -10824,9 +10841,12 @@ Module BForm.
       | BFF k => eval_FF k
       | BAT k i => eval_atom k i
       | BOP k o f1 f2 => eval_op o k
-                                (eval_bformula k f1.(elt))
-                                (eval_bformula k f2.(elt))
-      | BIT f => Is_true (eval_bformula _ f)
+                                (eval_bformula k (elt f1))
+                                (eval_bformula k (elt f2))
+      | BITE k o c f1 f2 => eval_ite k o (eval_bformula IsBool  (elt c))
+                              (eval_bformula k (elt f1))
+                              (eval_bformula k (elt f2))
+      | BPROP o f1 f2 => eval_bprop o (eval_bformula _ (elt f1))  (eval_bformula _ (elt f2))
       end.
 
     (** Certain atoms have no boolean counterpart *)
@@ -10835,11 +10855,11 @@ Module BForm.
     Definition map_hcons {A B:Type} (f: A -> B) (e : HCons.t A) : HCons.t B :=
       HCons.mk e.(id) e.(is_dec) (f e.(elt)).
 
-    Definition poll (o:op) (pol:bool)  :=
+(*    Definition poll (o:op) (pol:bool)  :=
       match o with
       | AND | OR => pol
       | IMPL => negb pol
-      end.
+      end. *)
 
     Definition keep_atom (k:kind) (i:int) :=
       match k with
@@ -10847,7 +10867,36 @@ Module BForm.
       | IsBool => has_bool i
       end.
 
-    Fixpoint to_formula (pol:bool) (k:kind) (f:BForm k) : LForm :=
+    Lemma ite : forall (b:bool) (p1 p2:Prop),
+        (if b then p1 else p2) <->
+          ((b = true -> p1)
+           /\
+          (b = false -> p2)).
+    Proof.
+      destruct b ; intuition congruence.
+    Qed.
+
+    Lemma ite1 : forall (b:bool) (p1 p2:Prop),
+        (if b then p1 else p2) <->
+          ((b = true -> p1)
+           /\
+          (b = true \/ p2)).
+    Proof.
+      destruct b ; intuition congruence.
+    Qed.
+
+    Fixpoint keep_all (k:kind) (f: BForm k) : bool :=
+      match f with
+      | BTT k => true
+      | BFF k => true
+      | BAT k i => keep_atom k i
+      | BOP k o f1 f2 => keep_all k f1.(elt) && keep_all k f2.(elt)
+      | BPROP _ f1 f2 => keep_all IsBool f1.(elt) && keep_all IsBool f2.(elt)
+      | BITE k _ c f1 f2 => keep_all _ c.(elt) &&
+                              keep_all k f1.(elt) && keep_all k f2.(elt)
+      end.
+
+    Fixpoint to_formula (pol:bool) (k:kind) (f:BForm k)  : LForm:=
       match f with
       | BTT k => TT
       | BFF k => FF
@@ -10856,24 +10905,65 @@ Module BForm.
                    else if pol then FF else TT
       | BOP k o f1 f2 =>
         match o with
+        | NOT  =>  LIMPL (map_hcons (to_formula (negb pol) k) f1::nil) hFF
         | AND  =>  LOP LAND
                        ((map_hcons (to_formula pol k) f1):: (map_hcons (to_formula pol k) f2)::nil)
         | OR   =>  LOP LOR
                        ((map_hcons (to_formula pol k) f1):: (map_hcons (to_formula pol k) f2)::nil)
         | IMPL => LIMPL ((map_hcons (to_formula (negb pol) k) f1):: nil) (map_hcons (to_formula pol k) f2)
+        | IFF i1 i2 =>
+            let f1' := LIMPL ((map_hcons (to_formula (negb pol) k) f1):: nil) (map_hcons (to_formula pol k) f2) in
+            let f2' := LIMPL ((map_hcons (to_formula (negb pol) k) f2):: nil) (map_hcons (to_formula pol k) f1) in
+            let dec := f1.(is_dec) && f2.(is_dec) in
+            LOP LAND (HCons.mk i1 dec f1' :: HCons.mk i2 dec f2' :: nil)
         end
-      | BIT f =>  (to_formula pol IsBool f)
+      | BPROP (EQB i1 i2) f1 f2  =>
+          let f1' := LIMPL ((map_hcons (to_formula (negb pol) IsBool) f1):: nil) (map_hcons (to_formula pol IsBool) f2) in
+          let f2' := LIMPL ((map_hcons (to_formula (negb pol) IsBool) f2):: nil) (map_hcons (to_formula pol IsBool) f1) in
+          let dec := f1.(is_dec) && f2.(is_dec) in
+          LOP LAND (HCons.mk i1 dec f1' :: HCons.mk i2 dec f2' :: nil)
+      | BITE k (ITE i1 i2) c f1 f2 =>
+          let f1' := LIMPL ((map_hcons (to_formula (negb pol) IsBool) c):: nil)
+                       (map_hcons (to_formula pol k) f1) in
+          let f2' := LOP LOR ((map_hcons (to_formula  pol IsBool) c):: map_hcons (to_formula pol k) f2::nil) in
+          let dec := f1.(is_dec) && f2.(is_dec) in
+          LOP LAND (HCons.mk i1 dec f1' :: HCons.mk i2 dec f2' :: nil)
       end.
 
-
-
-
-
-
+(*    Fixpoint keep_all_pol (pol:bool) (k:kind) (f:BForm k) {struct f}:
+        keep_all k f = true ->
+        to_formula (negb pol) k f = to_formula pol k f.
+    Proof.
+      destruct f; simpl.
+      - reflexivity.
+      - reflexivity.
+      - intros. rewrite H. reflexivity.
+      - intros. rewrite andb_true_iff in *.
+        destruct H.
+        unfold map_hcons.
+        rewrite! keep_all_pol by auto.
+        reflexivity.
+      - intros.
+        rewrite! andb_true_iff in *.
+        destruct H as ((H1 & H2) & H3).
+        unfold map_hcons.
+        rewrite! negb_involutive.
+        rewrite! keep_all_pol by auto.
+        rewrite H1. destruct i.
+        reflexivity.
+      - intros.
+        rewrite! andb_true_iff in *.
+        destruct H as (H1 & H2).
+        unfold map_hcons.
+        rewrite! negb_involutive.
+        rewrite! keep_all_pol by auto.
+        reflexivity.
+    Qed.
+ *)
 
     Definition hold (k:kind) : eval_kind k ->  Prop :=
       match k with
-      | IsBool => fun v => Is_true v
+      | IsBool => fun v => is_true v
       | IsProp => fun v => v
       end.
 
@@ -10890,7 +10980,7 @@ Module BForm.
     Proof.
       destruct k ; simpl.
       tauto.
-      unfold Is_true.
+      unfold is_true.
       tauto.
     Qed.
 
@@ -10905,7 +10995,7 @@ Module BForm.
 
     Variable has_bool_correct :
       forall i : int,
-        has_bool i = true -> eval_atom IsProp i <-> Is_true (eval_atom IsBool i).
+        has_bool i = true -> eval_atom IsProp i <-> is_true (eval_atom IsBool i).
 
     Lemma has_bool_hold_eval_atom :
       forall k i, has_bool i = true ->
@@ -10922,10 +11012,22 @@ Module BForm.
     Proof.
       destruct k ; simpl; intros.
       - tauto.
-      - split; intros.
-        apply andb_prop_elim. auto.
-        apply andb_prop_intro.  tauto.
+      - unfold is_true in *.
+        rewrite andb_true_iff.
+        tauto.
     Qed.
+
+    Lemma hold_eval_binop_neg : forall k f1 f2,
+        hold k (eval_binop (fun x _ => x -> False) (fun x y => negb x) k f1 f2) <->
+        (hold k f1 -> False).
+    Proof.
+      destruct k ; simpl; intros.
+      - tauto.
+      - unfold is_true in *.
+        rewrite negb_true_iff.
+        destruct f1 ; intuition congruence.
+    Qed.
+
 
     Lemma hold_eval_binop_or : forall k f1 f2,
         hold k (eval_binop or orb k f1 f2) <->
@@ -10933,9 +11035,9 @@ Module BForm.
     Proof.
       destruct k ; simpl; intros.
       - tauto.
-      - split; intros.
-        apply orb_prop_elim. auto.
-        apply orb_prop_intro.  tauto.
+      - unfold is_true.
+        rewrite orb_true_iff.
+        tauto.
     Qed.
 
     Lemma hold_eval_binop_impl : forall k f1 f2,
@@ -10949,7 +11051,24 @@ Module BForm.
         destruct f1,f2 ; unfold Is_true in *; simpl in *; auto.
     Qed.
 
+    Lemma hold_eval_binop_iff : forall k f1 f2,
+        hold k (eval_binop (fun x y => x <-> y) Bool.eqb k f1 f2) <->
+        (hold k f1 <-> hold k f2).
+    Proof.
+      destruct k ; simpl; intros.
+      - tauto.
+      - unfold is_true.
+        split; intros.
+        destruct f1,f2 ; simpl in *; tauto.
+        destruct f1,f2 ; simpl in *; tauto.
+    Qed.
 
+
+    Lemma eq_bool_intro : forall (x y:bool),
+        (x = true <-> y = true) <-> x = y.
+    Proof.
+      destruct x,y; intuition congruence.
+    Qed.
 
     Fixpoint aux_to_formula_correct (pol:bool) (k:kind) (f:BForm k) {struct f} :
       if pol
@@ -10977,25 +11096,75 @@ Module BForm.
         *  destruct pol; simpl.
            tauto.
            tauto.
-      - generalize (aux_to_formula_correct pol k (elt t0)).
+      -
+        generalize (aux_to_formula_correct pol k (elt t0)).
         generalize (aux_to_formula_correct pol k (elt t1)).
+        generalize (aux_to_formula_correct (negb pol) k (elt t0)).
+        generalize (aux_to_formula_correct (negb pol) k (elt t1)).
         destruct o; simpl.
-        + destruct pol ; rewrite hold_eval_binop_and.
+        + destruct pol; simpl; rewrite hold_eval_binop_neg.
+          tauto. tauto.
+        + destruct pol ; simpl; rewrite hold_eval_binop_and.
           tauto.
           tauto.
-        + destruct pol ; rewrite hold_eval_binop_or.
+        + destruct pol ; simpl; rewrite hold_eval_binop_or.
           tauto.
           tauto.
-        + generalize (aux_to_formula_correct (negb pol) k (elt t0)).
-          destruct pol; rewrite hold_eval_binop_impl.
-          * simpl.
-            tauto.
-          * simpl.
-            tauto.
-      - generalize (aux_to_formula_correct pol IsBool f).
-        destruct pol.
-        + simpl. tauto.
-        + simpl. tauto.
+        + destruct pol; simpl; rewrite hold_eval_binop_impl.
+          tauto.
+          tauto.
+        + destruct pol; simpl; rewrite hold_eval_binop_iff.
+          tauto.
+          tauto.
+      - destruct i.
+          destruct pol;unfold eval_ite; simpl.
+          * intros.
+            destruct H.
+            destruct (eval_bformula IsBool (elt t0)) eqn:B1.
+            apply (aux_to_formula_correct true).
+            apply H.
+            simpl.
+            apply (aux_to_formula_correct false).
+            apply B1.
+            destruct H0.
+            apply (aux_to_formula_correct true) in H0.
+            unfold hold in H0. unfold is_true in H0. congruence.
+            apply (aux_to_formula_correct true).
+            auto.
+          * destruct (eval_bformula IsBool (elt t0)) eqn:B1;
+              split; intros.
+            {
+              apply (aux_to_formula_correct false).
+              auto.
+            }
+            {
+              left.
+              apply (aux_to_formula_correct false);auto.
+            }
+            {
+              apply (aux_to_formula_correct true) in H0.
+              unfold hold,is_true in H0. congruence.
+            }
+            {
+              right.
+              apply (aux_to_formula_correct false);auto.
+            }
+      - destruct b.
+        generalize (aux_to_formula_correct pol _ (elt t0)).
+        generalize (aux_to_formula_correct pol _ (elt t1)).
+        generalize (aux_to_formula_correct (negb pol) _ (elt t0)).
+        generalize (aux_to_formula_correct (negb pol) _ (elt t1)).
+        unfold eval_bprop.
+        destruct pol; simpl.
+        + intros.
+          apply eq_bool_intro.
+          unfold Is_true in *.
+          destruct (eval_bformula IsBool (elt t1));
+            destruct (eval_bformula IsBool (elt t0)); simpl; try tauto.
+        + intros.
+          rewrite H3 in *.
+          destruct (eval_bformula IsBool (elt t1));
+            destruct (eval_bformula IsBool (elt t0)); simpl; try tauto.
     Qed.
 
     Lemma to_formula_correct : forall (f:BForm IsProp),
@@ -11032,7 +11201,7 @@ Definition set (A:Type) (i:int) (v:A) (m : IntMap.ptrie A) :=
 
 Inductive atomT : Type :=
 | NBool : forall (p : Prop), option (p \/ ~ p) -> atomT
-| TBool : forall (b: bool) (p: Prop), p <-> Is_true b -> atomT.
+| TBool : forall (b: bool) (p: Prop), p <-> is_true b -> atomT.
 
 Definition mkAtom (p:Prop) := NBool p None.
 Definition mkAtomDec (p:Prop) (H:p\/ ~p) := NBool p (Some H).
@@ -11097,13 +11266,14 @@ Definition has_bool (m:IntMap.ptrie atomT) (i:int) : bool :=
   bool_of_ptrie has_bool_atomT m i.
 
 Lemma has_bool_correct : forall am i,
-  has_bool am i = true -> eval_prop am IsProp i <-> Is_true (eval_prop am IsBool i).
+  has_bool am i = true -> eval_prop am IsProp i <-> is_true (eval_prop am IsBool i).
 Proof.
-  unfold has_bool, eval_prop.
+  unfold has_bool, eval_prop,is_true.
   intros.  unfold bool_of_ptrie in H.
   destruct (IntMap.get' i am).
-  - destruct a ; simpl in H; congruence.
-  - simpl. tauto.
+  - destruct a ; simpl in H. congruence.
+    rewrite i0. unfold is_true; reflexivity.
+  - simpl. intuition congruence.
 Qed.
 
 Definition is_dec_atomT (a: atomT) :=
@@ -11121,22 +11291,27 @@ Definition eval_is_dec (m: IntMap.ptrie atomT) (i:int)  :=
 
 Lemma is_dec_correct : forall m i, eval_is_dec m i = true -> eval_prop m IsProp i  \/ ~ eval_prop m IsProp i .
 Proof.
-  unfold eval_is_dec, eval_prop.
+  unfold eval_is_dec, eval_prop,is_true.
   unfold bool_of_ptrie.
   intros. destruct (IntMap.get' i m);[| tauto].
   destruct a.
   - destruct o ; simpl in H; try congruence.
     apply o.
   - rewrite i0.
-    destruct b; simpl; tauto.
+    unfold is_true.
+    destruct b; intuition congruence.
 Qed.
 
 
 Register HCons.mk as cdcl.HCons.mk.
 
+Register NOT as cdcl.op.NOT.
 Register AND as cdcl.op.AND.
 Register OR as cdcl.op.OR.
 Register IMPL as cdcl.op.IMPL.
+Register IFF as cdcl.op.IFF.
+Register EQB as cdcl.bprop.EQB.
+Register ITE as cdcl.ite.ITE.
 
 Register Is_true as cdcl.Is_true.
 Register iff_refl as cdcl.iff_refl.
@@ -11158,7 +11333,8 @@ Register BTT as cdcl.BForm.BTT.
 Register BFF as cdcl.BForm.BFF.
 Register BAT as cdcl.BForm.BAT.
 Register BOP as cdcl.BForm.BOP.
-Register BIT as cdcl.BForm.BIT.
+Register BPROP  as cdcl.BForm.BPROP.
+Register BITE  as cdcl.BForm.BITE.
 
 Register eval_hformula as cdcl.eval_hformula.
 Register eval_hbformula as cdcl.eval_hbformula.

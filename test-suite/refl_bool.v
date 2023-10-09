@@ -1,6 +1,6 @@
 Require Import Bool Arith Cdcl.ReifClasses.
 
-Lemma is_true_le : forall a b, a <= b <-> Is_true (a <=? b).
+Lemma is_true_le : forall a b, a <= b <-> is_true (a <=? b).
 Proof.
   intros.
   rewrite <- Nat.leb_le.
@@ -14,8 +14,8 @@ Qed.
 Require Import Cdcl.Itauto.
 Require Import Uint63.
 
-Lemma map : forall a b, Is_true (a <=? b) -> a <= b.
+Lemma map : forall a b, a <=? b = true -> a <= b.
 Proof.
   intros a b.
-  itauto idtac.
+  vitautog.
 Qed.

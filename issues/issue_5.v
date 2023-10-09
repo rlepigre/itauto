@@ -2,6 +2,25 @@ Require Import Lia ZArith.
 Require Import Cdcl.Itauto.
 Open Scope Z_scope.
 
+
+Goal forall (x : Z) ,
+    (0 <? x) = true ->   0 < x.
+Proof.
+  Fail itauto idtac. (* Should teach that they are the same *)
+  itauto lia.
+Qed.
+
+
+Goal forall (x : Z) (n : x <> 0),
+    (0 <? x) = false \/ (x <? 32) = false ->
+    0 < x < 32 \/ x = 0 ->
+    False.
+Proof.
+  intro.
+  itauto lia.
+Qed.
+
+
 Goal forall (x : Z) (n : x <> 0),
     Z.eq_dec x 0 = right n ->
     (0 <? x) = false \/ (x <? 32) = false ->
@@ -9,6 +28,5 @@ Goal forall (x : Z) (n : x <> 0),
     False.
 Proof.
   intros.
-  gen_conflicts lia.
   itauto lia.
 Qed.

@@ -21,7 +21,8 @@ Proof.
 Qed.
 
 Lemma false_true :  Is_true (false) -> Is_true true.
-Proof. itauto idtac. Qed.
+Proof.
+  itauto idtac. Qed.
 
 
 Lemma true_andb_true : Is_true (true && true).
@@ -195,6 +196,42 @@ Proof.
   itauto lia.
 Qed.
 
+Goal forall b, orb b true = true.
+Proof.
+  intros.
+  itauto idtac.
+Qed.
+
+Goal forall b, b = true \/ b = false ->
+               b || true = true.
+Proof.
+  intro.
+  vitautog.
+Qed.
+
+Goal forall b, b = true \/ b = false ->
+               b || true = true.
+Proof.
+  intro.
+  itauto lia.
+Qed.
+
+
+Goal forall b, andb b b = b.
+Proof.
+  intros.
+  itauto idtac.
+Qed.
+
+Goal forall b, andb b b = b.
+Proof.
+  intros.
+  zify.
+  itauto idtac.
+Qed.
+
+
+
 Require Import Bool.
 
 Open Scope bool_scope.
@@ -235,12 +272,8 @@ Goal forall b b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14
     || b28 && b29 || b30 && b31.
 Proof.
   intros.
-  zify.
-  clear.
   Fail itauto idtac.
 Abort.
-
-
 
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.

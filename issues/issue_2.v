@@ -18,7 +18,7 @@ Proof. intros. Time itauto reflexivity. Qed.   (* 0.754 secs *)
 Goal F (compile 3000) = compile 3000 -> x = x.
 Proof. intros. Time itauto reflexivity. Qed.   (* 1.678 secs *)
 Goal F (compile 4000000) = compile 40000000 -> x = x.
-Proof. intros. Time itauto reflexivity. Qed.   (* This works now *)
+Proof. intros.  Time itauto reflexivity. Qed.   (* This works now *)
 
 
 

@@ -9,9 +9,32 @@ Require Import Uint63.
 
 Declare ML Module "coq-itauto.plugin".
 Require Import Cdcl.Formula.
+Require Import Bool.
+
+Lemma Is_true_iff_eq_true : forall b, Is_true b <-> b = true.
+Proof.
+  split ; intro.
+  - apply Is_true_eq_true; assumption.
+  - apply Is_true_eq_left; assumption.
+Qed.
+
+Lemma xorb_def : forall x y,
+    xorb x y = (x || y) && negb (Bool.eqb x y).
+Proof.
+  destruct x,y; reflexivity.
+Qed.
+
+Ltac rewrite_Is_true :=
+  match goal with
+  | H : context[Is_true ?X] |- _ => rewrite (Is_true_iff_eq_true X) in H
+  | |- context[Is_true ?X]   => rewrite (Is_true_iff_eq_true X)
+  end.
 
 Ltac gen_conflicts tac :=
-  intros; unfold not in *; unfold iff in *;
+  intros; unfold not in *;
+  repeat rewrite xorb_def in *;
+  repeat rewrite_Is_true;
+  unfold is_true;
   (* Apply ~ ~ p -> p if Classical is loaded *)
   cdcl_nnpp; unfold not;
   (* Generate conflict clauses *)

@@ -12,13 +12,13 @@ Module Reflect.
   Class Rbool1 {A:Type} (P : A -> bool) :=
     mkrbool1 {
         p1 : A -> Prop;
-        p1_prf : forall x, p1 x <-> Is_true (P x)
+        p1_prf : forall x, p1 x <-> is_true (P x)
       }.
 
   Class Rbool2 {A B: Type} (P : A -> B -> bool) :=
     mkrbool2 {
         p2 : A -> B -> Prop;
-        p2_prf : forall x y, p2 x y <-> Is_true (P x y)
+        p2_prf : forall x y, p2 x y <-> is_true (P x y)
       }.
 
   (* Reverse mapping *)
@@ -26,13 +26,13 @@ Module Reflect.
   Class RProp1 {A:Type} (P : A -> Prop) :=
     mkrProp1 {
        b1 : A -> bool;
-       b1_prf : forall x, P x <-> Is_true (b1 x)
+       b1_prf : forall x, P x <-> is_true (b1 x)
       }.
 
   Class RProp2 {A B: Type} (P : A -> B -> Prop) :=
     mkrProp2 {
         b2 : A -> B -> bool;
-        b2_prf : forall x y, P x y <-> Is_true (b2 x y)
+        b2_prf : forall x y, P x y <-> is_true (b2 x y)
       }.
 
 End Reflect.

@@ -40,16 +40,17 @@ let coq_false = lazy (Coqlib.lib_ref "core.bool.false")
 let coq_orb = lazy (Coqlib.lib_ref "core.bool.orb")
 let coq_andb = lazy (Coqlib.lib_ref "core.bool.andb")
 let coq_implb = lazy (Coqlib.lib_ref "core.bool.implb")
-let coq_Is_true = lazy (Coqlib.lib_ref "cdcl.Is_true")
+let coq_negb = lazy (Coqlib.lib_ref "core.bool.negb")
+let coq_eqb = lazy (Coqlib.lib_ref "core.bool.eqb")
+let coq_iff = lazy (Coqlib.lib_ref "core.iff.type")
+(*let coq_Is_true = lazy (Coqlib.lib_ref "cdcl.Is_true")*)
+let coq_eq   = lazy (Coqlib.lib_ref "core.eq.type")
 let coq_None = lazy (constr_of_ref "core.option.None")
 let coq_Some = lazy (constr_of_ref "core.option.Some")
 let coq_iff_refl = lazy (constr_of_ref "cdcl.iff_refl")
 let coq_nnpp = lazy (constr_of_ref "core.nnpp.type")
-
-(*let coq_iff = lazy (Coqlib.lib_ref "core.iff.type") *)
-
 let coq_bool = lazy (constr_of_ref "core.bool.type")
-
+let coq_bool_ind = lazy (Globnames.destIndRef (Coqlib.lib_ref "core.bool.type"))
 
 (* Formula terms *)
 let coq_Formula = lazy (constr_of_ref "cdcl.Formula.type")
@@ -58,8 +59,12 @@ let coq_FF = lazy (constr_of_ref "cdcl.Formula.FF")
 let coq_AT = lazy (constr_of_ref "cdcl.Formula.AT")
 let coq_OP = lazy (constr_of_ref "cdcl.Formula.OP")
 let coq_AND = lazy (constr_of_ref "cdcl.op.AND")
+let coq_NOT = lazy (constr_of_ref "cdcl.op.NOT")
 let coq_OR = lazy (constr_of_ref "cdcl.op.OR")
 let coq_IMPL = lazy (constr_of_ref "cdcl.op.IMPL")
+let coq_IFF = lazy (constr_of_ref "cdcl.op.IFF")
+let coq_EQB = lazy (constr_of_ref "cdcl.bprop.EQB")
+let coq_ITE = lazy (constr_of_ref "cdcl.ite.ITE")
 let coq_hc = lazy (constr_of_ref "cdcl.HCons.mk")
 let coq_int = lazy (constr_of_ref "num.int63.type")
 
@@ -72,7 +77,8 @@ let coq_BTT = lazy (constr_of_ref "cdcl.BForm.BTT")
 let coq_BFF = lazy (constr_of_ref "cdcl.BForm.BFF")
 let coq_BAT = lazy (constr_of_ref "cdcl.BForm.BAT")
 let coq_BOP = lazy (constr_of_ref "cdcl.BForm.BOP")
-let coq_BIT = lazy (constr_of_ref "cdcl.BForm.BIT")
+let coq_BPROP = lazy (constr_of_ref "cdcl.BForm.BPROP")
+let coq_BITE = lazy (constr_of_ref "cdcl.BForm.BITE")
 
 (* PTrie *)
 let coq_ptrie = lazy (constr_of_ref "PTrie.ptrie.type")
@@ -151,26 +157,69 @@ let constr_of_ptrie constr_of_typ constr_of_val t =
 module IMap = Map.Make (Int)
 
 module Env = struct
-  module OMap = Map.Make (struct
-    type t = (P.op * Uint63.t * Uint63.t)
 
-    let compare_op  o1 o2 =
-      P.(match o1 , o2 with
-      | AND , AND -> 0
-      | AND , _ -> -1
-      | _   , AND -> 1
-      | OR , OR   -> 0
-      | OR , _    -> -1
-      | _  , OR   -> 1
-      | IMPL , IMPL -> 0)
+  type ops =
+    | BOP1 of P.op * Uint63.t * Uint63.t
+    | BOP2 of P.bprop * Uint63.t * Uint63.t
+    | BOP3 of P.ite * Uint63.t * Uint63.t * Uint63.t
 
-    
-    let compare ((o1,i1,j1):t) ((o2,i2,j2):t) = 
-      match compare_op o1 o2 with
-      | 0 -> let ci = Uint63.compare i1 i2 in
-             if ci = 0 then Uint63.compare j1 j2 else ci
-      | c -> c
-                  end)
+  
+  let op1 = function BOP1(o,_,_) -> o | _ -> failwith "BOP1 is expected"
+  let op2 = function BOP2(o,_,_) -> o | _ -> failwith "BOP2 is expected"
+  let op3 = function BOP3(o,_,_,_) -> o | _ -> failwith "BOP3 is expected"
+  
+  
+
+  
+
+  module Key =
+    struct
+
+      type t = ops
+
+      let compare_op  o1 o2 =
+        P.(match o1 , o2 with
+           | NOT , NOT -> 0
+           | NOT , _   -> -1
+           | _   , NOT -> 1
+           | AND , AND -> 0
+           | AND , _ -> -1
+           | _   , AND -> 1
+           | OR , OR   -> 0
+           | OR , _    -> -1
+           | _  , OR   -> 1
+           | IMPL , IMPL -> 0
+           | IMPL , _    -> -1
+           |  _   , IMPL -> 1
+           | IFF _ , IFF _  -> 0
+        )
+
+      let compare_uint (i1,j1) (i2,j2) = 
+        let ci = Uint63.compare i1 i2 in
+        if ci = 0 then Uint63.compare j1 j2 else ci
+      
+      let compare o1 o2 =
+        match o1 , o2 with
+        | BOP1(o1,i1,j1) , BOP1(o2,i2,j2) ->
+           begin
+           match  compare_op o1 o2 with
+           | 0 -> compare_uint (i1,j1) (i2,j2)
+           | c -> c
+           end
+        | BOP1 _  , _ ->  -1
+        |  _      , BOP1 _ -> 1
+        | BOP2(_,i1,j1) , BOP2(_,i2,j2) -> compare_uint (i1,j1) (i2,j2)
+        | BOP2 _        ,   _           -> -1
+        |  _ , BOP2 _  -> 1
+        | BOP3(_,i1,j1,k1) , BOP3(_,i2,j2,k2) ->
+           let ci = Uint63.compare i1 i2 in
+           if ci = 0 then compare_uint (j1,k1) (j2,k2)
+           else ci
+
+
+    end
+
+  module OMap = Map.Make(Key)
 
   module AMap = Map.Make (Int)
 
@@ -219,7 +268,7 @@ module Env = struct
     { fresh : int
     ; vars : (atom_spec * int) list (* hcons value for atoms *)
     ; amap : atom_spec AMap.t (* same as vars + is_dec*)
-    ; hmap : int OMap.t
+    ; hmap : (ops * int) OMap.t
     ; sigma : Evd.evar_map }
 
   let get_proposition_of_atom_spec = function
@@ -288,7 +337,8 @@ module Env = struct
 
   let default_bool env evd t =
     let is_true =
-      EConstr.mkApp (constr_of_gref (Lazy.force coq_Is_true), [|t|])
+      EConstr.mkApp (constr_of_gref (Lazy.force coq_eq) ,
+                     [| (Lazy.force coq_bool); t; constr_of_gref (Lazy.force coq_true)|])
     in
     check_atom env evd
       (AtomBool
@@ -426,7 +476,7 @@ module Env = struct
   let hcons_atom genv env k v1 = 
     let res = hcons_atom genv env k v1 in
     if debug () then
-      Feedback.msg_debug Pp.(str "hons_atom " ++
+      Feedback.msg_debug Pp.(str "hcons_atom " ++
                                Printer.pr_econstr_env genv env.sigma v1 ++ str"->" ++
                                pp_atom_spec genv env.sigma (fst (snd res))) ;
     res
@@ -435,14 +485,46 @@ module Env = struct
   let is_dec = function AtomProp (_, None) -> false | _ -> true
   let has_bool = function AtomBool _ -> true | _ -> false
 
-  let hcons_op env op f1 f2 =
-    try (env, OMap.find (op, f1, f2) env.hmap)
+  let rec hcons_op env op =
+    try (env, OMap.find op env.hmap)
     with Not_found ->
-      ( { env with
-          hmap = OMap.add (op, f1, f2) env.fresh env.hmap
-        ; fresh = env.fresh + 1 }
-      , env.fresh )
+      match op with
+      | BOP1 (IFF(_,_),f1,f2) ->
+         let env,(_,i1) = hcons_op env (BOP1(IMPL,f1, f2))  in
+         let env,(_,i2) = hcons_op env (BOP1(IMPL,f2, f1))  in
+         let op = BOP1(IFF(Uint63.of_int i1,Uint63.of_int i2),f1,f2) in
+         ( { env with
+             hmap = OMap.add op (op,env.fresh) env.hmap
+           ; fresh = env.fresh + 1 }
+         , (op,env.fresh ))
+      | BOP2 (EQB(_,_),f1,f2) ->
+         let env,(_,i1) = hcons_op env (BOP1(IMPL,f1, f2))  in
+         let env,(_,i2) = hcons_op env (BOP1(IMPL,f2, f1))  in
+         let op = BOP2(EQB(Uint63.of_int i1,Uint63.of_int i2),f1,f2) in
+         ( { env with
+             hmap = OMap.add op (op,env.fresh) env.hmap
+           ; fresh = env.fresh + 1 }
+         , (op,env.fresh ))
+      | BOP3 (ITE(_,_),c,f1,f2) ->
+         let env,(_,i1) = hcons_op env (BOP1(IMPL,c, f1))  in
+         let env,(_,i2) = hcons_op env (BOP1(OR,c, f2))  in
+         let op = BOP3(ITE(Uint63.of_int i1,Uint63.of_int i2),c,f1,f2) in
+         ( { env with
+             hmap = OMap.add op (op,env.fresh) env.hmap
+           ; fresh = env.fresh + 1 }
+         , (op,env.fresh ))
+      |  _ ->
+          ( { env with
+              hmap = OMap.add op (op,env.fresh) env.hmap
+            ; fresh = env.fresh + 1 }
+          , (op,env.fresh ))
 
+                
+
+  let get_fresh env =
+    let fr = env.fresh in
+    fr, {env with fresh = fr + 1} 
+  
   let ptrie_of_env env = 
     List.fold_left (fun m (e,i) -> 
         P.PTrie.set' P.kInt (Uint63.of_int i) e m) P.PTrie.empty env.vars
@@ -467,11 +549,16 @@ end
 
 let hcons i b f = P.HCons.{id = Uint63.of_int i; is_dec = b; elt = f}
 
+let is_convertible env sigma t1 t2 = Reductionops.is_conv env sigma t1 t2
+
+
 let reify_formula genv env k (f : EConstr.t) =
   let evd = env.Env.sigma in
   let tt k = hcons 1 true (P.BTT k) in
   let ff k = hcons 0 true (P.BFF k) in
   let mkop k o f1 f2 = P.BOP (k, o, f1, f2) in
+  let mkbop k o f1 f2 = P.BPROP (o, f1, f2) in
+  let mkite k  op c f1 f2 = P.BITE(k,op,c,f1,f2) in 
   let eq_ind r i = Environ.QGlobRef.equal genv r (GlobRef.IndRef i) in
   let eq_constructor r c = Environ.QGlobRef.equal genv r (GlobRef.ConstructRef c) in
   let eq_const r c = Environ.QGlobRef.equal genv r (GlobRef.ConstRef c) in
@@ -479,12 +566,20 @@ let reify_formula genv env k (f : EConstr.t) =
   let is_False = eq_ind (Lazy.force coq_False) in
   let is_and = eq_ind (Lazy.force coq_and) in
   let is_or = eq_ind (Lazy.force coq_or) in
+  let is_iff = eq_const (Lazy.force coq_iff) in
   let is_andb = eq_const (Lazy.force coq_andb) in
   let is_orb = eq_const (Lazy.force coq_orb) in
   let is_implb = eq_const (Lazy.force coq_implb) in
-  let is_is_True = eq_const (Lazy.force coq_Is_true) in
+  let is_negb = eq_const (Lazy.force coq_negb) in
+  let is_eqb = eq_const (Lazy.force coq_eqb) in
   let is_true = eq_constructor (Lazy.force coq_true) in
   let is_false = eq_constructor (Lazy.force coq_false) in
+  let is_eq_bool op ty =
+    match EConstr.kind evd op with
+    | Ind (i, _) -> eq_ind (Lazy.force coq_eq) i
+                    &&  is_convertible genv evd ty (Lazy.force coq_bool)
+    | _ -> false  in
+
   let var env k f =
     let env', (atom, i) = Env.hcons_atom genv env k f in
     (hcons i (Env.is_dec atom) (P.BAT (k, Uint63.of_int i)), env')
@@ -494,15 +589,21 @@ let reify_formula genv env k (f : EConstr.t) =
     | P.IsProp -> (
       match EConstr.kind evd t with
       | Ind (i, _) ->
-        if is_and i then P.AND else if is_or i then P.OR else raise Not_found
-      | _ -> raise Not_found )
+         (if is_and i then P.AND else if is_or i then P.OR else
+            raise Not_found
+         )
+      | Const (c,_) ->
+         if is_iff c then P.IFF((Uint63.zero,Uint63.zero)) else raise Not_found
+      |   _     -> raise Not_found
+    )
     | P.IsBool -> (
       match EConstr.kind evd t with
       | Const (c, _) ->
-        if is_andb c then P.AND
-        else if is_orb c then P.OR
-        else if is_implb c then P.IMPL
-        else raise Not_found
+         if is_andb c then P.AND
+         else if is_orb c then P.OR
+         else if is_implb c then P.IMPL
+         else if is_negb c  then P.NOT
+         else if is_eqb c then (P.IFF(Uint63.zero,Uint63.zero)) else raise Not_found
       | _ -> raise Not_found )
   in
   let rec reify_formula env k f =
@@ -510,43 +611,64 @@ let reify_formula genv env k (f : EConstr.t) =
     | Ind (i, _) -> (
       match k with
       | P.IsProp ->
-        if is_True i then (tt k, env)
-        else if is_False i then (ff k, env)
-        else var env k f
+         if is_True i then (tt k, env)
+         else if is_False i then (ff k, env)
+         else var env k f
       | P.IsBool -> var env k f )
     | Construct (c, _) ->
-      if is_true c then (tt P.IsBool, env)
-      else if is_false c then (ff P.IsBool, env)
-      else var env k f
+       if is_true c then (tt P.IsBool, env)
+       else if is_false c then (ff P.IsBool, env)
+       else var env k f
+    | App (h, [|f1|]) -> (
+      try
+        let op = get_binop k h in
+        let f1, env = reify_formula env k f1 in
+        let env, (op,i) = Env.hcons_op env (BOP1(op,f1.P.HCons.id, Uint63.of_int (0))) in
+        (hcons i (f1.P.HCons.is_dec ) (mkop k (Env.op1 op) f1 (ff k)), env)
+      with Not_found -> var env k f )
     | App (h, [|f1; f2|]) -> (
       try
         let op = get_binop k h in
         let f1, env = reify_formula env k f1 in
         let f2, env = reify_formula env k f2 in
-        let env, i = Env.hcons_op env op f1.P.HCons.id f2.P.HCons.id in
-        (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec) (mkop k op f1 f2), env)
+        let env, (op,i) = Env.hcons_op env (BOP1(op,f1.P.HCons.id, f2.P.HCons.id)) in
+        (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec) (mkop k (Env.op1 op) f1 f2), env)
       with Not_found -> var env k f )
+    | App(h,[|ty;f1;f2|]) ->
+       if is_eq_bool h ty
+       then
+         let f1, env = reify_formula env P.IsBool f1 in
+         let f2, env = reify_formula env P.IsBool f2 in
+         let bop = P.EQB(Uint63.of_int 0, Uint63.of_int 0)
+         in 
+         let env, (op,i) = Env.hcons_op env (BOP2(bop,f1.P.HCons.id, f2.P.HCons.id)) in
+         (hcons i (f1.P.HCons.is_dec && f2.P.HCons.is_dec)
+            (mkbop k (Env.op2 op) f1 f2), env)         
+       else  var env k f
     | Prod (t, f1, f2)
          when is_prop genv evd f1 &&
                 (t.Context.binder_name = Anonymous || EConstr.Vars.noccurn evd 1 f2) ->
-      let f1, env = reify_formula env P.IsProp f1 in
-      let f2, env = reify_formula env P.IsProp f2 in
-      let env, i = Env.hcons_op env P.IMPL f1.P.HCons.id f2.P.HCons.id in
-      ( hcons i
-          (f1.P.HCons.is_dec && f2.P.HCons.is_dec)
-          (mkop P.IsProp P.IMPL f1 f2)
-      , env )
-    | App (h, [|f1|]) -> (
-      match k with
-      | P.IsBool -> var env k f
-      | P.IsProp -> (
-        match EConstr.kind evd h with
-        | Const (c, _) ->
-          if is_is_True c then
-            let f1, env = reify_formula env P.IsBool f1 in
-            (hcons (Uint63.hash f1.P.HCons.id) true (P.BIT f1.P.HCons.elt), env)
-          else var env k f
-        | _ -> var env k f ) )
+       let f1, env = reify_formula env P.IsProp f1 in
+       let f2, env = reify_formula env P.IsProp f2 in
+       let env, (_,i) = Env.hcons_op env (BOP1(P.IMPL,f1.P.HCons.id, f2.P.HCons.id)) in
+       ( hcons i
+           (f1.P.HCons.is_dec && f2.P.HCons.is_dec)
+           (mkop P.IsProp P.IMPL f1 f2)
+       , env )
+    | Case (info, _, _, _, _, arg, pats) ->
+      let is_bool =
+        let i = info.ci_ind in
+        Names.Ind.CanOrd.equal i (Lazy.force coq_bool_ind)
+      in
+      if is_bool then
+        let cond,env = reify_formula env P.IsBool arg in
+        let f1 , env = reify_formula env k (snd (pats.(0))) in
+        let f2 , env = reify_formula env k (snd (pats.(1))) in
+        let env,(op,i) = Env.hcons_op env  (BOP3(P.ITE(Uint63.zero,Uint63.zero),cond.P.HCons.id,f1.P.HCons.id, f2.P.HCons.id)) in
+        (hcons i  (cond.P.HCons.is_dec && f1.P.HCons.is_dec && f2.P.HCons.is_dec)
+           (mkite k (Env.op3 op) cond f1 f2) ,env)
+         
+      else var env k f
     | _ -> var env k f
   in
   reify_formula env k f
@@ -572,7 +694,7 @@ let make_formula env hyps hconcl =
     | [] -> (hconcl, env)
     | (_, hf1) :: hyps ->
       let hf2, env = make env hyps hconcl in
-      let env, i = Env.hcons_op env P.IMPL hf1.P.HCons.id hf2.P.HCons.id in
+      let env, (_,i) = Env.hcons_op env (BOP1(P.IMPL,hf1.P.HCons.id, hf2.P.HCons.id)) in
       let is_dec = hf1.P.HCons.is_dec && hf2.P.HCons.is_dec in
       (hcons i is_dec (P.BOP (P.IsProp, P.IMPL, hf1, hf2)), env)
   in
@@ -605,9 +727,17 @@ let hc typ i b v =
     (Lazy.force coq_hc, [|typ; EConstr.mkInt i; constr_of_bool b; v|])
 
 let constr_of_op = function
+  | P.NOT -> Lazy.force coq_NOT
   | P.AND -> Lazy.force coq_AND
   | P.OR -> Lazy.force coq_OR
   | P.IMPL -> Lazy.force coq_IMPL
+  | P.IFF(i,j)  ->
+     EConstr.mkApp(Lazy.force coq_IFF,[|EConstr.mkInt i; EConstr.mkInt j |])
+
+let constr_of_op_prop = function
+  | P.EQB(i,j)  ->
+     EConstr.mkApp(Lazy.force coq_EQB,[|EConstr.mkInt i; EConstr.mkInt j |])
+
 
 let mkop typ o f1 f2 =
   EConstr.mkApp (Lazy.force coq_OP, [|typ; constr_of_op o; f1; f2|])
@@ -673,9 +803,17 @@ let constr_of_bformula f =
     EConstr.mkApp (Lazy.force coq_BAT, [|constr_of_kind k; EConstr.mkInt i|])
   in
   let mk_op = Lazy.force coq_BOP in
+  let mk_prop = Lazy.force coq_BPROP in
   let mkop k o f1 f2 =
-    EConstr.mkApp (mk_op, [|constr_of_kind k; constr_of_op o; f1; f2|])
-  in
+    EConstr.mkApp (mk_op, [|constr_of_kind k; constr_of_op o; f1; f2|]) in
+  let mkprop o f1 f2 =
+    EConstr.mkApp (mk_prop,[| constr_of_op_prop o;f1;f2|]) in
+  let mkite k o c f1 f2 =
+    match o with
+    | P.ITE(i,j) -> 
+       let op = EConstr.mkApp(Lazy.force coq_ITE,[|EConstr.mkInt i; EConstr.mkInt j |]) in
+       EConstr.mkApp (Lazy.force coq_BITE, [|constr_of_kind k;  op; c; f1; f2|]) in
+
   P.(
     let rec constr_of_op_formula f =
       match f with
@@ -686,7 +824,16 @@ let constr_of_bformula f =
         mkop k o
           (constr_of_hcons (ftyp k) constr_of_op_formula f1)
           (constr_of_hcons (ftyp k) constr_of_op_formula f2)
-      | BIT f -> EConstr.mkApp (Lazy.force coq_BIT, [|constr_of_op_formula f|])
+      | BPROP(o,f1,f2) ->
+         mkprop o
+           (constr_of_hcons (ftyp P.IsBool) constr_of_op_formula f1)
+           (constr_of_hcons (ftyp P.IsBool) constr_of_op_formula f2)
+      | BITE(k,o,c,f1,f2) ->
+         mkite k o (constr_of_hcons (ftyp P.IsBool) constr_of_op_formula c)
+           (constr_of_hcons (ftyp P.IsBool) constr_of_op_formula f1)
+           (constr_of_hcons (ftyp P.IsBool) constr_of_op_formula f2)
+
+         
     in
     constr_of_hcons (ftyp P.IsProp) constr_of_op_formula f)
 
@@ -1226,11 +1373,14 @@ and needed_hyp_form f d =
   match f with
   | P.BAT _ | P.BTT _ | P.BFF _ -> false
   | P.BOP (_, _, f1, f2) -> needed_hyp f1 d || needed_hyp f2 d
-  | P.BIT f -> (
-    match f with
-    | P.BTT _ | P.BFF _ | P.BAT _ -> false
-    | P.BOP (_, _, f1, f2) -> needed_hyp f1 d || needed_hyp f2 d
-    | P.BIT f -> needed_hyp_form f d )
+  | P.BPROP(_,f1,f2) -> needed_hyp f1 d || needed_hyp f2 d
+  | P.BITE(_,_,c,f1,f2) -> needed_hyp c d || needed_hyp f1 d || needed_hyp f2 d
+
+let pp_failure = function
+  | P.OutOfFuel -> Pp.(str "OutOfFuel")
+  | P.Stuck     -> Pp.(str "Stuck")
+  | P.HasModel  -> Pp.(str "HasModel")
+  | P.InternalError  -> Pp.(str "InternalError")
 
 (** [assert_conflict_clauses tac] runs the sat prover in ml 
     and asserts conflict_clauses *)
@@ -1263,6 +1413,7 @@ let collect_conflict_clauses tac gl =
     Printf.printf "\nBFormula : %a\n" P.output_hbformula bform;
     Printf.printf "\nFormula1 : %a\n" P.dbg_output_hform form1;
     Printf.printf "\nFormula : %a\n" P.dbg_output_hform form;
+    Printf.printf "\nFormula simpl : %a\n" P.dbg_output_formula_simpl form.P.HCons.elt;
     flush stdout );
   let cc = ref [] in
   let err = ref ([]: failed_proof list) in
@@ -1292,10 +1443,13 @@ let collect_conflict_clauses tac gl =
         hyps' );
     P.deps := save_deps;
     Some (!sigma, cc, hyps')
-  | _ -> P.deps := save_deps; 
-     match !err with
-     | [] -> CErrors.user_err Pp.(str "Not a tautology")
-     | l  -> CErrors.user_err (Theory.pp_no_core genv !sigma l)
+  | r -> (P.deps := save_deps; 
+         let pp_err = match r with
+           | P.Fail r -> pp_failure r
+           |  _       -> Pp.str "error" in
+         match !err with
+         | [] -> CErrors.user_err Pp.(str "Not a tautology ("++pp_err++str ")")
+         | l  -> CErrors.user_err (Theory.pp_no_core genv !sigma l))
 
 
 let assert_conflict_clauses tac =

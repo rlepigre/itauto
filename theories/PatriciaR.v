@@ -4298,7 +4298,7 @@ Module PTrie.
           destruct H2 as [o1 Ho1]. generalize (IHm1 o1 Ho1 H0).
           intros [l1 [l2 [HC HD]]].
           rewrite HC. exists l1, (l2 ++ elements' m2 nil). split.
-          * rewrite app_assoc_reverse. rewrite app_comm_cons. reflexivity.
+          * rewrite <- app_assoc. rewrite app_comm_cons. reflexivity.
           * destruct m1.
             { inv H; congruence. }
             { simpl in H0. destruct_eq i k; try congruence.
@@ -4308,13 +4308,13 @@ Module PTrie.
             { generalize (remove_branch_not_empty Ho1 eq_refl i). intros HE.
               assert (Hm2: m2 <> Empty) by (inv H; auto).
               rewrite branch_not_empty; eauto.
-              rewrite elements_branch'. rewrite HD. apply app_assoc_reverse. }
+              rewrite elements_branch'. rewrite HD. rewrite <- app_assoc. reflexivity. }
         + rewrite H1 in H0.
           assert (exists o2, wf o2 m2) by (inv H; eauto).
           destruct H2 as [o2 Ho2]. generalize (IHm2 o2 Ho2 H0).
           intros [l1 [l2 [HC HD]]].
           rewrite HC. exists (elements' m1 nil ++ l1), l2. split.
-          * rewrite app_assoc_reverse. reflexivity.
+          * rewrite app_assoc. reflexivity.
           * destruct m2.
             { inv H; congruence. }
             { simpl in H0. destruct_eq i k; try congruence.

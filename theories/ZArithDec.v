@@ -30,15 +30,15 @@ Proof.
   lia.
 Qed.
 
-Lemma decb_le : forall (x y:Z), x <= y <-> Is_true (Z.leb x y).
+Lemma decb_le : forall (x y:Z), x <= y <-> is_true (Z.leb x y).
 Proof.
-  intros. unfold Is_true.
+  intros. unfold is_true.
   destruct (x <=? y) eqn:EQ. lia. lia.
 Qed.
 
-Lemma decb_ge : forall (x y:Z), x >= y <-> Is_true (Z.geb x y).
+Lemma decb_ge : forall (x y:Z), x >= y <-> is_true (Z.geb x y).
 Proof.
-  intros. unfold Is_true.
+  intros. unfold is_true.
   destruct (x >=? y) eqn:EQ. lia. lia.
 Qed.
 
@@ -60,9 +60,7 @@ Qed.
   neg_bin_rel_correct := Z.lt_trichotomy
   }.
 
-(** TODO
 Instance DecRLeb : Reflect.RProp2 Z.le := Reflect.mkrProp2 _ _ Z.le Z.leb decb_le.
 Instance DecLeb : Reflect.Rbool2 Z.leb := Reflect.mkrbool2 _ _ Z.leb Z.le  decb_le.
 Instance DecRGeb : Reflect.RProp2 Z.ge := Reflect.mkrProp2 _ _ Z.ge Z.geb decb_ge.
 Instance DecGeb : Reflect.Rbool2 Z.geb := Reflect.mkrbool2 _ _ Z.geb Z.ge  decb_ge.
-*)
