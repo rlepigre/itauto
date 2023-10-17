@@ -1,5 +1,9 @@
 -Q theories/ Cdcl
 theories/Lib.v
+theories/Syntax.v
+theories/Lit.v
+theories/Clause.v
+theories/CnfSolver.v
 theories/ReifClasses.v
 theories/PatriciaR.v
 theories/KeyInt.v

@@ -1,145 +1,9 @@
 Require Import ZArith.
-Require Import List Bool Btauto.
+Require Import List Bool Lia.
 Require Import Morphisms.
+Require Import Cdcl.Syntax Cdcl.Lib Cdcl.Lit Cdcl.Clause.
 
-Ltac inv H := inversion H ; try subst ; clear H.
-
-Inductive sublist {A: Type}: list A -> list A -> Prop :=
-| SUB_NIL : forall l, sublist nil l
-| SUB_CONS : forall l1 l2 a, sublist l1 l2 -> sublist l1 (a::l2)
-| SUB_CONS2: forall l1 l2 a, sublist l1 l2 -> sublist (a::l1) (a::l2).
-
-Lemma sublist_refl : forall {A: Type} (l: list A),
-    sublist l l.
-Proof.
-  induction l.
-  - constructor.
-  - apply SUB_CONS2. auto.
-Qed.
-
-Module Lit.
-
-  Inductive t :=
-  | POS (p:positive)
-  | NEG (p:positive).
-
-  Definition pol (x:t) :=
-    match x with
-    | POS _ => true
-    | NEG _ => false
-    end.
-
-  Definition isPOS (x:t) :=
-    pol x = true.
-
-
-  Definition var (x:t) :=
-    match x with
-    | POS p => p
-    | NEG p => p
-    end.
-
-  Definition neg (x:t) :=
-    match x with
-    | POS x => NEG x
-    | NEG x => POS x
-    end.
-
-
-  Definition beval_lit (env : positive -> bool) (l:t) :=
-    if pol l then env (var l) else
-      negb (env (var l)).
-
-  Definition eval_lit (env: positive -> Prop) (l:t) (X:Prop)  :=
-    if pol l then env (var l) \/ X
-             else env (var l) -> X.
-
-  Lemma beval_lit_neg : forall env l,
-      beval_lit env l = negb (beval_lit env (neg l)).
-  Proof.
-    unfold beval_lit.
-    destruct l; simpl; auto.
-    rewrite negb_involutive. reflexivity.
-  Qed.
-
-  
-  Add Parametric Morphism (env:positive -> Prop) (l:t) : (eval_lit env l) with signature iff ==> iff as eval_lit_morph.
-  Proof.
-    unfold eval_lit.
-    intros.
-    destruct (pol l). tauto.
-    tauto.
-  Qed.
-
-  Definition get_pol (p:positive) (l : Lit.t) : option bool :=
-    if Pos.eqb p (var l) then Some (pol l) else None.
-
-  Definition eq_dec (l1 l2:t) : {l1 = l2} + {l1 <> l2}.
-  Proof.
-    decide equality.
-    apply Pos.eq_dec.
-    apply Pos.eq_dec.
-  Qed.
-
-  Definition make (b:bool) (v:positive) :=
-    if b then POS v else NEG v.
-
-  Lemma var_make : forall b v, var (make b v) = v.
-  Proof.
-    unfold make. destruct b;reflexivity.
-  Qed.
-
-  Lemma decomp : forall l,
-      l = (if pol l then POS (var l) else NEG (var l)).
-  Proof.
-    destruct l; reflexivity.
-  Qed.
-
-  Lemma get_pol_inv : forall p l b,
-      get_pol p l = Some b -> l = make b p.
-  Proof.
-    unfold get_pol.
-    intros.
-    destruct (p =? var l)%positive eqn:E.
-    inv H.
-    rewrite Pos.eqb_eq in E.
-    subst.
-    apply decomp.
-    discriminate.
-  Qed.
-
-  Lemma get_pol_None : forall p l,
-      get_pol p l = None -> var l <> p.
-  Proof.
-    unfold get_pol.
-    intros.
-    destruct (p =? var l)%positive eqn:E.
-    discriminate.
-    apply Pos.eqb_neq in E.
-    congruence.
-  Qed.
-
-  Lemma eval_lit_negb_make : forall env b p,
-      beval_lit env (make b p) = negb (beval_lit env (make (negb b) p)).
-  Proof.
-    unfold beval_lit. unfold make.
-    destruct b; simpl;auto.
-    intros. rewrite negb_involutive. reflexivity.
-  Qed.
-
-  Lemma make_var : forall b a,
-      make b (var a) <> a -> make (negb b) (var a) = a.
-  Proof.
-    unfold make.
-    destruct b,a; simpl; congruence.
-  Qed.
-
-  
-End Lit.
 Import Lit.
-
-
-Definition clause := list Lit.t.
 
 Fixpoint cons_lit (l:Lit.t) (cl:clause) :=
   match cl with
@@ -168,23 +32,6 @@ Proof.
     reflexivity.
 Qed.
 
-Definition wf (l : clause) :=
-  exists l1 l2, l=(List.map NEG l1) ++ (List.map POS l2).
-
-Lemma sublist_forall : forall {A: Type} (P : A -> Prop) l1 l2,
-    Forall P l2 ->
-    sublist l1 l2 ->
-    Forall P l1.
-Proof.
-  intros.
-  induction H0.
-  constructor.
-  inv H.
-  tauto.
-  inv H.
-  constructor; auto.
-Qed.
-
 Lemma wf_sublist :
   forall cl cl'
            (SUB:sublist cl' cl)
@@ -201,7 +48,7 @@ Lemma wf_sublist :
       destruct p.
       + discriminate.
       + inv EQ.
-        destruct (IHSUB nil p0 eq_refl) as (n1& n2 & EQ).
+        destruct (IHSUB nil p eq_refl) as (n1& n2 & EQ).
         subst.
         exists n1. exists n2.
         reflexivity.
@@ -214,10 +61,10 @@ Lemma wf_sublist :
       destruct p.
       + discriminate.
       + inv EQ.
-        destruct (IHSUB nil p0 eq_refl) as (n1& n2 & EQ).
+        destruct (IHSUB nil p eq_refl) as (n1& n2 & EQ).
         subst.
         destruct n1.
-        * simpl. exists nil,(p::n2). reflexivity.
+        * simpl. exists nil,(h::n2). reflexivity.
         * simpl in SUB.
           apply (sublist_forall Lit.isPOS) in SUB.
           inv SUB. discriminate.
@@ -227,7 +74,7 @@ Lemma wf_sublist :
       + inv EQ.
         destruct (IHSUB _ _ eq_refl) as (n1& n2 & EQ).
         subst.
-        exists (p0::n1).
+        exists (h::n1).
         exists n2.
         reflexivity.
   Qed.
@@ -263,57 +110,6 @@ Proof.
     destruct l; try discriminate. reflexivity.
 Qed.
 
-
-Fixpoint eval_clause (env : positive -> Prop) (cl : clause) :=
-  match cl with
-  | nil => False
-  | e::cl' => eval_lit env e (eval_clause env cl')
-  end.
-
-Fixpoint beval_clause (env : positive -> bool) (cl : clause) :=
-  match cl with
-  | nil => false
-  | e::cl' => beval_lit env e || beval_clause env cl'
-  end.
-
-Definition cnf := list clause.
-
-Definition beval_cnf (env :positive -> bool) (l: cnf) :=
-  List.fold_right (fun e acc => beval_clause env e && acc) true l.
-
-Definition eval_cnf (env :positive -> Prop) (l: cnf) :=
-  List.fold_right (fun e acc => eval_clause env e /\ acc) True l.
-
-
-Lemma beval_clause_app : forall env l1 l2,
-    beval_clause env (l1 ++ l2) = (beval_clause env l1 || beval_clause env l2).
-Proof.
-  induction l1; simpl.
-  - reflexivity.
-  - intros.
-    rewrite IHl1.
-    btauto.
-Qed.
-
-Lemma beval_cnf_app : forall env l1 l2,
-    beval_cnf env (l1 ++ l2) = (beval_cnf env l1 && beval_cnf env l2).
-Proof.
-  induction l1; simpl.
-  - tauto.
-  - intros.
-    rewrite IHl1.
-    btauto.
-Qed.
-
-Lemma eval_cnf_app : forall env l1 l2,
-    eval_cnf env (l1 ++ l2) <-> (eval_cnf env l1 /\ eval_cnf env l2).
-Proof.
-  induction l1; simpl.
-  - tauto.
-  - intros.
-    rewrite IHl1.
-    tauto.
-Qed.
 
 
 Inductive has_cardinal {A: Type}: list A -> nat -> Prop :=
@@ -367,11 +163,11 @@ Proof.
     subst a. rewrite <- H2. reflexivity.
 Qed.
 
-Definition is_clause_of (p:positive) (cl: list Lit.t) :=
+Definition is_clause_of (p:HFormula) (cl: list Lit.t) :=
   forall l, In l cl -> var l = p.
 
 Lemma vars_of_cnf_uniq : forall p cls,
-  (forall x : positive, In x (vars_of_cnf cls) -> x = p) ->
+  (forall x , In x (vars_of_cnf cls) -> x = p) ->
   forall cl : clause, In cl cls -> is_clause_of p cl.
 Proof.
   induction cls.
@@ -389,13 +185,13 @@ Proof.
     apply H. rewrite in_app_iff. tauto.
 Qed.
 
-Definition boeval (env : positive -> bool) (o: option positive) :=
+Definition boeval (env : HFormula -> bool) (o: option HFormula) :=
   match o with
   | None => false
   | Some i => env i
   end.
 
-Definition oeval (env: positive -> Prop) (o: option positive) :=
+Definition oeval (env: HFormula -> Prop) (o: option HFormula) :=
   match o with
   | None => False
   | Some i => env i
@@ -414,7 +210,7 @@ Fixpoint map_filter {A B: Type} (F: A -> option B ) (l: list A) : list B :=
 
 Module Elim.
 
-  Fixpoint get_polarity_rec (p:positive)  (l :  clause) :=
+  Fixpoint get_polarity_rec (p:HFormula)  (l :  clause) :=
     match l with
     | nil => None
     | li :: l => match Lit.get_pol p li with
@@ -463,7 +259,7 @@ Fixpoint resolve_all (l1:cnf) (l2:cnf) :=
 
 
 
-Fixpoint split_polarity (p: positive) (l: cnf) : cnf * cnf * cnf:=
+Fixpoint split_polarity (p: HFormula) (l: cnf) : cnf * cnf * cnf:=
   match l with
   | nil => (nil,nil,nil)
   | cl::l => let '(lp,ln,lo) := split_polarity p l in
@@ -478,7 +274,7 @@ Fixpoint split_polarity (p: positive) (l: cnf) : cnf * cnf * cnf:=
   end.
 
 
-Definition elim (p:positive) (l: cnf) :=
+Definition elim (p:HFormula) (l: cnf) :=
   let '(lp,ln,lo) := split_polarity p l in
   resolve_all lp ln ++ lo.
 
@@ -494,10 +290,10 @@ Definition elim (p:positive) (l: cnf) :=
 End Elim.
 
 
-Definition is_var_of_clause (v:positive) (cl: clause) :=
+Definition is_var_of_clause (v:HFormula) (cl: clause) :=
   exists l, In l cl /\ var l = v.
 
-Definition is_var_of_cnf (v:positive) (cls: cnf) :=
+Definition is_var_of_cnf (v:HFormula) (cls: cnf) :=
   exists cl, In cl cls /\ is_var_of_clause v cl.
 
 Lemma is_var_of_cnf_cons : forall v c cls,
@@ -588,7 +384,7 @@ Proof.
 Qed.
 
 Lemma is_var_of_cnf_False : forall cls,
-    (forall v : positive, is_var_of_cnf v cls -> False) ->
+    (forall v , is_var_of_cnf v cls -> False) ->
     forall cl, In cl cls -> cl = nil.
 Proof.
   intros.
@@ -598,7 +394,7 @@ Proof.
     destruct H0; subst.
     destruct cl;auto.
     exfalso.
-    apply (H (var t0)).
+    apply (H (var t)).
     rewrite is_var_of_cnf_cons.
     left. rewrite is_var_of_clause_cons.
     tauto.
@@ -608,7 +404,7 @@ Proof.
     rewrite is_var_of_cnf_cons. tauto.
 Qed.
 
-Definition match_option (p:positive) (o:option positive) :=
+Definition match_option (p:HFormula) (o:option HFormula) :=
   match o with
   | None => False
   | Some q => p = q
@@ -618,12 +414,12 @@ Lemma match_option_dec : forall p o,
     match_option p o \/ ~ match_option p o.
 Proof.
   destruct o; simpl.
-  destruct (Pos.eq_dec p p0);tauto.
+  destruct (hformula_eq_dec p h);tauto.
   tauto.
 Qed.
 
 Lemma beval_clauses_Nil : forall p,
-    (forall env : positive -> bool,
+    (forall env : HFormula -> bool,
         beval_cnf env nil = true -> env p = true) -> False.
 Proof.
   intros.
@@ -634,7 +430,7 @@ Qed.
 
 
 Lemma beval_clause_one_var : forall p cl,
-  (forall v : positive, is_var_of_clause v cl -> p = v) ->
+  (forall v, is_var_of_clause v cl -> p = v) ->
   beval_clause (fun _ => false) cl = false ->
   (forall l, In l cl -> l = POS p).
 Proof.
@@ -666,9 +462,9 @@ Proof.
 Qed.
 
 Lemma beval_clauses_one_var : forall p cls,
-  (forall env : positive -> bool,
+  (forall env : HFormula -> bool,
     beval_cnf env cls = true -> env p = true) ->
-  (forall v : positive, is_var_of_cnf v cls -> p = v) ->
+  (forall v , is_var_of_cnf v cls -> p = v) ->
   exists cl, In cl cls /\ forall l, In l cl -> l = POS p.
 Proof.
   intros.
@@ -677,7 +473,7 @@ Proof.
   - simpl in *.
     intuition congruence.
   - simpl in *.
-    destruct (beval_clause (fun _ : positive => false) a) eqn:B.
+    destruct (beval_clause (fun _  => false) a) eqn:B.
     simpl in H.
     apply IHcls in H.
     destruct H as (cl & IN & ALLPOS).
@@ -688,7 +484,7 @@ Proof.
     }
     simpl in H.
     clear H.
-    assert (IVC : forall v : positive, is_var_of_clause v a -> p = v).
+    assert (IVC : forall v, is_var_of_clause v a -> p = v).
     { intros. apply H0. rewrite is_var_of_cnf_cons. tauto. }
     specialize (beval_clause_one_var p _ IVC B).
     intros.
@@ -853,8 +649,8 @@ Qed.
 
 Lemma split_polarity_eval : forall env p l lp ln lo,
     Elim.split_polarity p l = (lp,ln,lo) ->
-    beval_cnf env l = (beval_cnf env lo) && (beval_cnf env (List.map (cons_lit (Lit.POS p)) lp))
-                      && (beval_cnf env (List.map (cons_lit (Lit.NEG p)) ln)).
+    beval_cnf env l = (beval_cnf env lo) && (beval_cnf env (List.map (cons_lit (POS p)) lp))
+                      && (beval_cnf env (List.map (cons_lit (NEG p)) ln)).
 Proof.
   induction l.
   - simpl; intros.
@@ -1055,14 +851,14 @@ Proof.
     inv H. eapply IHl;eauto.
 Qed.
 
-Definition set_env {A: Type}(env: positive -> A) (x': positive) (v: A) :=
-  fun x => if Pos.eq_dec x x' then v else env x.
+Definition set_env {A: Type}(env: HFormula -> A) (x': HFormula) (v: A) :=
+  fun x => if hformula_eq_dec x x' then v else env x.
 
 Lemma set_env_same : forall {A:Type} env p (v:A),
     set_env env p v p = v.
 Proof.
   unfold set_env.
-  intros. destruct (Pos.eq_dec p p);try congruence.
+  intros. destruct (hformula_eq_dec p p);try congruence.
 Qed.
 
 Lemma beval_lit_no_var : forall p b env l,
@@ -1072,7 +868,7 @@ Proof.
   unfold beval_lit.
   intros.
   unfold set_env.
-  destruct (Pos.eq_dec (var l) p); try congruence.
+  destruct (hformula_eq_dec (var l) p); try congruence.
 Qed.
 
 Lemma beval_clause_no_var : forall p b env cl,
@@ -1160,7 +956,7 @@ Lemma elim_complete :
       intuition congruence.
     Qed.
 
-    Definition clause_of_opt (o:option positive) :=
+    Definition clause_of_opt (o:option HFormula) :=
       match o with
       | None => nil
       | Some i => (NEG i :: nil) ::nil
@@ -1653,7 +1449,7 @@ Proof.
     destruct H0 as (l1&l2& EQ).
     subst.
     destruct a; try discriminate.
-    exists (p::l1),l2.
+    exists (f::l1),l2.
     reflexivity.
 Qed.
 
@@ -1679,7 +1475,7 @@ Proof.
     discriminate.
 Qed.
 
-Lemma eval_clause_cons_lit_tauto : forall (env: positive -> Prop) p l,
+Lemma eval_clause_cons_lit_tauto : forall (env: HFormula -> Prop) p l,
     env p -> eval_clause env (cons_lit (POS p) l).
 Proof.
   induction l;simpl.
@@ -1744,7 +1540,7 @@ Proof.
         rewrite IHcl.
         rewrite H.
         assert (make b (var a) = Lit.neg a).
-        { rewrite <- e. destruct b; simpl;auto.}
+        { rewrite <- e. destruct b; simpl;auto. }
         rewrite H1.
         assert (POL':= POL).
         apply get_polarity_rec_sublist in POL.
@@ -1784,7 +1580,7 @@ Proof.
 Qed.
 
 Lemma split_polarity_ieval:
-  forall (env : positive -> Prop) (p : positive) (l lp ln lo : cnf)
+  forall (env : HFormula -> Prop) (p : HFormula) (l lp ln lo : cnf)
            (WF : Forall wf l)
     ,
   Elim.split_polarity p l = (lp, ln, lo) ->
@@ -1824,7 +1620,7 @@ Lemma split_polarity_ieval:
   Qed.
 
   Lemma wf_split_polarity:
-    forall  (p : positive) (l lp ln lo : cnf)
+    forall  (p : HFormula) (l lp ln lo : cnf)
            (WF : Forall wf l)
     ,
       Elim.split_polarity p l = (lp, ln, lo) ->
@@ -2065,21 +1861,21 @@ Qed.
 Proof.
   intros.
   set (L := vars_of_cnf cls).
-  assert (ND := NoDup_nodup positive_eq_dec L).
+  assert (ND := NoDup_nodup hformula_eq_dec L).
   apply has_cardinal_no_dup in ND.
   assert (Lspec :
-           forall v : positive, is_var_of_cnf v cls -> In v (nodup Pos.eq_dec L)).
+           forall v, is_var_of_cnf v cls -> In v (nodup hformula_eq_dec L)).
   {
     intros.
     rewrite nodup_In.
     apply vars_of_cnf_ok; auto.
   }
   revert ND H0.
-  generalize (length (nodup Pos.eq_dec L)) as n.
+  generalize (length (nodup hformula_eq_dec L)) as n.
   intro.
   unfold L in *.
   clear L. revert Lspec.
-  generalize ((nodup Pos.eq_dec (vars_of_cnf cls))) as vars.
+  generalize ((nodup hformula_eq_dec (vars_of_cnf cls))) as vars.
   revert cls WF H.
   induction n.
   - intros.
@@ -2102,7 +1898,7 @@ Proof.
     + destruct i ; simpl in *; try tauto.
       subst.
       destruct l.
-      * assert (IN : forall v, is_var_of_cnf v cls -> p = v).
+      * assert (IN : forall v, is_var_of_cnf v cls -> h = v).
       {
         intros.
         apply Lspec in H1. simpl in H1.
@@ -2114,14 +1910,14 @@ Proof.
       intros.
       apply Lspec in H1. simpl in H1. tauto.
       *
-        set (E := Elim.elim  p0 cls).
-        eapply IHn with (cls:= E) (vars:= (p::l)); auto.
+        set (E := Elim.elim  h0 cls).
+        eapply IHn with (cls:= E) (vars:= (h::l)); auto.
         apply wf_elim;auto.
         {
-          rewrite neg_concl with (l:= Some p) in H.
-          rewrite neg_concl with (l:= Some p).
+          rewrite neg_concl with (l:= Some h) in H.
+          rewrite neg_concl with (l:= Some h).
           intros.
-          apply elim_complete with (env:=env0) (p:= p0) in H.
+          apply elim_complete with (env:=env0) (p:= h0) in H.
           tauto.
           rewrite elim_no_vars.
           auto.

@@ -12,7 +12,7 @@ ifneq (,$(COQBIN))
 COQBIN:=$(COQBIN)/
 endif
 
-VFILES := Formula.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v
+VFILES := Lit.v Clause.v CnfSolver.v Formula.v Syntax.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v
 VFILESTHY := $(addprefix theories/,$(VFILES))
 ALLVFILES := Itauto.v  NOlia.v Itauto.v Ctauto.v $(VFILES)
 ALLVFILESTHY := $(addprefix theories/,$(ALLVFILES))
@@ -22,6 +22,7 @@ all : CoqMakefile CoqMakefile_ml src/patch/mlpatch.exe $(ALLVFILESTHY)
 
 
 src/prover.ml :  CoqMakefile $(VFILESTHY)
+	$(MAKE) -f CoqMakefile theories/CnfSolver.vo COQBIN=$(COQBIN) 
 	$(MAKE) -f CoqMakefile theories/Prover.vo COQBIN=$(COQBIN) 
 
 src/patch/mlpatch.exe :

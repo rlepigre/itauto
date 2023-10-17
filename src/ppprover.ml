@@ -31,7 +31,6 @@ let rec output_op_list op o l =
       (output_op_list op) l
 
 and output_formula o = function
-  | LFF   -> output_string o "⊥"
   | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
   | LOP (op, l) -> Printf.fprintf o "(%a)" (output_op_list (op_of_lop op)) l
   | LIMPL (l, r) ->
@@ -48,7 +47,6 @@ let rec dbg_output_op_list o l =
       (dbg_output_op_list) l
 
 and dbg_output_formula o = function
-  | LFF  -> output_string o "⊥"
   | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
   | LOP (op, l) -> Printf.fprintf o "[%s %a]" (string_lop op) (dbg_output_op_list ) l
   | LIMPL (l, r) ->
@@ -57,7 +55,6 @@ and dbg_output_hform o f = Printf.printf "{%a}.(%i)" dbg_output_formula f.HCons.
 
 let rec dbg_output_formula_simpl o =
   function
-  | LFF  -> output_string o "⊥"
   | LAT i -> Printf.fprintf o "p%i" (Uint63.hash i)
   | LOP (op, l) -> Printf.fprintf o "(%a)" (dbg_output_op_list_simpl (op_of_lop op))  l
   | LIMPL (l, r) -> Printf.fprintf o "(%a → %a)" (dbg_output_op_list_simpl IMPL)  l dbg_output_formula_simpl r.HCons.elt

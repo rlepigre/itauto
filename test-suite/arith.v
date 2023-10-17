@@ -3,7 +3,6 @@ Require Import Cdcl.Itauto.
 Require Import Uint63 Bool  ZArith Lia.
 
 Import Formula.
-Import HCons.
 
 Open Scope Z_scope.
 Lemma l1 : forall (x:Z), x >= 0 -> x <= 0 -> x <> 0 -> False.

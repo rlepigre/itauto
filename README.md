@@ -75,7 +75,7 @@ To manually build and install the development
 version of itauto, first install all dependencies:
 
 - [Coq](https://github.com/coq/coq)
-- [OCamlbuild](https://github.com/ocaml/ocamlbuild)
+- [dune](https://github.com/ocaml/dune)
 
 Then do:
 
@@ -90,7 +90,9 @@ make install
 
 A few relevant tests are found in the `test-suite` directory.
 
-`Require Import Cdcl.Itauto` defines the `itauto` tactic.  
+`Require Import Cdcl.Itauto` loads the `itauto` tactic.  
+`Require Import Cdcl.Ctauto` loads the `itauto` tactic 
+  and sets the flag `Itauto Classic`.
 
 `itauto tac` calls `tac` when no propositional progress is possible.
 
@@ -98,6 +100,9 @@ A few relevant tests are found in the `test-suite` directory.
 The `smt` tactic is `itauto` using as theory solver a combination à la Nelson-Oppen of `congruence` and `lia` (see `test-suite/no_test_lia.v`).
 
 `Require Import Cdcl.NOlra` also defines the `smt` tactic but combine `congruence` and `lra` (see `test-suite/no_test_lra.v`).
+
+When set, the flag `Itauto Classic` instructs `itauto` to use the classical axiom `Classical.nnpp` (only if it
+present in the environment). This has a positive impact on performance.
 
 
 ## Bug report
