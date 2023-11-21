@@ -12,7 +12,7 @@ ifneq (,$(COQBIN))
 COQBIN:=$(COQBIN)/
 endif
 
-VFILES := Lit.v Clause.v CnfSolver.v Formula.v Syntax.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v KeySInt.v
+VFILES := Lit.v Clause.v CnfSolver.v Formula.v Syntax.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v 
 VFILESTHY := $(addprefix theories/,$(VFILES))
 ALLVFILES := Itauto.v  NOlia.v Itauto.v Ctauto.v $(VFILES)
 ALLVFILESTHY := $(addprefix theories/,$(ALLVFILES))
