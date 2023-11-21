@@ -1366,8 +1366,16 @@ let rec map_filter f l =
   | e :: l -> (
     match f e with None -> map_filter f l | Some e' -> e' :: map_filter f l )
 
+let has_id f d =
+  match f.P.HCons.elt with
+  | P.BITE(_ ,ITE(i1,i2),_,_,_) ->  P.LitSet.mem i1 d || P.LitSet.mem i2 d
+  | P.BPROP(EQB(i1,i2),_,_) ->  P.LitSet.mem i1 d || P.LitSet.mem i2 d
+  | P.BOP(_,IFF(i1,i2), _, _) -> P.LitSet.mem i1 d || P.LitSet.mem i2 d
+  |  _  -> false
+
+
 let rec needed_hyp f d =
-  if P.LitSet.mem f.P.HCons.id d then true else needed_hyp_form f.P.HCons.elt d
+  P.LitSet.mem f.P.HCons.id d || has_id f d || needed_hyp_form f.P.HCons.elt d
 
 and needed_hyp_form f d =
   match f with

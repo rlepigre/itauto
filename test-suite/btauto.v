@@ -14,3 +14,4 @@ Proof.
 
 Lemma test_xorb a : xorb a a = false.
 Proof. itauto. Qed.
+

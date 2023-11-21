@@ -5,6 +5,8 @@
 Require Import List Bool ZArith Lia.
 
 Ltac inv H := inversion H ; try subst; clear H.
+Lemma Is_true_true : forall b, Is_true b <-> b = true.
+Proof. destruct b; simpl; intuition congruence. Qed.
 
 Definition lazy_and (b:bool) (f: unit -> bool) :=
   match b with
@@ -117,38 +119,41 @@ Module PTrie.
     - rewrite eqb_false in EQ. apply H0 in EQ; congruence.
   Qed.
 
+  Lemma is_mask_def : forall m n, is_mask m n ->
+                                   forall p,
+                                   testbit m p = if Nat.eq_dec p n then true else false.
+  Proof.
+    unfold is_mask; intros.
+    destruct (Nat.eq_dec p n). subst. rewrite H. reflexivity.
+    specialize (H p).
+    destruct (testbit m p); auto. intuition congruence.
+  Qed.
+
   Theorem zerobit_spec:
     forall k m n,
       is_mask m n ->
       zerobit k m = negb (testbit k n).
   Proof.
     intros k m n P. unfold zerobit; simpl.
-    apply eqb_eq; intro e.
-    - assert (testbit m n = true) by (apply P; auto).
-      assert (testbit (land k m) n = false).
-      { rewrite e. rewrite zero_spec; simpl; auto. }
-      rewrite land_spec in H0. rewrite H in H0.
-      destruct (testbit k n); simpl; auto.
-    - assert (forall p, p <> n -> testbit m p = false).
-      + intros. case_eq (testbit m p); intros; auto.
-        apply P in H0. elim H; auto.
-      + assert (forall p, p <> n -> testbit (land k m) p = false).
-        * intros; rewrite land_spec.
-          rewrite H; auto. destruct (Keys_Base.testbit k p); simpl; auto.
-        * case_eq (testbit k n); intros.
-          { assert (land k m = m).
-            - apply testbit_spec; intros.
-              rewrite land_spec.
-              destruct (Nat.eq_dec n0 n).
-              + subst n0. rewrite (proj2 (P n)); auto.
-                rewrite H1; auto.
-              + rewrite H; auto. destruct (Keys_Base.testbit k n0); simpl; auto.
-            - simpl; auto. }
-          { elim e. apply testbit_spec.
-            intros; rewrite zero_spec.
-            destruct (Nat.eq_dec n0 n).
-            - subst n0. rewrite land_spec; rewrite H1; simpl; auto.
-            - rewrite H0; auto. }
+    apply eq_bool_prop_intro.
+    rewrite !Is_true_true.
+    rewrite eqb_spec.
+    assert (MD := is_mask_def _ _ P).
+    split ; intro.
+    - apply (f_equal (fun x => testbit x n)) in H.
+      rewrite zero_spec in H.
+      rewrite land_spec in H.
+      rewrite MD in H.
+      destruct (Nat.eq_dec n n); try congruence.
+      rewrite andb_true_r in H. rewrite H. reflexivity.
+    - apply testbit_spec.
+      intro p.
+      rewrite land_spec. rewrite zero_spec.
+      rewrite negb_true_iff  in H.
+      rewrite MD.
+      destruct (Nat.eq_dec p n).
+      { subst. rewrite H. reflexivity. }
+      { rewrite andb_false_r. reflexivity. }
   Qed.
 
   Theorem mask_spec:
@@ -169,18 +174,31 @@ Module PTrie.
       + rewrite H0. destruct (Keys_Base.testbit k p); auto.
   Qed.
 
+  Theorem mask_def:
+    forall k m n,
+      is_mask m n ->
+      forall p, testbit (mask k m) p = if le_gt_dec n p then false else testbit k p.
+  Proof.
+    intros k m n P.
+    intros.
+    apply mask_spec with (k:=k) in P.
+    destruct P as (P1 & P2).
+    destruct (le_gt_dec n p).
+    apply P2. lia.
+    apply P1. lia.
+  Qed.
+
+
+
   Theorem mask_spec':
     forall k m n,
       is_mask m n ->
       mask (mask k m) m = mask k m.
   Proof.
-    intros. generalize (mask_spec k m n H). intros [HA HB].
-    generalize (mask_spec (mask k m) m n H). intros [HC HD].
-    eapply testbit_spec; intros.
-    unfold testbit in *. destruct (lt_dec n0 n).
-    - apply HC; auto.
-    - rewrite HB; try lia; auto.
-      apply HD; lia.
+    intros.
+    apply testbit_spec; intros.
+    rewrite !mask_def with (n:=n);auto.
+    destruct (le_gt_dec n n0);auto.
   Qed.
 
   Fixpoint find_lowest (n: nat) (k: key) (p: nat) :=

@@ -12,12 +12,12 @@ ifneq (,$(COQBIN))
 COQBIN:=$(COQBIN)/
 endif
 
-VFILES := Lit.v Clause.v CnfSolver.v Formula.v Syntax.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v
+VFILES := Lit.v Clause.v CnfSolver.v Formula.v Syntax.v KeyInt.v  Lib.v PatriciaR.v  Prover.v  ReifClasses.v  Tac.v KeySInt.v
 VFILESTHY := $(addprefix theories/,$(VFILES))
 ALLVFILES := Itauto.v  NOlia.v Itauto.v Ctauto.v $(VFILES)
 ALLVFILESTHY := $(addprefix theories/,$(ALLVFILES))
 
-all : CoqMakefile CoqMakefile_ml src/patch/mlpatch.exe $(ALLVFILESTHY)
+all : CoqMakefile CoqMakefile_ml src/patch/mlpatch.exe $(ALLVFILESTHY) 
 	$(MAKE) -f CoqMakefile_ml  COQBIN=$(COQBIN) 
 
 
@@ -80,7 +80,7 @@ clean : cleanaux
 
 
 
-TESTSUITE = arith.v  refl_bool.v no_test_lia.v no_test_lra.v btauto.v
+TESTSUITE = arith.v  refl_bool.v no_test_lia.v no_test_lra.v btauto.v comp.v
 ISSUES    =  cnf.v issue_2.v issue_3.v issue_5.v issue_6.v issue_8.v issue_9.v issue_10.v \
 	issue_11.v issue_12.v issue_13.v issue_14.v issue_15.v issue_16.v issue_19.v issue_20.v issue_21.v \
 	issue_22.v issue_23.v issue_cc.v issue_25.v issue_28.v

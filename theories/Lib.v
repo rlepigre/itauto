@@ -235,3 +235,19 @@ Ltac btauto :=
       destruct_boolean vars
   end.
 
+  Lemma bool_and : forall (b: bool) (P: bool -> Prop),
+      (b = true -> P true) /\
+      (b = false -> P false) -> P b.
+  Proof.
+    intros.
+    destruct b;
+    tauto.
+  Qed.
+
+  Ltac elim_if :=
+    match goal with
+    | |- context[match ?e with
+                 | true => _
+                 | false => _
+                 end] => apply (bool_and e)
+    end.
