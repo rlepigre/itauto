@@ -104,8 +104,7 @@ Module PTrie.
       intros. destruct (eqb k1 k2) eqn:EQ.
     - left. rewrite eqb_spec in EQ. auto.
     - right. apply eqb_false ; auto.
-  Qed.
-
+    Defined.
 
   Lemma eqb_eq : forall (k1 k2:key) r,
       (k1 = k2 -> r = true) ->
@@ -1120,7 +1119,7 @@ Module PTrie.
     Lemma eq : forall (k1 k2:key), {k1 = k2} + {k1 <> k2}.
     Proof.
       apply eqb_dec.
-    Qed.
+    Defined.
 
     Lemma eqb_is_dec : forall k1 k2,
         eqb k1 k2 = if (eq k1 k2) then true else false.
