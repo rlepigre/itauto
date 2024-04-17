@@ -867,7 +867,7 @@ module Theory = struct
   let lit_is_dec a = (P.form_of_literal a).HCons.is_dec
 
   let not_constr c =
-    EConstr.mkProd (Context.anonR, c, constr_of_gref (Lazy.force coq_False))
+    EConstr.mkProd (EConstr.anonR, c, constr_of_gref (Lazy.force coq_False))
 
   let pp_literal env sigma ep a =
     let c, i = Env.get_constr_of_atom ep (form_of_literal a) in
@@ -883,7 +883,7 @@ module Theory = struct
       let c = constr_of_clause ep l in
       let at = fst (Env.get_constr_of_atom ep (form_of_literal a)) in
       match a with
-      | NEG _ -> EConstr.mkProd (Context.nameR (id_of_literal a), at, c)
+      | NEG _ -> EConstr.mkProd (EConstr.nameR (id_of_literal a), at, c)
       | POS _ -> (
         match l with
         | [] -> at
@@ -897,7 +897,7 @@ module Theory = struct
       | NEG _ ->
         let at = fst (Env.get_constr_of_atom ep (form_of_literal a)) in
         EConstr.mkProd
-          (Context.nameR (id_of_literal a), at, constr_of_clause_dec ep l)
+          (EConstr.nameR (id_of_literal a), at, constr_of_clause_dec ep l)
       | POS _ ->
         if List.for_all lit_is_dec cl then constr_of_clause_dec_pos ep cl
         else constr_of_clause ep cl )
@@ -911,7 +911,7 @@ module Theory = struct
       | POS _ ->
         let at = fst (Env.get_constr_of_atom ep (form_of_literal a)) in
         EConstr.mkProd
-          ( Context.nameR (id_of_literal a)
+          ( EConstr.nameR (id_of_literal a)
           , not_constr at
           , constr_of_clause_dec_pos ep l ) )
 
@@ -1020,7 +1020,7 @@ module Theory = struct
   let rec mkLambdas l t =
     match l with
     | [] -> t
-    | (x, u) :: l -> EConstr.mkLambda (Context.nameR x, u, mkLambdas l t)
+    | (x, u) :: l -> EConstr.mkLambda (EConstr.nameR x, u, mkLambdas l t)
 
   let reduce_proof sigma cl prf =
     let binders, used_binders, prf' = deps_of_proof sigma cl prf in
@@ -1558,17 +1558,17 @@ let change_goal =
 
       let change =
         EConstr.mkLetIn
-          ( Context.nameR n
+          ( EConstr.nameR n
           , EConstr.mkInt (Uint63.of_int (10 * f))
           , Lazy.force coq_int,
           EConstr.mkLetIn
-            (Context.nameR mb_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mbool, mbool_typ,
+            (EConstr.nameR mb_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mbool, mbool_typ,
              EConstr.mkLetIn
-               (Context.nameR md_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mdec, mbool_typ,
+               (EConstr.nameR md_name, constr_of_ptrie (Lazy.force coq_bool) constr_of_bool mdec, mbool_typ,
                 EConstr.mkLetIn (
-                 Context.nameR m_name, constr_of_ptrie (Lazy.force coq_atomT) Env.constr_of_atom  m, m_typ,
+                 EConstr.nameR m_name, constr_of_ptrie (Lazy.force coq_atomT) Env.constr_of_atom  m, m_typ,
                  EConstr.mkLetIn
-                   (Context.nameR form_name, cform, Lazy.force coq_HBForm,
+                   (EConstr.nameR form_name, cform, Lazy.force coq_HBForm,
                      EConstr.mkApp
                        ( Lazy.force coq_eval_hbformula
                        , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) )))))
