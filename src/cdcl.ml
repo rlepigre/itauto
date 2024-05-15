@@ -1319,10 +1319,6 @@ let fresh_ids n id env =
 
 (* tclEVARS and tclRETYPE are borrowed from aactactics *)
 
-let tclEVARS sigma gl =
-  let open Evd in
-  {it = [gl.it]; sigma}
-
 let tclRETYPE c =
   let open Proofview.Notations in
   let open Proofview in
