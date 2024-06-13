@@ -68,7 +68,7 @@ Qed.
     Variable Depth : LForm -> nat.
 
     Definition max_list (l: list (HCons.t LForm)) :=
-      List.fold_right (fun e acc => max (Depth e.(elt)) acc) O l.
+      List.fold_right (fun e acc => Nat.max (Depth e.(elt)) acc) O l.
 
     Lemma in_max_elt : forall l x (IN: In x l),
         (Depth (elt x) < S(max_list  l))%nat.
@@ -90,7 +90,7 @@ Qed.
     match f with
     | LAT _ => O
     | LOP _ l => S (max_list depth l)
-    | LIMPL l r => S (max (max_list depth l) (depth r.(elt)))
+    | LIMPL l r => S (Nat.max (max_list depth l) (depth r.(elt)))
     end.
 
     Variable P : LForm -> Prop.
