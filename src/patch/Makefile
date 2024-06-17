@@ -1,5 +1,5 @@
 mlpatch : lexer.mll parser.mly patch.ml mlpatch.ml
-	dune build
+	dune build --root $(CURDIR)
 
 clean :
-	dune clean
+	dune clean --root $(CURDIR)
