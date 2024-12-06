@@ -2,9 +2,9 @@ Require Import  Cdcl.Itauto.
 Require Import List ZArith Lia.
 Open Scope Z_scope.
 
-Variables A B : Set.
-Variable P : A -> bool.
-Variable R : A -> B -> Prop.
+Axiom A B : Set.
+Axiom P : A -> bool.
+Axiom R : A -> B -> Prop.
 Definition Q (b : B) (r : A) :=  P r = true -> R r b.
 
 (*Goal forall

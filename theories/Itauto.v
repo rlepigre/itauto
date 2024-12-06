@@ -43,14 +43,15 @@ Ltac gen_conflicts tac :=
 Ltac vitautog :=
   (* Reify the conclusion *)
   cdcl_change;
+  let ua := fresh "ua" in
   let n := fresh "n" in
   let mb := fresh "mb" in
   let md := fresh "md" in
   let m := fresh "m" in
   let f := fresh "f" in
-  (intros n mb md m f;
+  (intros ua n mb md m f;
   (* Apply soundness proof and compute *)
-   apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
+   apply (hcons_tauto_prover_correct m md mb ua (KeyInt.nat_of_int n));
    [reflexivity | reflexivity | vm_compute; reflexivity]).
 
 
@@ -59,19 +60,21 @@ Ltac vitautog :=
 Ltac nitautog :=
 (* Reify the conclusion *)
   cdcl_change;
+  let ua := fresh "ua" in
   let n := fresh "n" in
   let mb := fresh "mb" in
   let md := fresh "md" in
   let m := fresh "m" in
   let f := fresh "f" in
-  (intros n mb md m f;
+  (intros ua n mb md m f;
   (* Apply soundness proof and compute *)
-   apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
+   apply (hcons_tauto_prover_correct m md mb ua (KeyInt.nat_of_int n));
    [reflexivity | reflexivity | native_compute; reflexivity]).
 
 Ltac citautog :=
 (* Reify the conclusion *)
   cdcl_change;
+  let ua := fresh "ua" in
   let n := fresh "n" in
   let mb := fresh "mb" in
   let md := fresh "md" in
@@ -79,7 +82,7 @@ Ltac citautog :=
   let f := fresh "f" in
   (intros n mb md m f;
   (* Apply soundness proof and compute *)
-   apply (hcons_tauto_prover_correct m md mb (KeyInt.nat_of_int n));
+   apply (hcons_tauto_prover_correct m md mb ua (KeyInt.nat_of_int n));
    [reflexivity | reflexivity | compute; reflexivity]).
 
 (** [vitauto] is a standalone version reifying all the hypotheses *)
@@ -101,9 +104,9 @@ Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(false).
 Ltac Zify.zify_post_hook ::= idtac. (* ZifyBool sets some nasty Ltac *)
 
 (* Nelson Oppen Support *)
-Class TheorySig (Tid:Type) {T:Type} (Op: T) : Type.
+Class TheorySig (Tid:Type) {T:Type} (Op: T) : Prop.
 
-Class TheoryType (Tid:Type) (T:Type) : Type.
+Class TheoryType (Tid:Type) (T:Type) : Prop.
 
 Register TheorySig as No.TheorySig.
 Register TheoryType as No.TheoryType.

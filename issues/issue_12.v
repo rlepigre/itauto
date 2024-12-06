@@ -2,7 +2,7 @@ Require Import Lia ZArith.
 Require Import Cdcl.Itauto.
 Open Scope Z_scope.
 
-Variable F : nat -> Prop.
+Axiom F : nat -> Prop.
 
 Fixpoint orn (n : nat) := match n with
                           | O => F 0

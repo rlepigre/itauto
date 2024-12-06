@@ -2,7 +2,7 @@
 Require Import Cdcl.Itauto.
 Require Import ZifyClasses Lia.
 
-Record ZarithThy : Type.
+Record ZarithThy : Prop.
 
 (** Get the theory from zify *)
 

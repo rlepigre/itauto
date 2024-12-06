@@ -24,6 +24,11 @@ let { Goptions.get = use_classic } = Goptions.declare_bool_option_and_ref
     ~value:false
     ()
 
+let { Goptions.get = use_arrow } = Goptions.declare_bool_option_and_ref
+   ~key:["Itauto";"Use";"Implication";"Clauses"]
+    ~value:true
+    ()
+
 
 let pr_constr env evd e = Printer.pr_econstr_env env evd e
 
@@ -1272,7 +1277,7 @@ let dirty_clear ep (env, sigma) =
   env
 
 
-let run_prover tac cc (err: (failed_proof) list ref) (genv, sigma) ep f =
+let run_prover ua tac cc (err: (failed_proof) list ref) (genv, sigma) ep f =
   let is_dec i =
     try
       let d = Env.AMap.find (Uint63.hash i) !ep.Env.amap in
@@ -1285,7 +1290,7 @@ let run_prover tac cc (err: (failed_proof) list ref) (genv, sigma) ep f =
   let res =
     P.prover_formula is_dec
       (Theory.thy_prover tac cc err (genv, sigma) ep)
-      true m
+      ua true m
       (nat_of_int (10 * !ep.Env.fresh))
       f
   in
@@ -1388,7 +1393,7 @@ let pp_failure = function
 
 (** [assert_conflict_clauses tac] runs the sat prover in ml 
     and asserts conflict_clauses *)
-let collect_conflict_clauses tac gl =
+let collect_conflict_clauses  tac gl =
   let sigma = Tacmach.project gl in
   let genv = Tacmach.pf_env gl in
   let concl = Tacmach.pf_concl gl in
@@ -1425,7 +1430,7 @@ let collect_conflict_clauses tac gl =
   let env = ref env in
   let save_deps = !P.deps in
   P.deps := P.LitSet.empty ; (* In case of recursive call *)
-  match run_prover tac cc err (genv, sigma) env form with
+  match run_prover (use_arrow ()) tac cc err (genv, sigma) env form with
   | P.Success ((hm, _cc), d) ->
     let cc =
       List.map
@@ -1456,7 +1461,7 @@ let collect_conflict_clauses tac gl =
          | l  -> CErrors.user_err (Theory.pp_no_core genv !sigma l))
 
 
-let assert_conflict_clauses tac =
+let assert_conflict_clauses  tac =
   Proofview.Goal.enter (fun gl ->
       Coqlib.check_required_library ["Cdcl"; "Formula"];
       match collect_conflict_clauses tac gl with
@@ -1529,7 +1534,7 @@ let change_goal =
           with Not_found -> false
         in
         match
-          run_prover Tacticals.tclIDTAC (ref []) (ref [])
+          run_prover (use_arrow ()) Tacticals.tclIDTAC (ref []) (ref [])
             (genv, ref sigma)
             (ref env)
             (P.hlform (P.BForm.to_hformula has_bool form))
@@ -1548,11 +1553,16 @@ let change_goal =
       let m_name = fresh_id (Names.Id.of_string "__m") gl in
       let mb_name = fresh_id (Names.Id.of_string "__mb") gl in
       let md_name = fresh_id (Names.Id.of_string "__md") gl in
+      let ua = fresh_id (Names.Id.of_string "__use_arrows") gl in
 
       let m_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_atomT|]) in
       let mbool_typ = EConstr.mkApp(Lazy.force coq_ptrie,[| Lazy.force coq_int; Lazy.force coq_bool|]) in
 
       let change =
+        EConstr.mkLetIn
+          (EConstr.nameR ua
+          , constr_of_bool (use_arrow ())
+          , Lazy.force coq_bool,
         EConstr.mkLetIn
           ( EConstr.nameR n
           , EConstr.mkInt (Uint63.of_int (10 * f))
@@ -1567,7 +1577,7 @@ let change_goal =
                    (EConstr.nameR form_name, cform, Lazy.force coq_HBForm,
                      EConstr.mkApp
                        ( Lazy.force coq_eval_hbformula
-                       , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) )))))
+                       , [|EConstr.mkApp (Lazy.force coq_eval_prop, [|EConstr.mkRel 2 |]); EConstr.mkRel 1|] ) ))))))
       in
       if debug () then
         Feedback.msg_debug

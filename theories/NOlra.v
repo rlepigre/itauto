@@ -2,7 +2,7 @@
 Require Import Cdcl.Itauto.
 Require Import ZifyClasses Lra Reals.
 
-Record RarithThy : Type.
+Record RarithThy : Prop.
 
 #[export] Instance RThy  : TheoryType RarithThy R := {}.
 

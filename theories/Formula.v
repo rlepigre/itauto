@@ -1,4 +1,4 @@
-(* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
+(* Copyright 2020 Frédéric Bessoyn <frederic.besson@inria.fr> *)
 Require Import Cdcl.PatriciaR Cdcl.KeyInt Cdcl.ReifClasses Cdcl.Lib.
 Require Import  Bool Setoid ZifyBool  ZArith Uint63 Lia List.
 Require Import Cdcl.Syntax Cdcl.Clause.
@@ -9353,58 +9353,60 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       | Fail f      => Fail f
       end.
 
-    Definition prover_impl_arrows (P:ProverT) st g :=
-      prover_arrows P (find_arrows st (arrows st)) st g.
+    Definition prover_impl_arrows (b:bool) (P:ProverT) st g :=
+      if b then
+        prover_arrows P (find_arrows st (arrows st)) st g
+      else Fail Stuck.
 
-    Fixpoint prover  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+    Fixpoint prover  (thy: ThyP) (use_arrow: bool) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
-      | S n => let ProverTRec := prover thy use_prover n in
+      | S n => let ProverTRec := prover thy use_arrow use_prover n in
                seq_prover (prover_unit_propagation n)
                           (seq_prover (prover_case_split ProverTRec)
-                                      (seq_prover (prover_impl_arrows ProverTRec)
+                                      (seq_prover (prover_impl_arrows use_arrow ProverTRec)
                                                   (prover_thy ProverTRec thy use_prover))) st g
       end.
 
 
-    Lemma prover_rew : forall thy up n,
-        prover thy up (n:nat)     =
+    Lemma prover_rew : forall thy ua up n,
+        prover thy ua up (n:nat)     =
         match n with
       | O => fun _ _ => Fail OutOfFuel
-      | S n => let ProverTRec := prover thy up n in
+      | S n => let ProverTRec := prover thy ua up n in
                seq_prover (prover_unit_propagation n)
                           (seq_prover (prover_case_split ProverTRec)
-                                      (seq_prover (prover_impl_arrows ProverTRec)
+                                      (seq_prover (prover_impl_arrows ua ProverTRec)
                                                   (prover_thy ProverTRec thy up)))
         end.
     Proof.
       destruct n ; reflexivity.
     Qed.
 
-    Fixpoint prover_opt  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
+    Fixpoint prover_opt  (thy: ThyP) (use_arrow: bool) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula)   : result state (hmap * list conflict_clause * LitSet.t) :=
       match n with
       | O => Fail OutOfFuel
-      | S n => let ProverTRec := prover_opt thy use_prover n in
+      | S n => let ProverTRec := prover_opt thy use_arrow use_prover n in
                match unit_propagation n g st with
                | Success (hm,d) => Success(hm,nil,d)
                | Progress st'   =>
                  (seq_prover (prover_case_split ProverTRec)
-                             (seq_prover (prover_impl_arrows ProverTRec)
+                             (seq_prover (prover_impl_arrows use_arrow ProverTRec)
                                          (prover_thy ProverTRec thy use_prover))) st' g
                | Fail f => Fail f
                end
       end.
 
-    Lemma prover_opt_rew : forall  (thy: ThyP) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula),
-        prover_opt thy use_prover n st g = 
+    Lemma prover_opt_rew : forall  (thy: ThyP) (use_arrow: bool) (use_prover: bool) (n:nat)  (st:state) (g : option HFormula),
+        prover_opt thy use_arrow use_prover n st g =
         match n with
       | O => Fail OutOfFuel
-      | S n => let ProverTRec := prover_opt thy use_prover n in
+      | S n => let ProverTRec := prover_opt thy use_arrow use_prover n in
                match unit_propagation n g st with
                | Success (hm,d) => Success(hm,nil,d)
                | Progress st'   =>
                  (seq_prover (prover_case_split ProverTRec)
-                             (seq_prover (prover_impl_arrows ProverTRec)
+                             (seq_prover (prover_impl_arrows use_arrow ProverTRec)
                                          (prover_thy ProverTRec thy use_prover))) st' g
                | Fail f => Fail f
                end
@@ -9517,13 +9519,14 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       apply eq_prover_case_split_ann; auto.
     Qed.
     
-    Lemma eq_prover_impl_arrows : forall P Q,
+    Lemma eq_prover_impl_arrows : forall b P Q,
         eq_prover P Q ->
-        eq_prover (prover_impl_arrows P) (prover_impl_arrows Q).
+        eq_prover (prover_impl_arrows b P) (prover_impl_arrows b Q).
     Proof.
       unfold eq_prover.
       unfold prover_impl_arrows.
       intros.
+      destruct b; auto.
       revert g.
       generalize (find_arrows st (arrows st)).
       intro l; revert st.
@@ -9562,8 +9565,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     Qed.
 
 
-    Lemma prover_op_eq : forall thy use_prover n,
-        eq_prover (prover thy use_prover n) (prover_opt thy use_prover n).
+    Lemma prover_op_eq : forall thy use_arrow use_prover n,
+        eq_prover (prover thy use_arrow use_prover n) (prover_opt thy use_arrow use_prover n).
     Proof.
       unfold eq_prover.
       induction n.
@@ -9934,16 +9937,16 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     eapply H ; eauto.
   Qed.
 
-  Lemma prover_correct : forall thy (THY:Thy thy) b n st
+  Lemma prover_correct : forall thy (THY:Thy thy) i b n st
     ,
-      sound_prover (prover thy b n) st /\ never_progress (prover thy b n) st.
+      sound_prover (prover thy i b n) st /\ never_progress (prover thy i b n) st.
   Proof.
     induction n.
     - unfold sound_prover. simpl ; auto.
       split ; try congruence.
     -
       rewrite prover_rew.
-      remember (prover thy b n) as P.
+      remember (prover thy i b n) as P.
       simpl.
       split.
       repeat apply sound_prover_seq.
@@ -10032,11 +10035,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
           }
           set (l := (find_arrows st0 (arrows st0))) in *.
           clearbody l.
+          destruct i; try discriminate.
           apply prover_arrows_correct in PRF ; auto.
           apply IHn.
       + unfold sound_prover_progress.
         intros.
         unfold prover_impl_arrows in PRF.
+        destruct i; try discriminate.
         exfalso.
         induction ((find_arrows st0 (arrows st0))).
         discriminate.
@@ -10117,13 +10122,13 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
       congruence.
   Qed.
 
-  Definition prover_formula thy (up: bool) (m: hmap) (n:nat) (f: HFormula)  :=
+  Definition prover_formula thy (ua: bool) (up: bool) (m: hmap) (n:nat) (f: HFormula)  :=
     if wfb m && chkHc m f.(elt) f.(id) f.(is_dec)
-    then prover_intro (prover_opt thy up n) (insert_unit (annot_lit hTT) (empty_state m)) (Some f)
+    then prover_intro (prover_opt thy ua up n) (insert_unit (annot_lit hTT) (empty_state m)) (Some f)
     else Fail InternalError.
 
-  Definition prover_bformula thy (m: hmap) (n:nat) (f: HFormula)  :=
-    match prover_formula thy false m n f with
+  Definition prover_bformula thy (ua:bool) (m: hmap) (n:nat) (f: HFormula)  :=
+    match prover_formula thy ua false m n f with
     | Success _ => true
     |  _    => false
     end.
@@ -10194,8 +10199,8 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     eauto.
   Qed.
 
-  Lemma prover_formula_correct : forall thy (THY: Thy thy) up m m' prf d n f ,
-      prover_formula thy up m n f = Success (m',prf, d) ->
+  Lemma prover_formula_correct : forall thy (THY: Thy thy) ua up m m' prf d n f ,
+      prover_formula thy ua up m n f = Success (m',prf, d) ->
       eval_hformula f.
   Proof.
     unfold prover_formula.
@@ -10227,7 +10232,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
     intros (WF & HM & EV).
     simpl in EV.
     set (s1 := (insert_unit (annot_lit hTT) s0)) in * ; clearbody s1.
-    destruct (prover_intro (prover_opt thy up n) s1 (Some f))
+    destruct (prover_intro (prover_opt thy ua up n) s1 (Some f))
              eqn:PI ; try congruence.
     destruct r. destruct p.
     inv H.
@@ -10236,7 +10241,7 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
        assert (ETT := eval_annot_hyp _ (POS hTT) HL) .
        tauto.
     -
-      apply eq_sound_prover with (P:= prover thy up n).
+      apply eq_sound_prover with (P:= prover thy ua up n).
       apply prover_op_eq.
       eapply prover_correct; eauto.
     - simpl.
@@ -10263,18 +10268,18 @@ Lemma cnf_of_literal_correct : forall (m: hmap) g cp cm ar l
   Definition hcons_form (f : HFormula) : hmap :=
     IntMap.set' f.(id) (f.(is_dec),f.(elt)) (hcons hmap_empty f.(elt)).
 
-  Definition hcons_prover (thy:ThyP) (n:nat) (f:HFormula) :=
+  Definition hcons_prover (thy:ThyP) (ua:bool) (n:nat) (f:HFormula) :=
     let m := hcons_form f in
-    prover_bformula thy m n f.
+    prover_bformula thy ua m n f.
 
-  Lemma hcons_prover_correct : forall thy (THY: Thy thy) n f ,
-      hcons_prover thy n f = true ->
+  Lemma hcons_prover_correct : forall thy (THY: Thy thy) ua n f ,
+      hcons_prover thy ua n f = true ->
       eval_hformula f.
   Proof.
     unfold hcons_prover.
     intros.
     unfold prover_bformula in H.
-    destruct (prover_formula thy false (hcons_form f) n f) eqn:EQ; try congruence.
+    destruct (prover_formula thy ua false (hcons_form f) n f) eqn:EQ; try congruence.
     destruct r. destruct p.
     apply prover_formula_correct in EQ; auto.
   Qed.
@@ -10881,8 +10886,8 @@ Qed.
 Definition hlform (hf : HFormula) :=
   nform lform hf.
 
-Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:ThyP) (n:nat) (f: BForm.HBForm) :=
-    hcons_prover (eval_is_dec m)  thy n (hlform (BForm.to_hformula (has_bool m) f)).
+Definition hcons_bprover (m : IntMap.ptrie atomT) (thy:ThyP) (ua:bool) (n:nat) (f: BForm.HBForm) :=
+    hcons_prover (eval_is_dec m)  thy ua n (hlform (BForm.to_hformula (has_bool m) f)).
 
 Lemma eval_hformula_hlform : forall am f,
     eval_hformula (eval_prop am IsProp) (hlform f) <->
@@ -10897,11 +10902,11 @@ Proof.
   exact (fun _ => true). (* bizarre2 *)
 Qed.
 
-Lemma hcons_bprover_correct : forall n (f:BForm.HBForm) am,
-    hcons_bprover am (empty_thy_prover ) n f = true ->
+Lemma hcons_bprover_correct : forall n (f:BForm.HBForm) ua am,
+    hcons_bprover am (empty_thy_prover ) ua n f = true ->
     BForm.eval_hbformula  (eval_prop am)  f.
 Proof.
-  intros n f am.
+  intros n f ua am.
   intros.
   apply BForm.to_hformula_correct with (has_bool := has_bool am).
   - apply has_bool_correct.
@@ -10942,14 +10947,14 @@ Proof.
 Qed.
 
 
-Definition hcons_tauto_prover (eval_is_dec : int -> bool) (has_bool : int -> bool)  (n:nat) (f: BForm.HBForm) :=
-    hcons_prover eval_is_dec   empty_thy_prover  n (hlform (BForm.to_hformula has_bool  f)).
+Definition hcons_tauto_prover (eval_is_dec : int -> bool) (has_bool : int -> bool) (ua:bool) (n:nat) (f: BForm.HBForm) :=
+    hcons_prover eval_is_dec   empty_thy_prover ua  n (hlform (BForm.to_hformula has_bool  f)).
 
 Lemma hcons_tauto_prover_correct :
-  forall am mdec mbool n f
+  forall am mdec mbool ua n f
          (DEC: eqb_map is_dec_atomT mdec  am = true )
          (BOOL: eqb_map has_bool_atomT mbool am = true)
-         (PROVER: hcons_tauto_prover (bool_of_ptrie_bool mdec) (bool_of_ptrie_bool mbool) n f = true),
+         (PROVER: hcons_tauto_prover (bool_of_ptrie_bool mdec) (bool_of_ptrie_bool mbool) ua n f = true),
     BForm.eval_hbformula  (eval_prop am)  f.
 Proof.
   intros am mdec mbool n f.
