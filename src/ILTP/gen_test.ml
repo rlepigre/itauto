@@ -35,6 +35,6 @@ let args =
   ; ("-header", Arg.Set_string header, "Header string to insert") ]
 
 let _ =
-  Arg.parse args (fun s -> ()) "";
+  Arg.parse args ignore "";
   if !file <> "" then process_file !header !file
   else if !dir <> "" && !ext <> "" then process_dir !header !ext !dir

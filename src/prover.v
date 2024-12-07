@@ -18,8 +18,8 @@ Extract Inductive option => option [ Some None ].
 Extract Inductive prod => "( * )" [ "(,)" ].
 Extract Inductive list => list [ "[]" "(::)" ].
 
-Require Import Cdcl.Formula.
+Require Import Cdcl.Base.Formula.
 
 (* This extracts at the right place only if Pwd is itauto top-level
 directory *)
-Extraction "src/prover.ml" hcons_bprover LitSet.is_empty LitSet.fold LitSet.mem.
+Extraction "prover.ml" hcons_bprover LitSet.is_empty LitSet.fold LitSet.mem.

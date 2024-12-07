@@ -1,7 +1,7 @@
 (* Copyright 2023 Frédéric Besson <frederic.besson@inria.fr> *)
 Require Import Bool ZifyBool ZArith ZifyUint63 Uint63 Lia List.
 Require Import Morphisms.
-Require Import Cdcl.Lib Cdcl.Syntax.
+Require Import Cdcl.Base.Lib Cdcl.Base.Syntax.
 
 (* Here, we consider [HFormula] as tokens. *)
 

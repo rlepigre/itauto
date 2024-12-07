@@ -1,7 +1,7 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
 Require Import Bool ZifyClasses ZifyUint63 ZArith Lia.
-Require Import Cdcl.PatriciaR.
+Require Import Cdcl.Base.PatriciaR.
 
 Require Uint63.
 

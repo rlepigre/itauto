@@ -1,14 +1,14 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
-Require Import  Cdcl.Formula.
-Require Export Cdcl.ReifClasses Cdcl.ZArithDec.
-Require Import Lia.
+Require Import Cdcl.Base.Formula.
+Require Export Cdcl.Base.ReifClasses Cdcl.ZArithDec.
+From Coq Require Import Lia.
 
 Require Import List.
 Require Import Uint63.
 
 Declare ML Module "coq-itauto.plugin".
-Require Import Cdcl.Formula.
+Require Import Cdcl.Base.Formula.
 Require Import Bool.
 
 Lemma Is_true_iff_eq_true : forall b, Is_true b <-> b = true.

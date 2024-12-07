@@ -27,7 +27,7 @@ let pp_forall o i =
       Printf.fprintf o "(p%i:Prop)" i;
       forall o (i - 1) )
   in
-  Printf.printf "forall %a," forall i
+  Printf.fprintf o "forall %a," forall i
 
 let pp_op o = function
   | AND -> output_string o "/\\"

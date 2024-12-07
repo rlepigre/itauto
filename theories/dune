@@ -1,0 +1,4 @@
+(coq.theory
+ (name Cdcl)
+ (plugins cdcl_plugin)
+ (theories Stdlib Cdcl.Base))

@@ -1,7 +1,7 @@
 Require Import ZArith.
 Require Import List Bool Lia.
 Require Import Morphisms.
-Require Import Cdcl.Syntax Cdcl.Lib Cdcl.Lit Cdcl.Clause.
+Require Import Cdcl.Base.Syntax Cdcl.Base.Lib Cdcl.Base.Lit Cdcl.Base.Clause.
 
 Import Lit.
 

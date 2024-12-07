@@ -1,0 +1,21 @@
+(coq.extraction
+ (prelude prover)
+ (extracted_modules prover)
+ (theories Stdlib Cdcl.Base))
+
+(rule
+ (targets proverPatch.ml)
+ (deps
+  prover.ml
+  ppprover.ml
+  patch/mlpatch.exe)
+ (action
+  (with-stdout-to %{targets}
+   (run patch/mlpatch.exe -ifile prover.ml -pfile ppprover.ml))))
+
+(library
+ (name cdcl_plugin)
+ (public_name coq-itauto.plugin)
+ (flags (:standard -w -3-9-27))
+ (libraries str coq-core.kernel coq-core.pretyping coq-core.clib
+            coq-core.printing coq-core.library coq-core.tactics))

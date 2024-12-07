@@ -1,6 +1,6 @@
 (* Copyright 2023 Frédéric Besson <frederic.besson@inria.fr> *)
 Require Import Bool ZifyBool ZArith ZifyUint63 Uint63 Lia List.
-Require Import Cdcl.Lib Cdcl.Syntax Cdcl.Lit.
+Require Import Cdcl.Base.Lib Cdcl.Base.Syntax Cdcl.Base.Lit.
 
 (* A clause is a list of literals.
    Section EvalList provides some results for manipulating lists *)

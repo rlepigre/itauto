@@ -1,5 +1,5 @@
 (executable
- (name mlpatch)
+ (name gen_test)
  (libraries str))
 
 (ocamllex lexer)

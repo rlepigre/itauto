@@ -1,8 +1,8 @@
 (* Copyright 2020 Frédéric Besson <frederic.besson@inria.fr> *)
 
 (** Teach itauto that comparisons over Z are decidable *)
-Require Import Cdcl.ReifClasses.
-Require Import Bool ZArith Lia.
+Require Import Cdcl.Base.ReifClasses.
+From Coq Require Import Bool ZArith Lia.
 Open Scope Z_scope.
 
 Lemma dec_le : forall x y, x <= y \/ ~ x <= y.

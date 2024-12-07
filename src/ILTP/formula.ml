@@ -33,7 +33,7 @@ module StrSet = Set.Make (String)
 let rec vars_of_bformula = function
   | False -> StrSet.empty
   | Var s -> StrSet.singleton s
-  | Op (o, f1, f2) -> StrSet.union (vars_of_bformula f1) (vars_of_bformula f2)
+  | Op (_, f1, f2) -> StrSet.union (vars_of_bformula f1) (vars_of_bformula f2)
 
 let output_vars o s =
   if StrSet.is_empty s then ()
